@@ -27,6 +27,7 @@ from fastraml.views.walk import DEFAULT_BASE
 from tests.unit.conftest import CountingLoader
 
 API = '#%RAML 1.0\ntitle: T\n'
+CHECKED = ParseOptions(validate=True, unwrap=True)
 
 PERSON = json.dumps(
     {
@@ -38,19 +39,18 @@ PERSON = json.dumps(
 )
 
 
-def parse(workspace, files: dict[str, str], **options):
-    """Parse `api.raml` out of `files`; return the error, or `None`."""
-    root = workspace(files)
+def parsed(workspace, files: dict[str, str], **options):
+    """Parse `api.raml` out of `files`, validated and unwrapped."""
+    return workspace.parse(workspace(files) / 'api.raml', ParseOptions(validate=True, unwrap=True, **options))
+
+
+def parse(workspace, files: dict[str, str]):
+    """`parsed`'s error, or `None`."""
     try:
-        workspace.parse(root / 'api.raml', ParseOptions(validate=True, unwrap=True, **options))
+        parsed(workspace, files)
     except RamlError as err:
         return err
     return None
-
-
-def parsed(workspace, files: dict[str, str], **options):
-    root = workspace(files)
-    return workspace.parse(root / 'api.raml', ParseOptions(validate=True, unwrap=True, **options))
 
 
 def messages(error: RamlError) -> set[str]:
@@ -76,28 +76,27 @@ class TestCompilation:
     """Section 6.1. A schema is compiled where it is declared, not at first use."""
 
     def test_a_well_formed_schema_compiles(self, workspace):
-        raml = parsed(workspace, {'api.raml': API + 'types:\n  Person: |\n' + indent(PERSON)})
+        raml = workspace.document(API + 'types:\n  Person: |\n' + indent(PERSON), CHECKED)
         shape = raml.types_in(raml.location)['Person']
         assert shape.type == 'json'
         assert shape.shape.validator is not None
 
     def test_malformed_json_is_a_parse_error(self, workspace):
-        error = parse(workspace, {'api.raml': API + 'types:\n  Person: |\n    {"type": "object"\n'})
+        error = workspace.rejection(API + 'types:\n  Person: |\n    {"type": "object"\n', CHECKED)
         assert error is not None
         assert 'invalid JSON in schema' in messages(error)
 
     def test_a_schema_that_is_not_a_schema_is_rejected(self, workspace):
         # Caught by the meta-schema, not by the JSON decoder: this parses.
-        error = parse(workspace, {'api.raml': API + 'types:\n  Person: |\n    {"type": "nonesuch"}\n'})
+        error = workspace.rejection(API + 'types:\n  Person: |\n    {"type": "nonesuch"}\n', CHECKED)
         assert error is not None
         assert 'invalid JSON schema' in messages(error)
 
     def test_the_declaration_is_rejected_without_validate(self, workspace):
         # Compilation happens at construction, so a broken schema is a syntax
         # error in the document rather than something only `validate=True` sees.
-        root = workspace({'api.raml': API + 'types:\n  Person: |\n    {"type": "object"\n'})
         with pytest.raises(RamlError):
-            workspace.parse(root / 'api.raml')
+            workspace.document(API + 'types:\n  Person: |\n    {"type": "object"\n')
 
     def test_an_external_json_file_compiles_through_the_same_path(self, workspace):
         raml = parsed(workspace, {'api.raml': API + 'types:\n  Person: !include person.json\n', 'person.json': PERSON})
@@ -115,9 +114,9 @@ class TestCompilation:
         # `exclusiveMinimum: true` is draft-04's spelling and draft-07 forbids
         # it, so the declared draft is what decides whether this compiles.
         four = '{"$schema": "http://json-schema.org/draft-04/schema#", "minimum": 1, "exclusiveMinimum": true}'
-        assert parse(workspace, {'api.raml': API + 'types:\n  N: |\n' + indent(four)}) is None
+        assert workspace.rejection(API + 'types:\n  N: |\n' + indent(four), CHECKED) is None
         seven = '{"minimum": 1, "exclusiveMinimum": true}'
-        error = parse(workspace, {'api.raml': API + 'types:\n  N: |\n' + indent(seven)})
+        error = workspace.rejection(API + 'types:\n  N: |\n' + indent(seven), CHECKED)
         assert error is not None
         assert 'invalid JSON schema' in messages(error)
 
@@ -174,7 +173,7 @@ class TestReferences:
                 'z.json': json.dumps(target),
             }
         )
-        _, error = workspace.lenient(root / 'api.raml', ParseOptions(validate=True, unwrap=True))
+        _, error = workspace.lenient(root / 'api.raml', CHECKED)
         assert error is not None
         assert [[(trace.message, trace.info) for trace in chain][-2:] for chain in error.chains()] == [
             [('unresolvable JSON schema reference', {'ref': 'z.json'}), ('invalid JSON schema', invalid)]
@@ -214,13 +213,13 @@ class TestReferences:
         # would never report it. go-raml compiles eagerly
         # and the TCK expects that.
         schema = json.dumps({'type': 'object', 'properties': {'p': {'$ref': 'nowhere.json'}}})
-        error = parse(workspace, {'api.raml': API + 'types:\n  Holder: |\n' + indent(schema)})
+        error = workspace.rejection(API + 'types:\n  Holder: |\n' + indent(schema), CHECKED)
         assert error is not None
         assert 'unresolvable JSON schema reference' in messages(error)
 
     def test_a_ref_to_a_missing_pointer_is_reported(self, workspace):
         schema = json.dumps({'type': 'object', 'properties': {'p': {'$ref': '#/definitions/Nope'}}})
-        error = parse(workspace, {'api.raml': API + 'types:\n  Holder: |\n' + indent(schema)})
+        error = workspace.rejection(API + 'types:\n  Holder: |\n' + indent(schema), CHECKED)
         assert error is not None
         assert 'unresolvable JSON schema reference' in messages(error)
 
@@ -232,7 +231,7 @@ class TestReferences:
         documents that name a remote schema.
         """
         schema = json.dumps({'$ref': 'http://json-schema.org/draft-07/schema#'})
-        error = parse(workspace, {'api.raml': API + 'types:\n  Holder: |\n' + indent(schema)})
+        error = workspace.rejection(API + 'types:\n  Holder: |\n' + indent(schema), CHECKED)
         assert error is not None
         assert 'unresolvable JSON schema reference' in messages(error)
         # The loader's own diagnostic survives, rather than being flattened into
@@ -255,13 +254,13 @@ class TestReferences:
 
     def test_a_recursive_ref_terminates(self, workspace):
         schema = json.dumps({'type': 'object', 'properties': {'next': {'$ref': '#'}}})
-        assert parse(workspace, {'api.raml': API + 'types:\n  Node: |\n' + indent(schema)}) is None
+        assert workspace.rejection(API + 'types:\n  Node: |\n' + indent(schema), CHECKED) is None
 
     def test_a_ref_inside_a_default_is_data_and_not_resolved(self, workspace):
         # `$ref` is only a reference in schema position. Resolving one written
         # inside a `default` would reject a document the spec allows.
         schema = json.dumps({'type': 'object', 'default': {'$ref': 'nowhere.json'}})
-        assert parse(workspace, {'api.raml': API + 'types:\n  T: |\n' + indent(schema)}) is None
+        assert workspace.rejection(API + 'types:\n  T: |\n' + indent(schema), CHECKED) is None
 
 
 class TestInstanceValidation:
@@ -310,7 +309,7 @@ class TestInstanceValidation:
         # docs/10 § 7: URI/date-time/duration exercise format-nongpl's
         # optional libraries as well as enabling the checker itself.
         schema = json.dumps({'$schema': draft, 'type': 'string', 'format': format_name})
-        raml = parsed(workspace, {'api.raml': API + 'types:\n' + declaration('T', schema)})
+        raml = workspace.document(API + 'types:\n' + declaration('T', schema), CHECKED)
         shape = raml.types_in(raml.location)['T'].shape.base
         assert shape.validate(valid) is None
         error = shape.validate(invalid)
@@ -327,7 +326,7 @@ class TestInstanceValidation:
         # for application-defined format names.
         schema = json.dumps({'type': 'string', 'format': 'application-specific-format'})
         body = 'types:\n' + declaration('T', schema, 'example: anything')
-        assert parse(workspace, {'api.raml': API + body}) is None
+        assert workspace.rejection(API + body, CHECKED) is None
 
     def test_validating_through_a_ref_to_another_file_neither_crawls_nor_retrieves(self, workspace, monkeypatch):
         # docs/10 § 7: the validator's registry already holds every document
@@ -351,17 +350,17 @@ class TestInstanceValidation:
 
     def test_a_conforming_example_passes(self, workspace):
         body = 'types:\n' + declaration('Person', PERSON, 'example:', '  name: Ada', '  age: 36')
-        assert parse(workspace, {'api.raml': API + body}) is None
+        assert workspace.rejection(API + body, CHECKED) is None
 
     def test_a_non_conforming_example_fails(self, workspace):
         body = 'types:\n' + declaration('Person', PERSON, 'example:', '  name: 12')
-        error = parse(workspace, {'api.raml': API + body})
+        error = workspace.rejection(API + body, CHECKED)
         assert error is not None
         assert 'value does not match the JSON schema' in messages(error)
 
     def test_a_missing_required_property_fails(self, workspace):
         body = 'types:\n' + declaration('Person', PERSON, 'example:', '  age: 36')
-        error = parse(workspace, {'api.raml': API + body})
+        error = workspace.rejection(API + body, CHECKED)
         assert error is not None
         assert 'value does not match the JSON schema' in messages(error)
 
@@ -370,7 +369,7 @@ class TestInstanceValidation:
         # arrives as a scalar and is decoded by `make_data_node`, so the
         # validator sees a mapping rather than a string.
         body = 'types:\n' + declaration('Person', PERSON, 'example: |', '  {"name": "Ada"}')
-        assert parse(workspace, {'api.raml': API + body}) is None
+        assert workspace.rejection(API + body, CHECKED) is None
 
     def test_a_pointer_include_validates_against_the_pointed_subschema(self, workspace):
         document = json.dumps({'definitions': {'Person': json.loads(PERSON)}})
@@ -500,7 +499,7 @@ class TestMultipleOfIsExact:
 
     def declared(self, workspace, divisor: str):
         schema = f'{{"$schema": "{self.DRAFT7}", "type": "number", "multipleOf": {divisor}}}'
-        raml = parsed(workspace, {'api.raml': API + 'types:\n' + declaration('T', schema)})
+        raml = workspace.document(API + 'types:\n' + declaration('T', schema), CHECKED)
         return raml.types_in(raml.location)['T'].shape.base
 
     @pytest.mark.parametrize(
@@ -541,18 +540,18 @@ class TestRestrictions:
 
     def test_a_sibling_facet_is_rejected(self, workspace):
         body = 'types:\n' + declaration('Person', PERSON, 'minLength: 3')
-        error = parse(workspace, {'api.raml': API + body})
+        error = workspace.rejection(API + body, CHECKED)
         assert error is not None
         assert 'cannot define facets on a JSON schema type' in messages(error)
 
     def test_the_wrapper_facets_the_spec_allows_are_accepted(self, workspace):
         body = 'types:\n' + declaration('Person', PERSON, 'displayName: A person', 'description: has a name')
-        assert parse(workspace, {'api.raml': API + body}) is None
+        assert workspace.rejection(API + body, CHECKED) is None
 
     def test_inheriting_from_a_different_schema_is_rejected(self, workspace):
         other = json.dumps({'type': 'object', 'properties': {'x': {'type': 'string'}}})
         body = 'types:\n  A: |\n' + indent(PERSON) + '  B: |\n' + indent(other) + '  C:\n    type: [A, B]\n'
-        error = parse(workspace, {'api.raml': API + body})
+        error = workspace.rejection(API + body, CHECKED)
         assert error is not None
         assert 'cannot inherit from a different JSON schema' in messages(error)
 
@@ -567,12 +566,12 @@ class TestRestrictions:
         itself is only an entry point.
         """
         body = 'types:\n  Person: |\n' + indent(PERSON) + f'  Board:\n    properties:\n      members: {expression}\n'
-        assert parse(workspace, {'api.raml': API + body}) is None
+        assert workspace.rejection(API + body, CHECKED) is None
 
     def test_the_expression_still_validates_through_the_schema(self, workspace):
         """Permitting it is only right if it works. `Person` requires `name`."""
         body = 'types:\n  Person: |\n' + indent(PERSON) + '  Board:\n    properties:\n      members: Person[]\n'
-        raml = parsed(workspace, {'api.raml': API + body})
+        raml = workspace.document(API + body, CHECKED)
         board = raml.types_in(raml.location)['Board'].shape.base
         assert board.validate({'members': [{'name': 'Bob'}]}) is None
         assert board.validate({'members': [{'nope': 1}]}) is not None
@@ -580,14 +579,14 @@ class TestRestrictions:
     def test_a_bare_reference_to_a_schema_type_is_allowed(self, workspace):
         """The spec's own examples use one: a name is not a type expression."""
         body = 'types:\n  Person: |\n' + indent(PERSON) + '  Board:\n    properties:\n      chair: Person\n'
-        assert parse(workspace, {'api.raml': API + body}) is None
+        assert workspace.rejection(API + body, CHECKED) is None
 
     def test_inheriting_from_a_schema_type_is_still_refused(self, workspace):
         """The boundary of docs/01 § 4.5. Inheritance asks for a RAML facet to be merged
         into a compiled schema, and there is no such operation.
         """
         body = 'types:\n  Person: |\n' + indent(PERSON) + '  Boss:\n    type: Person\n    minLength: 3\n'
-        error = parse(workspace, {'api.raml': API + body})
+        error = workspace.rejection(API + body, CHECKED)
         assert error is not None
 
 
@@ -638,17 +637,17 @@ class TestParameterDeclarations:
     def test_a_named_schema_type_is_rejected(self, workspace, facet):
         template, expected = self.RESOURCE[facet]
         body = 'types:\n  Code: |\n' + indent(SCALAR_SCHEMA) + template.format(ref='Code')
-        error = parse(workspace, {'api.raml': API + 'baseUri: http://x/{h}\n' + body})
+        error = workspace.rejection(API + 'baseUri: http://x/{h}\n' + body, CHECKED)
         assert error is not None
         assert placement(error) == [expected]
 
     def test_an_inline_schema_is_rejected_too(self, workspace):
         body = '/r:\n  get:\n    headers:\n      H:\n        type: |\n' + indent(SCALAR_SCHEMA, 10)
-        assert placement(parse(workspace, {'api.raml': API + body})) == [HEADER_H]
+        assert placement(workspace.rejection(API + body, CHECKED)) == [HEADER_H]
 
     def test_a_union_with_a_schema_member_is_rejected(self, workspace):
         body = 'types:\n  Code: |\n' + indent(SCALAR_SCHEMA) + '/r:\n  get:\n    headers:\n      H: Code | integer\n'
-        assert placement(parse(workspace, {'api.raml': API + body})) == [HEADER_H]
+        assert placement(workspace.rejection(API + body, CHECKED)) == [HEADER_H]
 
     def test_a_trait_carrying_one_is_rejected_where_it_is_applied(self, workspace):
         body = (
@@ -656,11 +655,11 @@ class TestParameterDeclarations:
             + indent(SCALAR_SCHEMA)
             + 'traits:\n  t:\n    headers:\n      H: Code\n/r:\n  get:\n    is: [t]\n'
         )
-        assert placement(parse(workspace, {'api.raml': API + body})) == [HEADER_H]
+        assert placement(workspace.rejection(API + body, CHECKED)) == [HEADER_H]
 
     def test_an_ordinary_parameter_is_untouched(self, workspace):
         body = '/r:\n  get:\n    headers:\n      H: string\n'
-        assert parse(workspace, {'api.raml': API + body}) is None
+        assert workspace.rejection(API + body, CHECKED) is None
 
 
 class TestBodyMediaType:
@@ -676,24 +675,24 @@ class TestBodyMediaType:
     )
     def test_a_json_media_type_allows_it(self, workspace, media_type):
         body = self.SCHEMA + f"/r:\n  post:\n    body:\n      '{media_type}': Code\n"
-        assert parse(workspace, {'api.raml': API + body}) is None
+        assert workspace.rejection(API + body, CHECKED) is None
 
     @pytest.mark.parametrize('media_type', ['application/xml', 'text/plain', 'multipart/form-data'])
     def test_another_media_type_rejects_it(self, workspace, media_type):
         body = self.SCHEMA + f'/r:\n  get:\n    responses:\n      200:\n        body:\n          {media_type}: Code\n'
-        error = parse(workspace, {'api.raml': API + body})
+        error = workspace.rejection(API + body, CHECKED)
         assert placement(error) == [('JSON schema for a media type that is not JSON', {'mediaType': media_type})]
 
     def test_a_body_without_a_media_type_is_judged_per_default_media_type(self, workspace):
         head = API + 'mediaType: [application/json, application/xml]\n'
         body = self.SCHEMA + '/r:\n  post:\n    body:\n      type: Code\n'
-        error = parse(workspace, {'api.raml': head + body})
+        error = workspace.rejection(head + body, CHECKED)
         assert placement(error) == [('JSON schema for a media type that is not JSON', {'mediaType': 'application/xml'})]
 
     def test_a_json_default_media_type_allows_it(self, workspace):
         head = API + 'mediaType: application/json\n'
         body = self.SCHEMA + '/r:\n  post:\n    body:\n      type: Code\n'
-        assert parse(workspace, {'api.raml': head + body}) is None
+        assert workspace.rejection(head + body, CHECKED) is None
 
 
 def projection_of(shape):
@@ -795,21 +794,19 @@ class TestProjection:
         assert sorted(shape.shape.properties) == ['a', 'b']
 
     def test_a_named_ref_target_is_registered_in_the_defs(self, workspace):
-        raml = parsed(
-            workspace,
-            {
-                'api.raml': API
-                + 'types:\n  T: |\n'
-                + indent(
-                    json.dumps(
-                        {
-                            'type': 'object',
-                            'properties': {'u': {'$ref': '#/definitions/User'}},
-                            'definitions': {'User': {'type': 'object', 'properties': {'n': {'type': 'string'}}}},
-                        }
-                    )
+        raml = workspace.document(
+            API
+            + 'types:\n  T: |\n'
+            + indent(
+                json.dumps(
+                    {
+                        'type': 'object',
+                        'properties': {'u': {'$ref': '#/definitions/User'}},
+                        'definitions': {'User': {'type': 'object', 'properties': {'n': {'type': 'string'}}}},
+                    }
                 )
-            },
+            ),
+            CHECKED,
         )
         json_shape = raml.types_in(raml.location)['T'].shape
         shape = json_shape.as_shape()
@@ -817,7 +814,7 @@ class TestProjection:
         assert shape.shape.properties['u'].base.name == 'User'
 
     def test_as_shape_defs_is_none_before_as_shape_runs(self, workspace):
-        raml = parsed(workspace, {'api.raml': API + 'types:\n  T: |\n' + indent(PERSON)})
+        raml = workspace.document(API + 'types:\n  T: |\n' + indent(PERSON), CHECKED)
         assert raml.types_in(raml.location)['T'].shape.as_shape_defs() is None
 
     def test_a_cyclic_ref_becomes_a_recursive_shape(self, workspace):
@@ -826,7 +823,7 @@ class TestProjection:
         assert shape.shape.properties['next'].base.shape.head is shape
 
     def test_the_result_is_cached(self, workspace):
-        raml = parsed(workspace, {'api.raml': API + 'types:\n  T: |\n' + indent(PERSON)})
+        raml = workspace.document(API + 'types:\n  T: |\n' + indent(PERSON), CHECKED)
         json_shape = raml.types_in(raml.location)['T'].shape
         assert json_shape.as_shape() is json_shape.as_shape()
 
@@ -836,7 +833,7 @@ class TestProjection:
         The model looks right until P9 tries to flatten it, which is exactly the
         kind of failure that shows up far from its cause.
         """
-        raml = parsed(workspace, {'api.raml': API + 'types:\n  T: |\n' + indent(PERSON)})
+        raml = workspace.document(API + 'types:\n  T: |\n' + indent(PERSON), CHECKED)
         shape = raml.types_in(raml.location)['T'].shape.as_shape()
         assert shape._unwrapped
         assert shape not in raml.shapes
@@ -988,7 +985,7 @@ class TestAllOfIntersection:
     def assert_matches_schema(workspace, members, values, **siblings):
         for ordered in permutations(members):
             schema = {'allOf': list(ordered), **siblings}
-            raml = parsed(workspace, {'api.raml': API + 'types:\n' + declaration('T', json.dumps(schema))})
+            raml = workspace.document(API + 'types:\n' + declaration('T', json.dumps(schema)), CHECKED)
             declared = raml.types_in(raml.location)['T']
             projected_shape = declared.shape.as_shape()
             for value in values:
@@ -1079,13 +1076,8 @@ class TestAllOfIntersection:
         assert shape.validate({'x': 1.0}) is None
 
     def test_projected_integer_enum_uses_json_equality_without_changing_raml(self, workspace):
-        raml = parsed(
-            workspace,
-            {
-                'api.raml': API
-                + 'types:\n'
-                + declaration('T', json.dumps({'allOf': [{'type': 'integer'}, {'enum': [1]}]}))
-            },
+        raml = workspace.document(
+            API + 'types:\n' + declaration('T', json.dumps({'allOf': [{'type': 'integer'}, {'enum': [1]}]})), CHECKED
         )
         assert raml.types_in(raml.location)['T'].validate('1') is not None
         shape = raml.types_in(raml.location)['T'].shape.as_shape()
@@ -1276,7 +1268,7 @@ class TestAllOfIntersection:
                 {'type': 'object', 'properties': {'x': {'type': 'integer'}}},
             ]
         }
-        raml = parsed(workspace, {'api.raml': API + 'types:\n' + declaration('T', json.dumps(schema))})
+        raml = workspace.document(API + 'types:\n' + declaration('T', json.dumps(schema)), CHECKED)
         declared = raml.types_in(raml.location)['T']
         assert declared.validate({'x': 1}) is not None
         assert declared.validate({'x': '1'}) is not None
@@ -1289,7 +1281,7 @@ class TestAllOfIntersection:
     @pytest.mark.parametrize('member', [{'x': '1'}, {'x': 1}], ids=['numeric-string', 'number'])
     def test_nested_enum_uses_json_equality(self, workspace, member):
         schema = {'allOf': [{'type': 'object'}, {'enum': [member]}]}
-        raml = parsed(workspace, {'api.raml': API + 'types:\n' + declaration('T', json.dumps(schema))})
+        raml = workspace.document(API + 'types:\n' + declaration('T', json.dumps(schema)), CHECKED)
         shape = raml.types_in(raml.location)['T'].shape.as_shape()
         assert shape.validate(member) is None
         other = {'x': 1} if isinstance(member['x'], str) else {'x': '1'}
@@ -1297,7 +1289,7 @@ class TestAllOfIntersection:
 
     def test_nullable_recursive_all_of_projects_without_recursing_forever(self, workspace):
         schema = {'allOf': [{'type': ['object', 'null'], 'properties': {'next': {'$ref': '#'}}}, {}]}
-        raml = parsed(workspace, {'api.raml': API + 'types:\n' + declaration('T', json.dumps(schema))})
+        raml = workspace.document(API + 'types:\n' + declaration('T', json.dumps(schema)), CHECKED)
         declared = raml.types_in(raml.location)['T']
         shape = declared.shape.as_shape()
         for value in (None, {}, {'next': None}, {'next': {}}, {'next': 1}):
@@ -1602,7 +1594,7 @@ class TestUuidProjection:
         ids=['ordinary', 'format-only', 'format-last', 'format-first', 'repeated', 'sibling'],
     )
     def test_uuid_is_an_anchored_ascii_pattern_in_ordinary_and_conjoined_schemas(self, workspace, schema):
-        raml = parsed(workspace, {'api.raml': API + 'types:\n' + declaration('T', json.dumps(schema))})
+        raml = workspace.document(API + 'types:\n' + declaration('T', json.dumps(schema)), CHECKED)
         declared = raml.types_in(raml.location)['T']
         shape = declared.shape.as_shape()
         assert shape.type == 'string'
@@ -1638,11 +1630,8 @@ class TestUuidProjection:
         ],
     )
     def test_projection_excludes_noncanonical_spellings_accepted_by_the_compiled_checker(self, workspace, value):
-        raml = parsed(
-            workspace,
-            {
-                'api.raml': API + 'types:\n' + declaration('T', json.dumps({'type': 'string', 'format': 'uuid'})),
-            },
+        raml = workspace.document(
+            API + 'types:\n' + declaration('T', json.dumps({'type': 'string', 'format': 'uuid'})), CHECKED
         )
         declared = raml.types_in(raml.location)['T']
         assert declared.validate(value) is None
@@ -1887,7 +1876,7 @@ class TestAllOfReferenceGraphs:
                 {'properties': {'node': {'required': ['code']}}},
             ]
         }
-        raml = parsed(workspace, {'api.raml': API + 'types:\n' + declaration('T', json.dumps(schema))})
+        raml = workspace.document(API + 'types:\n' + declaration('T', json.dumps(schema)), CHECKED)
         declared = raml.types_in(raml.location)['T']
         shape = declared.shape.as_shape()
         composite = shape.shape.properties['node'].base
@@ -1930,7 +1919,7 @@ class TestAllOfReferenceGraphs:
         for index in range(1, levels + 1):
             definitions[f'n{index}'] = {'allOf': [{'$ref': f'#/definitions/n{index - 1}'}] * 2}
         schema = {'definitions': definitions, 'allOf': [{'$ref': f'#/definitions/n{levels}'}, {'maximum': 10}]}
-        raml = parsed(workspace, {'api.raml': API + 'types:\n' + declaration('T', json.dumps(schema))})
+        raml = workspace.document(API + 'types:\n' + declaration('T', json.dumps(schema)), CHECKED)
         calls = []
         original = module._parts
 
@@ -1964,7 +1953,10 @@ class TestAllOfReferenceGraphs:
         for index in range(1, 15):
             definitions[f'n{index}'] = {'allOf': [{'$ref': f'#/definitions/n{index - 1}'}]}
         schema = {'definitions': definitions, 'allOf': [{'$ref': '#/definitions/n14'}]}
-        raml = parsed(workspace, {'api.raml': API + 'types:\n' + declaration('T', json.dumps(schema))}, max_depth=20)
+        raml = workspace.document(
+            API + 'types:\n' + declaration('T', json.dumps(schema)),
+            ParseOptions(validate=True, unwrap=True, max_depth=20),
+        )
         with pytest.raises(RamlError) as caught:
             projection_of(raml.types_in(raml.location)['T'].shape)
         assert any(
@@ -1994,8 +1986,7 @@ types:
 """
 
     def test_each_inline_schema_keeps_its_own_properties(self, workspace):
-        root = workspace({'api.raml': self.INLINE})
-        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
+        raml = workspace.document(self.INLINE, ParseOptions(unwrap=True))
         declared = raml.types_in(raml.location)
         assert sorted(projected(declared['A']).shape.properties) == ['alpha']
         assert sorted(projected(declared['B']).shape.properties) == ['beta']

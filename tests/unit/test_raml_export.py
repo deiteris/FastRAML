@@ -171,8 +171,9 @@ def test_a_recursive_root_uses_a_named_library_type(workspace):
 
 def test_an_inline_recursive_root_requires_a_name(workspace):
     raw = json.dumps({'type': 'object', 'properties': {'next': {'$ref': '#'}}})
-    root = workspace({'api.raml': '#%RAML 1.0\ntitle: T\ntypes:\n  Inline:\n    type: |\n      ' + raw})
-    parsed = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
+    parsed = workspace.document(
+        '#%RAML 1.0\ntitle: T\ntypes:\n  Inline:\n    type: |\n      ' + raw, ParseOptions(unwrap=True)
+    )
     schema = parsed.types_in(parsed.location)['Inline'].shape
     with pytest.raises(ValueError, match='root type name'):
         to_raml(schema)
@@ -333,8 +334,9 @@ def test_reference_only_cycle_has_a_projection_diagnostic(workspace):
 
 def test_inline_library_needs_an_explicit_root_name(workspace):
     raw = json.dumps({'definitions': {'Code': {'type': 'string'}}, 'type': 'object'})
-    root = workspace({'api.raml': '#%RAML 1.0\ntitle: T\ntypes:\n  Inline:\n    type: |\n      ' + raw})
-    parsed = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
+    parsed = workspace.document(
+        '#%RAML 1.0\ntitle: T\ntypes:\n  Inline:\n    type: |\n      ' + raw, ParseOptions(unwrap=True)
+    )
     shape = parsed.types_in(parsed.location)['Inline'].shape
     with pytest.raises(ValueError, match='root type name'):
         to_raml(shape)

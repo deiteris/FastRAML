@@ -29,8 +29,7 @@ _ARABIC_INDIC_12 = chr(0x0661) + chr(0x0662)
 
 def declared_in(workspace, body: str, name: str = 'T'):
     """The parse and the named type from `types:\n<body>`, unwrapped."""
-    root = workspace({'api.raml': API + 'types:\n' + body})
-    raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
+    raml = workspace.document(API + 'types:\n' + body, ParseOptions(unwrap=True))
     return raml, raml.types_in(raml.location)[name]
 
 
@@ -40,9 +39,8 @@ def declared(workspace, body: str, name: str = 'T'):
 
 
 def parse_validating(workspace, body: str):
-    root = workspace({'api.raml': API + 'types:\n' + body})
     try:
-        workspace.parse(root / 'api.raml', ParseOptions(validate=True, unwrap=True))
+        workspace.document(API + 'types:\n' + body, ParseOptions(validate=True, unwrap=True))
     except RamlError as err:
         return err
     return None
@@ -734,8 +732,7 @@ class TestUnionDispatchesOnADiscriminator:
         # docs/02 § 4, invariant I12. Without unwrap a child shows only
         # what its own declaration wrote, so it accepts a value missing the
         # property its parent made required — silently, which is the hazard.
-        root = workspace({'api.raml': API + 'types:\n' + TAGGED})
-        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=False))
+        raml = workspace.document(API + 'types:\n' + TAGGED, ParseOptions(unwrap=False))
         with pytest.raises(AssertionError, match='unwrapped shape') as caught:
             raml.types_in(raml.location)['Cat'].validate({'meows': True})
         # The remedy it names is the function P10 itself uses.
@@ -1088,15 +1085,16 @@ class TestUnionFacetsAreDistributed:
         by reference, so decoding a facet in place would narrow `U` itself — and
         with it every other subtype of `U`.
         """
-        root = workspace(
-            {
-                'api.raml': API
+        assert (
+            workspace.document(
+                API
                 + 'types:\n  U: integer | number\n'
                 + '  Narrow:\n    type: U\n    maximum: 2\n'
-                + '  Wide:\n    type: U\n    example: 99999\n'
-            }
+                + '  Wide:\n    type: U\n    example: 99999\n',
+                ParseOptions(validate=True, unwrap=True),
+            )
+            is not None
         )
-        assert workspace.parse(root / 'api.raml', ParseOptions(validate=True, unwrap=True)) is not None
 
 
 class TestUnionDeclarationFacetsAreDistributed:
@@ -1187,12 +1185,9 @@ class TestPrivateUnwrap:
     """`validate=True` without `unwrap=True` must not flatten the caller's model."""
 
     def test_the_declared_model_keeps_its_inherits(self, workspace):
-        root = workspace(
-            {
-                'api.raml': API + 'types:\n  P:\n    properties:\n      a: string\n  T:\n    type: P\n',
-            }
+        raml = workspace.document(
+            API + 'types:\n  P:\n    properties:\n      a: string\n  T:\n    type: P\n', ParseOptions(validate=True)
         )
-        raml = workspace.parse(root / 'api.raml', ParseOptions(validate=True))
         child = raml.types_in(raml.location)['T']
         assert not raml.unwrapped
         assert [parent.name for parent in child.inherits] == ['P']
@@ -1201,15 +1196,11 @@ class TestPrivateUnwrap:
 
     def test_validation_still_sees_the_inherited_shape(self, workspace):
         # The copy is what gets checked, so an inherited facet still bites.
-        root = workspace(
-            {
-                'api.raml': API + 'types:\n'
-                '  P:\n    type: integer\n    maximum: 5\n'
-                '  T:\n    type: P\n    example: 99\n',
-            }
-        )
         with pytest.raises(RamlError):
-            workspace.parse(root / 'api.raml', ParseOptions(validate=True))
+            workspace.document(
+                API + 'types:\n  P:\n    type: integer\n    maximum: 5\n  T:\n    type: P\n    example: 99\n',
+                ParseOptions(validate=True),
+            )
 
     def test_the_private_copies_are_not_indexed(self, workspace):
         """docs/10 § 1: the copies keep the declarations' ids; registered, they
@@ -1222,8 +1213,9 @@ class TestPrivateUnwrap:
         assert len({shape.id for shape in validated.shapes}) == len(validated.shapes)
 
     def test_a_merge_the_private_copy_rejects_marks_nothing(self, workspace):
-        root = workspace({'api.raml': API + 'types:\n  N: integer\n  C:\n    type: [string, N]\n'})
-        raml, error = workspace.lenient(root / 'api.raml', ParseOptions(validate=True))
+        raml, error = workspace.lenient_document(
+            API + 'types:\n  N: integer\n  C:\n    type: [string, N]\n', ParseOptions(validate=True)
+        )
         assert error is not None
         assert raml.stopped_at is Stage.VALIDATED
         assert raml.broken == {}

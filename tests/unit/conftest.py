@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from fastraml.errors import RamlError
 from fastraml.loaders import SafeFileLoader
 from fastraml.parser.entry import ParseOptions, parse_from_path, parse_lenient
 from fastraml.uris import file_uri_to_path, path_to_file_uri
@@ -17,7 +18,6 @@ from fastraml.uris import file_uri_to_path, path_to_file_uri
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from fastraml.errors import RamlError
     from fastraml.loaders import ResourceLoader
     from fastraml.registry import Raml
 
@@ -66,6 +66,24 @@ class MemoryWorkspace:
 
     def lenient(self, path: Path, options: ParseOptions | None = None) -> tuple[Raml, RamlError | None]:
         return parse_lenient(path, self._options(options))
+
+    def document(self, text: str, options: ParseOptions | None = None, **files: str) -> Raml:
+        """Parse `text` as `api.raml`, beside `files` keyed by relative path."""
+        return self.parse(self({'api.raml': text, **files}) / 'api.raml', options)
+
+    def lenient_document(
+        self, text: str, options: ParseOptions | None = None, **files: str
+    ) -> tuple[Raml, RamlError | None]:
+        """`document`, through `parse_lenient`."""
+        return self.lenient(self({'api.raml': text, **files}) / 'api.raml', options)
+
+    def rejection(self, text: str, options: ParseOptions | None = None, **files: str) -> RamlError | None:
+        """The error `document` raises, or `None` if it parses."""
+        try:
+            self.document(text, options, **files)
+        except RamlError as err:
+            return err
+        return None
 
 
 @pytest.fixture

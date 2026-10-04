@@ -30,8 +30,7 @@ OAUTH2 = (
 
 
 def parse(workspace, body: str, **options):
-    root = workspace({'api.raml': API + body})
-    return workspace.parse(root / 'api.raml', ParseOptions(**options) if options else None)
+    return workspace.document(API + body, ParseOptions(**options) if options else None)
 
 
 def rejected(workspace, body: str) -> RamlError:

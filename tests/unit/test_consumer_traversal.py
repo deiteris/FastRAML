@@ -72,8 +72,7 @@ CYCLES = {
 
 
 def project(workspace, body: str) -> object:
-    root = workspace({'api.raml': '#%RAML 1.0\ntitle: T\n' + body})
-    return build_tree(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
+    return build_tree(workspace.document('#%RAML 1.0\ntitle: T\n' + body, ParseOptions(unwrap=True)))
 
 
 class TestANaiveWalkTerminates:

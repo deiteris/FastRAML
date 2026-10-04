@@ -21,8 +21,8 @@ DECLARE = 'annotationTypes:\n  ann: any\n'
 
 
 def parse(workspace, files: dict[str, str], entry: str = 'api.raml', **options):
-    root = workspace(files)
-    return workspace.parse(root / entry, ParseOptions(**options) if options else None)
+    """Parse `entry` out of `files`."""
+    return workspace.parse(workspace(files) / entry, ParseOptions(**options) if options else None)
 
 
 def extensions(raml) -> dict[str, object]:
@@ -31,7 +31,7 @@ def extensions(raml) -> dict[str, object]:
 
 class TestBinding:
     def test_an_unqualified_name_binds_to_a_local_declaration(self, workspace):
-        raml = parse(workspace, {'api.raml': API + DECLARE + '(ann): 1\n'})
+        raml = workspace.document(API + DECLARE + '(ann): 1\n')
         bound = extensions(raml)['ann']
         assert bound.defined_by is raml.annotation_types_in(raml.location)['ann']
 
@@ -59,14 +59,14 @@ class TestBinding:
     def test_the_lookup_falls_back_to_data_types(self, workspace):
         # docs/04 § 3: an annotation type may extend a data type, so a name
         # found only under `types:` still binds.
-        raml = parse(workspace, {'api.raml': API + 'types:\n  ann: string\n(ann): x\n'})
+        raml = workspace.document(API + 'types:\n  ann: string\n(ann): x\n')
         assert extensions(raml)['ann'].defined_by is raml.types_in(raml.location)['ann']
 
     def test_an_undeclared_name_is_an_error(self, workspace):
         # Spec § Annotations: "All annotations used in an API specification MUST
         # be declared in its annotationTypes node."
         with pytest.raises(RamlError) as caught:
-            parse(workspace, {'api.raml': API + '(nope): 1\n'})
+            workspace.document(API + '(nope): 1\n')
         trace = next(iter(caught.value.chains()))[-1]
         assert trace.info == {'annotation': 'nope'}
 
@@ -74,7 +74,7 @@ class TestBinding:
         # CLAUDE.md: accumulate, do not fail fast. Three typos are three
         # diagnostics, not one plus a rerun.
         with pytest.raises(RamlError) as caught:
-            parse(workspace, {'api.raml': API + '(one): 1\n(two): 2\n(three): 3\n'})
+            workspace.document(API + '(one): 1\n(two): 2\n(three): 3\n')
         named = {trace[-1].info['annotation'] for trace in caught.value.chains()}
         assert named == {'one', 'two', 'three'}
 
@@ -169,10 +169,7 @@ class TestTargets:
     def test_a_site_under_a_subtype_records_itself(self, workspace, declared):
         # `type: Base` defers the properties to P7, where the stack holds only
         # the root: the site is the one they were written at.
-        raml = parse(
-            workspace,
-            {'api.raml': API + DECLARE + 'types:\n  Base: object\n  T:\n    type: Base\n' + declared},
-        )
+        raml = workspace.document(API + DECLARE + 'types:\n  Base: object\n  T:\n    type: Base\n' + declared)
         assert extensions(raml)['ann'].target is DomainLocation.TYPE_DECLARATION
 
     def test_a_data_type_fragment_root_is_a_type_declaration(self, workspace):
@@ -191,18 +188,13 @@ class TestTargets:
     def test_a_facet_annotation_inherits_the_enclosing_declaration(self, workspace):
         # The annotated-scalar form. The spec's target vocabulary has no member
         # for a facet, so the site is what the facet belongs to (docs/09 § B4).
-        raml = parse(
-            workspace,
-            {
-                'api.raml': API
-                + DECLARE
-                + 'types:\n  T:\n    type: string\n    minLength:\n      value: 2\n      (ann): 1\n'
-            },
+        raml = workspace.document(
+            API + DECLARE + 'types:\n  T:\n    type: string\n    minLength:\n      value: 2\n      (ann): 1\n'
         )
         assert extensions(raml)['ann'].target is DomainLocation.TYPE_DECLARATION
 
     def test_a_root_facet_annotation_records_the_root(self, workspace):
-        raml = parse(workspace, {'api.raml': '#%RAML 1.0\n' + DECLARE + 'title:\n  value: T\n  (ann): 1\n'})
+        raml = workspace.document('#%RAML 1.0\n' + DECLARE + 'title:\n  value: T\n  (ann): 1\n')
         assert extensions(raml)['ann'].target is DomainLocation.API
 
     def test_a_raising_decode_does_not_leave_a_site_on_the_stack(self):
@@ -310,7 +302,7 @@ class TestAllowedTargets:
 
     def test_an_ordinary_type_cannot_declare_allowed_targets(self, workspace):
         with pytest.raises(RamlError) as caught:
-            parse(workspace, {'api.raml': API + 'types:\n  T:\n    type: string\n    allowedTargets: Method\n'})
+            workspace.document(API + 'types:\n  T:\n    type: string\n    allowedTargets: Method\n')
         trace = next(iter(caught.value.chains()))[-1]
         assert trace.message == 'allowedTargets is only valid on annotation types'
         assert trace.info == {}
@@ -318,14 +310,9 @@ class TestAllowedTargets:
     @pytest.mark.parametrize('unwrap', [False, True])
     def test_an_annotation_alias_keeps_its_restrictions(self, workspace, unwrap):
         with pytest.raises(RamlError) as caught:
-            parse(
-                workspace,
-                {
-                    'api.raml': API
-                    + 'annotationTypes:\n  Parent:\n    allowedTargets: Method\n  ann: Parent\n(ann): x\n'
-                },
-                unwrap=unwrap,
-                validate=True,
+            workspace.document(
+                API + 'annotationTypes:\n  Parent:\n    allowedTargets: Method\n  ann: Parent\n(ann): x\n',
+                ParseOptions(unwrap=unwrap, validate=True),
             )
         trace = next(iter(caught.value.chains()))[-1]
         assert trace.message == 'annotation not allowed at this target'
@@ -333,27 +320,20 @@ class TestAllowedTargets:
 
     def test_a_subtype_cannot_widen_allowed_targets(self, workspace):
         with pytest.raises(RamlError) as caught:
-            parse(
-                workspace,
-                {
-                    'api.raml': API
-                    + 'annotationTypes:\n  Parent:\n    allowedTargets: Method\n  ann:\n    type: Parent\n    allowedTargets: [Method, API]\n'
-                },
-                unwrap=True,
+            workspace.document(
+                API
+                + 'annotationTypes:\n  Parent:\n    allowedTargets: Method\n  ann:\n    type: Parent\n    allowedTargets: [Method, API]\n',
+                ParseOptions(unwrap=True),
             )
         trace = next(iter(caught.value.chains()))[-1]
         assert trace.message == 'allowedTargets constraint violation'
         assert trace.info == {'source': ['Method'], 'target': ['Method', 'API']}
 
     def test_a_narrowed_target_list_is_independent_and_ordered(self, workspace):
-        raml = parse(
-            workspace,
-            {
-                'api.raml': API
-                + 'annotationTypes:\n  Parent:\n    allowedTargets: [Resource, Method, API]\n  inherited:\n    type: Parent\n  narrowed:\n    type: Parent\n    allowedTargets: [API, Method]\n'
-            },
-            unwrap=True,
-            validate=True,
+        raml = workspace.document(
+            API
+            + 'annotationTypes:\n  Parent:\n    allowedTargets: [Resource, Method, API]\n  inherited:\n    type: Parent\n  narrowed:\n    type: Parent\n    allowedTargets: [API, Method]\n',
+            ParseOptions(unwrap=True, validate=True),
         )
         declared = raml.entry_point.annotation_types
         assert declared['narrowed'].allowed_targets == [DomainLocation.API, DomainLocation.METHOD]
@@ -362,23 +342,16 @@ class TestAllowedTargets:
 
     @pytest.mark.parametrize('unwrap', [False, True])
     def test_multiple_annotation_parents_intersect_their_targets(self, workspace, unwrap):
-        raml = parse(
-            workspace,
-            {
-                'api.raml': API
-                + 'annotationTypes:\n  Left:\n    allowedTargets: [Method, API]\n  Right:\n    allowedTargets: [API, Resource]\n  ann:\n    type: [Left, Right]\n    allowedTargets: API\n(ann): x\n'
-            },
-            unwrap=unwrap,
-            validate=True,
+        raml = workspace.document(
+            API
+            + 'annotationTypes:\n  Left:\n    allowedTargets: [Method, API]\n  Right:\n    allowedTargets: [API, Resource]\n  ann:\n    type: [Left, Right]\n    allowedTargets: API\n(ann): x\n',
+            ParseOptions(unwrap=unwrap, validate=True),
         )
         assert extensions(raml)['ann'].target is DomainLocation.API
 
     def test_a_nonscalar_target_does_not_hide_later_bad_entries(self, workspace):
         with pytest.raises(RamlError) as caught:
-            parse(
-                workspace,
-                {'api.raml': API + 'annotationTypes:\n  ann:\n    allowedTargets: [{bad: value}, Bogus, Nonsense]\n'},
-            )
+            workspace.document(API + 'annotationTypes:\n  ann:\n    allowedTargets: [{bad: value}, Bogus, Nonsense]\n')
         traces = [chain[-1] for chain in caught.value.chains()]
         assert [(trace.message, trace.info) for trace in traces] == [
             ('expected a scalar value', {}),
@@ -387,32 +360,26 @@ class TestAllowedTargets:
         ]
 
     def test_a_single_target_is_accepted(self, workspace):
-        raml = parse(workspace, {'api.raml': API + 'annotationTypes:\n  ann:\n    allowedTargets: Method\n'})
+        raml = workspace.document(API + 'annotationTypes:\n  ann:\n    allowedTargets: Method\n')
         declared = raml.annotation_types_in(raml.location)['ann']
         assert declared.allowed_targets == [DomainLocation.METHOD]
 
     def test_a_sequence_of_targets_is_accepted(self, workspace):
-        raml = parse(
-            workspace,
-            {'api.raml': API + 'annotationTypes:\n  ann:\n    allowedTargets: [Method, Resource]\n'},
-        )
+        raml = workspace.document(API + 'annotationTypes:\n  ann:\n    allowedTargets: [Method, Resource]\n')
         declared = raml.annotation_types_in(raml.location)['ann']
         assert declared.allowed_targets == [DomainLocation.METHOD, DomainLocation.RESOURCE]
 
     def test_absent_and_empty_are_different(self, workspace):
         # Absent means any target is allowed; empty means none is. P10 has to
         # tell them apart, so decoding must not collapse them.
-        raml = parse(
-            workspace,
-            {'api.raml': API + 'annotationTypes:\n  absent: string\n  empty:\n    allowedTargets: []\n'},
-        )
+        raml = workspace.document(API + 'annotationTypes:\n  absent: string\n  empty:\n    allowedTargets: []\n')
         declared = raml.annotation_types_in(raml.location)
         assert declared['absent'].allowed_targets is None
         assert declared['empty'].allowed_targets == []
 
     def test_an_unknown_target_is_an_error(self, workspace):
         with pytest.raises(RamlError) as caught:
-            parse(workspace, {'api.raml': API + 'annotationTypes:\n  ann:\n    allowedTargets: Nonsense\n'})
+            workspace.document(API + 'annotationTypes:\n  ann:\n    allowedTargets: Nonsense\n')
         trace = next(iter(caught.value.chains()))[-1]
         assert trace.message == 'unknown annotation target'
         assert trace.info == {'target': 'Nonsense'}
@@ -420,26 +387,23 @@ class TestAllowedTargets:
     def test_the_error_points_at_the_offending_entry(self, workspace):
         # In a sequence, the key says nothing about which member is wrong.
         with pytest.raises(RamlError) as caught:
-            parse(
-                workspace,
-                {'api.raml': API + 'annotationTypes:\n  ann:\n    allowedTargets:\n      - Method\n      - Bogus\n'},
-            )
+            workspace.document(API + 'annotationTypes:\n  ann:\n    allowedTargets:\n      - Method\n      - Bogus\n')
         trace = next(iter(caught.value.chains()))[-1]
         assert trace.info == {'target': 'Bogus'}
         assert trace.position.line == 7, 'the sequence entry, not the allowedTargets key on line 5'
 
     def test_every_bad_entry_is_reported(self, workspace):
         with pytest.raises(RamlError) as caught:
-            parse(workspace, {'api.raml': API + 'annotationTypes:\n  ann:\n    allowedTargets: [Bogus, Nonsense]\n'})
+            workspace.document(API + 'annotationTypes:\n  ann:\n    allowedTargets: [Bogus, Nonsense]\n')
         named = {trace[-1].info['target'] for trace in caught.value.chains()}
         assert named == {'Bogus', 'Nonsense'}
 
     def test_it_is_not_mistaken_for_a_custom_facet(self, workspace):
-        raml = parse(workspace, {'api.raml': API + 'annotationTypes:\n  ann:\n    allowedTargets: Method\n'})
+        raml = workspace.document(API + 'annotationTypes:\n  ann:\n    allowedTargets: Method\n')
         assert 'allowedTargets' not in raml.annotation_types_in(raml.location)['ann'].custom_facets
 
     def test_a_clone_gets_its_own_list(self, workspace):
-        raml = parse(workspace, {'api.raml': API + 'annotationTypes:\n  ann:\n    allowedTargets: [Method]\n'})
+        raml = workspace.document(API + 'annotationTypes:\n  ann:\n    allowedTargets: [Method]\n')
         declared = raml.annotation_types_in(raml.location)['ann']
         clone = declared.clone_detached()
         assert clone.allowed_targets == [DomainLocation.METHOD]
@@ -447,7 +411,7 @@ class TestAllowedTargets:
         assert declared.allowed_targets == [DomainLocation.METHOD]
 
     def test_a_clone_keeps_an_absent_list_absent(self, workspace):
-        raml = parse(workspace, {'api.raml': API + DECLARE})
+        raml = workspace.document(API + DECLARE)
         declared = raml.annotation_types_in(raml.location)['ann']
         assert declared.clone_detached().allowed_targets is None
 
@@ -460,17 +424,17 @@ class TestUnwrapRebinding:
     UNION = 'annotationTypes:\n  Parent: string | integer\n  ann:\n    type: Parent\n    description: d\n(ann): 1\n'
 
     def test_the_binding_survives_unwrap(self, workspace):
-        raml = parse(workspace, {'api.raml': API + self.UNION}, unwrap=True)
+        raml = workspace.document(API + self.UNION, ParseOptions(unwrap=True))
         assert extensions(raml)['ann'].defined_by is raml.annotation_types_in(raml.location)['ann']
 
     def test_the_bound_shape_is_one_the_unwrapped_model_holds(self, workspace):
         # The strong form: a stale binding points at a pre-merge object, which
         # unwrap dropped when it rebuilt `raml.shapes`.
-        raml = parse(workspace, {'api.raml': API + self.UNION}, unwrap=True)
+        raml = workspace.document(API + self.UNION, ParseOptions(unwrap=True))
         assert id(extensions(raml)['ann'].defined_by) in {id(shape) for shape in raml.shapes}
 
     def test_binding_happens_without_unwrap_too(self, workspace):
-        raml = parse(workspace, {'api.raml': API + self.UNION})
+        raml = workspace.document(API + self.UNION)
         assert extensions(raml)['ann'].defined_by is not None
 
 
@@ -527,28 +491,20 @@ class TestNestedDeclarationTargets:
         )
         indent = '            ' if response else '        '
         body = prefix + ''.join(indent + line + '\n' for line in declaration.splitlines())
-        raml = parse(
-            workspace,
-            {
-                'api.raml': API
-                + 'annotationTypes:\n  ann:\n    allowedTargets: TypeDeclaration\ntypes:\n  Base: object\n  ArrayBase: array\n  UnionBase:\n    type: union\n    anyOf: [string, integer]\n'
-                + body
-            },
-            unwrap=True,
-            validate=True,
+        raml = workspace.document(
+            API
+            + 'annotationTypes:\n  ann:\n    allowedTargets: TypeDeclaration\ntypes:\n  Base: object\n  ArrayBase: array\n  UnionBase:\n    type: union\n    anyOf: [string, integer]\n'
+            + body,
+            ParseOptions(unwrap=True, validate=True),
         )
         assert extensions(raml)['ann'].target is DomainLocation.TYPE_DECLARATION
 
     def test_an_annotation_types_property_is_an_ordinary_type_declaration(self, workspace):
-        raml = parse(
-            workspace,
-            {
-                'api.raml': API
-                + 'annotationTypes:\n  ann:\n    allowedTargets: TypeDeclaration\n  other:\n    type: object\n'
-                + ''.join('    ' + line + '\n' for line in self.PROPERTY.splitlines())
-            },
-            unwrap=True,
-            validate=True,
+        raml = workspace.document(
+            API
+            + 'annotationTypes:\n  ann:\n    allowedTargets: TypeDeclaration\n  other:\n    type: object\n'
+            + ''.join('    ' + line + '\n' for line in self.PROPERTY.splitlines()),
+            ParseOptions(unwrap=True, validate=True),
         )
         assert extensions(raml)['ann'].target is DomainLocation.TYPE_DECLARATION
 
@@ -591,7 +547,7 @@ class TestTemplateDefinitionTargets:
         body = f'annotationTypes:\n  ann:\n    allowedTargets: {target}\n{collection}:\n  t:\n' + annotation
         if used:
             body += '/one:\n' + application + '/two:\n' + application
-        raml = parse(workspace, {'api.raml': API + body}, unwrap=True, validate=True)
+        raml = workspace.document(API + body, ParseOptions(unwrap=True, validate=True))
         assert raml.annotation_sites is None
         assert len(raml.domain_extensions) == 1
         extension = raml.domain_extensions[0]
@@ -603,10 +559,9 @@ class TestTemplateDefinitionTargets:
 
     def test_an_unused_templates_illegal_target_is_checked(self, workspace):
         with pytest.raises(RamlError) as caught:
-            parse(
-                workspace,
-                {'api.raml': API + 'annotationTypes:\n  ann:\n    allowedTargets: API\ntraits:\n  t:\n    (ann): x\n'},
-                validate=True,
+            workspace.document(
+                API + 'annotationTypes:\n  ann:\n    allowedTargets: API\ntraits:\n  t:\n    (ann): x\n',
+                ParseOptions(validate=True),
             )
         trace = next(iter(caught.value.chains()))[-1]
         assert trace.message == 'annotation not allowed at this target'
@@ -620,14 +575,9 @@ class TestTemplateDefinitionTargets:
         assert extensions(raml)['ann'].target is DomainLocation.TRAIT
 
     def test_a_failed_materialization_releases_retained_sites(self, workspace):
-        root = workspace(
-            {
-                'api.raml': API
-                + DECLARE
-                + 'traits:\n  t:\n    (ann): x\n/items:\n  get:\n    responses:\n      bad: {}\n'
-            }
+        raml, error = workspace.lenient_document(
+            API + DECLARE + 'traits:\n  t:\n    (ann): x\n/items:\n  get:\n    responses:\n      bad: {}\n'
         )
-        raml, error = workspace.lenient(root / 'api.raml')
         assert error is not None
         assert raml.annotation_sites is None
         assert extensions(raml)['ann'].target is DomainLocation.TRAIT
@@ -658,14 +608,10 @@ class TestTemplateDefinitionTargets:
         assert extension.location == (workspace.root / 'template.raml').as_uri()
 
     def test_an_explicit_override_keeps_the_methods_target(self, workspace):
-        raml = parse(
-            workspace,
-            {
-                'api.raml': API
-                + 'annotationTypes:\n  ann:\n    allowedTargets: [Trait, Method]\ntraits:\n  t:\n    (ann): template\n/one:\n  get:\n    is: [t]\n    (ann): explicit\n'
-            },
-            unwrap=True,
-            validate=True,
+        raml = workspace.document(
+            API
+            + 'annotationTypes:\n  ann:\n    allowedTargets: [Trait, Method]\ntraits:\n  t:\n    (ann): template\n/one:\n  get:\n    is: [t]\n    (ann): explicit\n',
+            ParseOptions(unwrap=True, validate=True),
         )
         assert [(str(extension.target), extension.value.raw) for extension in raml.domain_extensions] == [
             ('Trait', 'template'),
@@ -749,13 +695,10 @@ class TestAnnotatedScalarTargets:
 
     def test_an_any_default_does_not_bypass_target_validation(self, workspace):
         with pytest.raises(RamlError) as caught:
-            parse(
-                workspace,
-                {
-                    'api.raml': API
-                    + 'annotationTypes:\n  ann:\n    allowedTargets: Method\ntypes:\n  T:\n    type: any\n    default:\n      value: x\n      (ann): x\n'
-                },
-                validate=True,
+            workspace.document(
+                API
+                + 'annotationTypes:\n  ann:\n    allowedTargets: Method\ntypes:\n  T:\n    type: any\n    default:\n      value: x\n      (ann): x\n',
+                ParseOptions(validate=True),
             )
         trace = next(iter(caught.value.chains()))[-1]
         assert trace.message == 'annotation not allowed at this target'
@@ -763,11 +706,8 @@ class TestAnnotatedScalarTargets:
 
     @pytest.mark.parametrize('data', ['{value: x}', '{value: x, extra: y}', '{value: {nested: x}, (ann): x}'])
     def test_ordinary_default_maps_are_not_annotation_wrappers(self, workspace, data):
-        raml = parse(
-            workspace,
-            {'api.raml': API + f'types:\n  T:\n    type: object\n    default: {data}\n'},
-            unwrap=True,
-            validate=True,
+        raml = workspace.document(
+            API + f'types:\n  T:\n    type: object\n    default: {data}\n', ParseOptions(unwrap=True, validate=True)
         )
         assert raml.domain_extensions == []
         assert isinstance(raml.entry_point.types['T'].default.raw, dict)

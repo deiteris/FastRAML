@@ -294,9 +294,8 @@ class TestDiscriminator:
             '          application/json:\n            discriminator: kind\n'
             '            properties:\n              kind: string\n'
         )
-        root = workspace({'api.raml': API + 'types:\n' + body})
         with pytest.raises(RamlError) as caught:
-            workspace.parse(root / 'api.raml', ParseOptions(validate=True, unwrap=True))
+            workspace.document(API + 'types:\n' + body, ParseOptions(validate=True, unwrap=True))
         assert 'discriminator on an inline type declaration' in str(caught.value)
 
     def test_a_body_that_inherits_a_discriminated_type_is_fine(self, workspace):
@@ -310,8 +309,7 @@ class TestDiscriminator:
             '/p:\n  get:\n    responses:\n      200:\n        body:\n'
             '          application/json: Person\n'
         )
-        root = workspace({'api.raml': API + 'types:\n' + body})
-        assert workspace.parse(root / 'api.raml', ParseOptions(validate=True, unwrap=True)) is not None
+        assert workspace.document(API + 'types:\n' + body, ParseOptions(validate=True, unwrap=True)) is not None
 
     def test_an_inline_declaration_may_not_declare_a_discriminator_value(self, workspace):
         body = (
@@ -319,9 +317,8 @@ class TestDiscriminator:
             '/p:\n  get:\n    responses:\n      200:\n        body:\n'
             '          application/json:\n            type: Person\n            discriminatorValue: p\n'
         )
-        root = workspace({'api.raml': API + 'types:\n' + body})
         with pytest.raises(RamlError) as caught:
-            workspace.parse(root / 'api.raml', ParseOptions(validate=True, unwrap=True))
+            workspace.document(API + 'types:\n' + body, ParseOptions(validate=True, unwrap=True))
         assert 'discriminator on an inline type declaration' in str(caught.value)
 
     def test_an_inherited_property_counts(self, workspace):
@@ -354,8 +351,7 @@ class TestDiscriminator:
         ids=['optional-key', 'required-false', 'inherited-property', 'inherited-discriminator'],
     )
     def test_optional_discriminator_properties_remain_legal_raml(self, workspace, body, unwrap):
-        root = workspace({'api.raml': API + 'types:\n' + body})
-        assert workspace.parse(root / 'api.raml', ParseOptions(validate=True, unwrap=unwrap)) is not None
+        assert workspace.document(API + 'types:\n' + body, ParseOptions(validate=True, unwrap=unwrap)) is not None
 
     def test_a_required_discriminator_does_not_make_other_properties_required(self, workspace):
         assert (
@@ -426,9 +422,8 @@ class TestDiscriminatorValuesInExamples:
     )
 
     def parse(self, workspace, tail: str):
-        root = workspace({'api.raml': API + 'types:\n' + self.HIERARCHY + tail})
         try:
-            workspace.parse(root / 'api.raml', ParseOptions(validate=True, unwrap=True))
+            workspace.document(API + 'types:\n' + self.HIERARCHY + tail, ParseOptions(validate=True, unwrap=True))
         except RamlError as err:
             return err
         return None
@@ -512,8 +507,9 @@ class TestASharedNestedType:
             return original(shape)
 
         monkeypatch.setattr(ObjectShape, 'check', counting)
-        root = workspace({'api.raml': API + 'types:\n' + SHARED + f'  T{SHARED_LEVELS}: string\n'})
-        workspace.parse(root / 'api.raml', ParseOptions(validate=True, unwrap=unwrap))
+        workspace.document(
+            API + 'types:\n' + SHARED + f'  T{SHARED_LEVELS}: string\n', ParseOptions(validate=True, unwrap=unwrap)
+        )
         # Without unwrap each declaration is checked in a copy of its own.
         copies = 1 if unwrap else SHARED_LEVELS
         assert len(checked) <= 3 * SHARED_LEVELS * copies
@@ -528,6 +524,5 @@ class TestASharedNestedType:
 
 class TestNotRunWithoutTheOption:
     def test_a_bad_declaration_parses_when_validation_is_off(self, workspace):
-        root = workspace({'api.raml': API + 'types:\n  T:\n    type: string\n    minLength: 9\n    maxLength: 2\n'})
-        raml = workspace.parse(root / 'api.raml')
+        raml = workspace.document(API + 'types:\n  T:\n    type: string\n    minLength: 9\n    maxLength: 2\n')
         assert raml.types_in(raml.location)['T'].shape.min_length.value == 9

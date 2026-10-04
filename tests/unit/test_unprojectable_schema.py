@@ -84,8 +84,9 @@ class TestTheFailureIsKeptNotRaised:
         assert (tuple_failure.head.message, tuple_failure.head.info) == (NO_EQUIVALENT, TUPLE)
 
     def test_a_sound_schema_has_no_error(self, workspace):
-        root = workspace({'api.raml': '#%RAML 1.0\ntitle: t\ntypes:\n  T: |\n    {"type": "string"}\n'})
-        shape = declared(workspace.parse(root / 'api.raml'), 'T').shape
+        shape = declared(
+            workspace.document('#%RAML 1.0\ntitle: t\ntypes:\n  T: |\n    {"type": "string"}\n'), 'T'
+        ).shape
         assert shape.projection_error() is None
         assert shape.as_shape() is not None
 
@@ -191,8 +192,7 @@ class TestTheFailureIsALintFinding:
             '  Tup: |\n    {"type": "array", "items": [{"type": "string"}]}\n'
             '  Child: Tup\n  Child2:\n    type: Tup\n'
         )
-        root = workspace({'api.raml': document})
-        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, retain_source=True))
+        raml = workspace.document(document, ParseOptions(unwrap=True, retain_source=True))
         findings = [f for f in configured_linter({}).run(raml) if f.rule == 'unprojectable-json-schema']
         assert [(f.message, f.info) for f in findings] == [(NO_EQUIVALENT, {**TUPLE, **WHOLE})]
 

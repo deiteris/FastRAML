@@ -58,9 +58,8 @@ class TestIdentification:
         assert identify_fragment('#%RAML 1.0 Library ') is None
 
     def test_a_document_without_a_raml_header_fails_fast(self, workspace):
-        root = workspace({'api.raml': 'title: not raml\n'})
         with pytest.raises(RamlError) as caught:
-            workspace.parse(root / 'api.raml')
+            workspace.document('title: not raml\n')
         assert traces(caught.value)[0].message == 'unknown fragment kind'
 
     def test_a_fragment_of_the_wrong_kind_names_both_kinds(self, workspace):
@@ -165,18 +164,9 @@ class TestEntryPoints:
 
 class TestApiDecoding:
     def test_the_root_facets_phase_one_owns(self, workspace):
-        root = workspace(
-            {
-                'api.raml': (
-                    '#%RAML 1.0\n'
-                    'title: Example\n'
-                    'description: Some text\n'
-                    'version: v1\n'
-                    'baseUri: http://example.com/{version}\n'
-                )
-            }
-        )
-        api = workspace.parse(root / 'api.raml').entry_point
+        api = workspace.document(
+            '#%RAML 1.0\ntitle: Example\ndescription: Some text\nversion: v1\nbaseUri: http://example.com/{version}\n'
+        ).entry_point
         assert isinstance(api, APIFragment)
         assert api.title.value == 'Example'
         assert api.description.value == 'Some text'
@@ -185,59 +175,49 @@ class TestApiDecoding:
         assert api.title.key_pos.line == 2
 
     def test_title_is_required(self, workspace):
-        root = workspace({'api.raml': '#%RAML 1.0\nversion: v1\n'})
         with pytest.raises(RamlError) as caught:
-            workspace.parse(root / 'api.raml')
+            workspace.document('#%RAML 1.0\nversion: v1\n')
         assert 'title is required' in messages(caught.value)
 
     def test_an_empty_title_is_rejected(self, workspace):
-        root = workspace({'api.raml': '#%RAML 1.0\ntitle:\n'})
         with pytest.raises(RamlError) as caught:
-            workspace.parse(root / 'api.raml')
+            workspace.document('#%RAML 1.0\ntitle:\n')
         assert 'title must not be empty' in messages(caught.value)
 
     def test_an_unknown_root_field_is_reported_with_its_name(self, workspace):
-        root = workspace({'api.raml': API + 'nonsense: 1\n'})
         with pytest.raises(RamlError) as caught:
-            workspace.parse(root / 'api.raml')
+            workspace.document(API + 'nonsense: 1\n')
         assert traces(caught.value)[0].info == {'field': 'nonsense'}
 
     def test_independent_root_errors_are_all_reported(self, workspace):
         # One broken key does not discard its siblings (docs/02 § 5).
-        root = workspace({'api.raml': API + 'nonsense: 1\nrubbish: 2\n'})
         with pytest.raises(RamlError) as caught:
-            workspace.parse(root / 'api.raml')
+            workspace.document(API + 'nonsense: 1\nrubbish: 2\n')
         assert [trace.info['field'] for trace in traces(caught.value)] == ['nonsense', 'rubbish']
 
     def test_endpoint_buffer_is_released_after_materialization(self, workspace):
-        root = workspace({'api.raml': API + '/users:\n  get:\n/orders:\n  post:\n'})
-        raml = workspace.parse(root / 'api.raml')
+        raml = workspace.document(API + '/users:\n  get:\n/orders:\n  post:\n')
         assert list(raml.endpoints) == ['/users', '/orders']
         assert raml.entry_point._raw_endpoints == []
 
     def test_endpoint_buffer_survives_a_failed_materialization(self, workspace):
-        root = workspace({'api.raml': API + '/users:\n  get:\n    is: [missing]\n'})
-        raml, error = workspace.lenient(root / 'api.raml')
+        raml, error = workspace.lenient_document(API + '/users:\n  get:\n    is: [missing]\n')
         assert error is not None
         assert [key.value for key, _value in raml.entry_point._raw_endpoints] == ['/users']
 
     def test_types_and_schemas_are_mutually_exclusive(self, workspace):
-        root = workspace({'api.raml': API + 'types:\n  A: string\nschemas:\n  B: string\n'})
         with pytest.raises(RamlError) as caught:
-            workspace.parse(root / 'api.raml')
+            workspace.document(API + 'types:\n  A: string\nschemas:\n  B: string\n')
         assert traces(caught.value)[0].message == 'types and schemas are mutually exclusive'
 
     def test_every_declaration_kind_is_decoded_with_the_fragment(self, workspace):
-        root = workspace(
-            {
-                'api.raml': BARE_API
-                + 'types:\n  A: string\nannotationTypes:\n  B: string\ntraits:\n  t: {}\n'
-                + 'resourceTypes:\n  r: {}\n'
-                + 'securitySchemes:\n  s:\n    type: Basic Authentication\n'
-                + 'baseUri: https://{p}.example.test\nbaseUriParameters:\n  p: string\n'
-            }
-        )
-        api = workspace.parse(root / 'api.raml').entry_point
+        api = workspace.document(
+            BARE_API
+            + 'types:\n  A: string\nannotationTypes:\n  B: string\ntraits:\n  t: {}\n'
+            + 'resourceTypes:\n  r: {}\n'
+            + 'securitySchemes:\n  s:\n    type: Basic Authentication\n'
+            + 'baseUri: https://{p}.example.test\nbaseUriParameters:\n  p: string\n'
+        ).entry_point
         assert list(api.types) == ['A']
         assert list(api.annotation_types) == ['B']
         assert list(api.base_uri_parameters) == ['p']
@@ -248,22 +228,19 @@ class TestApiDecoding:
 
 class TestGlobalPrePass:
     def test_globals_are_harvested_before_the_main_loop(self, workspace):
-        root = workspace({'api.raml': API + 'mediaType: [application/json, application/xml]\nprotocols: [HTTP]\n'})
-        raml = workspace.parse(root / 'api.raml')
+        raml = workspace.document(API + 'mediaType: [application/json, application/xml]\nprotocols: [HTTP]\n')
         assert raml.global_media_types == ['application/json', 'application/xml']
         assert raml.global_protocols == ['HTTP']
 
     def test_a_single_media_type_is_accepted_as_a_scalar(self, workspace):
-        root = workspace({'api.raml': API + 'mediaType: application/json\n'})
-        assert workspace.parse(root / 'api.raml').global_media_types == ['application/json']
+        assert workspace.document(API + 'mediaType: application/json\n').global_media_types == ['application/json']
 
     def test_a_media_type_accepts_the_annotated_scalar_spelling(self, workspace):
         """Spec § Annotating Scalar-valued Nodes (raml-10.md L2992): `mediaType`
         is scalar-valued, so `{value: ..., (a): ...}` spells it too. An annotated
         scalar targets its enclosing site, here the API (docs/09 § B4).
         """
-        root = workspace({'api.raml': API + 'mediaType:\n  value: application/json\n  (here): 1\n'})
-        raml = workspace.parse(root / 'api.raml')
+        raml = workspace.document(API + 'mediaType:\n  value: application/json\n  (here): 1\n')
         assert raml.global_media_types == ['application/json']
         [facet] = raml.entry_point.media_types
         assert facet.annotations['here'].value.raw == 1
@@ -273,43 +250,37 @@ class TestGlobalPrePass:
         """Spec § User Documentation (raml-10.md L252): "a sequence of one or
         more documents". (`allowedTargets: []` is a different rule, and stays.)
         """
-        root = workspace({'api.raml': API + 'documentation: []\n'})
         with pytest.raises(RamlError) as caught:
-            workspace.parse(root / 'api.raml')
+            workspace.document(API + 'documentation: []\n')
         assert messages(caught.value) == ['documentation must not be empty']
 
     def test_an_invalid_media_type_is_rejected(self, workspace):
-        root = workspace({'api.raml': API + 'mediaType: nonsense\n'})
         with pytest.raises(RamlError) as caught:
-            workspace.parse(root / 'api.raml')
+            workspace.document(API + 'mediaType: nonsense\n')
         assert 'invalid media type' in messages(caught.value)[0]
 
     @pytest.mark.parametrize('media', ['a_b/c', 'vnd!#$&^/x', "'application/json; charset=utf-8'"])
     def test_a_media_type_follows_rfc_6838_names_and_rfc_9110_parameters(self, workspace, media):
         # Spec section Default Media Types: each value conforms to RFC 6838.
-        root = workspace({'api.raml': API + f'mediaType: {media}\n'})
-        assert workspace.parse(root / 'api.raml').global_media_types == [media.strip("'")]
+        assert workspace.document(API + f'mediaType: {media}\n').global_media_types == [media.strip("'")]
 
     @pytest.mark.parametrize('media', ["'*/*'", "'application/*'", '-a/b', 'ä/b', 'aä/b'])
     def test_a_media_range_or_a_name_outside_rfc_6838_is_rejected(self, workspace, media):
         # A default media type names what a body is, so it takes no wildcard;
         # restricted-name is ASCII and starts with a letter or digit.
-        root = workspace({'api.raml': API + f'mediaType: {media}\n'})
         with pytest.raises(RamlError) as caught:
-            workspace.parse(root / 'api.raml')
+            workspace.document(API + f'mediaType: {media}\n')
         assert next(iter(caught.value.chains()))[-1].info == {'media type': media.strip("'")}
 
     def test_a_malformed_base_uri_template_is_rejected(self, workspace):
         # A base URI is a URI template like a resource's own, so `{myapi.com`
         # is an unclosed expression rather than part of a hostname.
-        root = workspace({'api.raml': API + 'baseUri: http://{myapi.com\n'})
         with pytest.raises(RamlError) as caught:
-            workspace.parse(root / 'api.raml')
+            workspace.document(API + 'baseUri: http://{myapi.com\n')
         assert "unclosed '{'" in messages(caught.value)[0]
 
     def test_a_well_formed_base_uri_template_is_accepted(self, workspace):
-        root = workspace({'api.raml': API + 'version: v1\nbaseUri: http://api.example.com/{version}\n'})
-        assert workspace.parse(root / 'api.raml') is not None
+        assert workspace.document(API + 'version: v1\nbaseUri: http://api.example.com/{version}\n') is not None
 
     @pytest.mark.parametrize(
         ('base_uri', 'message', 'info'),
@@ -323,9 +294,8 @@ class TestGlobalPrePass:
     def test_a_base_uri_that_is_not_a_uri_reference_is_rejected(self, workspace, base_uri, message, info):
         # Spec § Base URI: the value MUST conform to the URI specification or
         # be a Template URI; the template half is checked separately above.
-        root = workspace({'api.raml': API + f"baseUri: '{base_uri}'\n"})
         with pytest.raises(RamlError) as caught:
-            workspace.parse(root / 'api.raml')
+            workspace.document(API + f"baseUri: '{base_uri}'\n")
         trace = traces(caught.value)[0]
         assert trace.message == message
         assert trace.info == info
@@ -342,8 +312,7 @@ class TestGlobalPrePass:
         ],
     )
     def test_a_relative_or_templated_base_uri_is_accepted(self, workspace, base_uri):
-        root = workspace({'api.raml': API + f"version: v1\nbaseUri: '{base_uri}'\n"})
-        assert workspace.parse(root / 'api.raml').entry_point.base_uri.value == base_uri
+        assert workspace.document(API + f"version: v1\nbaseUri: '{base_uri}'\n").entry_point.base_uri.value == base_uri
 
     @pytest.mark.parametrize(
         ('document', 'uri'),
@@ -356,32 +325,28 @@ class TestGlobalPrePass:
     def test_a_base_uri_parameter_the_base_uri_does_not_use_is_rejected(self, workspace, document, uri):
         # Spec § Base URI: `baseUriParameters` has the structure of
         # `uriParameters`, whose every name MUST be a variable in the URI.
-        root = workspace({'api.raml': API + document})
         with pytest.raises(RamlError) as caught:
-            workspace.parse(root / 'api.raml')
+            workspace.document(API + document)
         trace = traces(caught.value)[0]
         assert trace.message == 'uri parameter is not used'
         assert trace.info == {'parameter': 'p', 'uri': uri}
 
     def test_a_base_uri_that_failed_is_not_followed_by_one_error_per_parameter(self, workspace):
-        root = workspace({'api.raml': API + 'baseUri: http://{p\nbaseUriParameters:\n  p: string\n'})
         with pytest.raises(RamlError) as caught:
-            workspace.parse(root / 'api.raml')
+            workspace.document(API + 'baseUri: http://{p\nbaseUriParameters:\n  p: string\n')
         assert [trace.message for trace in traces(caught.value)] == ["unclosed '{'"]
 
     def test_version_needs_no_declaration_but_may_have_one(self, workspace):
         document = 'version: v1\nbaseUri: https://x.test/{version}\nbaseUriParameters:\n  version: string\n'
-        root = workspace({'api.raml': API + document})
-        assert list(workspace.parse(root / 'api.raml').entry_point.base_uri_parameters) == ['version']
+        assert list(workspace.document(API + document).entry_point.base_uri_parameters) == ['version']
 
     def test_secured_by_is_harvested_early_and_decoded_late(self, workspace):
         # It is taken out before the main loop because everything decoded after
         # it may need it, but it names a scheme the loop has yet to declare, so
         # the decode itself waits until the end.
-        root = workspace(
-            {'api.raml': API + 'securedBy: [oauth]\nsecuritySchemes:\n  oauth:\n    type: Basic Authentication\n'}
+        raml = workspace.document(
+            API + 'securedBy: [oauth]\nsecuritySchemes:\n  oauth:\n    type: Basic Authentication\n'
         )
-        raml = workspace.parse(root / 'api.raml')
         assert [scheme.name for scheme in raml.global_secured_by] == ['oauth']
         assert raml.global_secured_by[0].definition.type == 'Basic Authentication'
 
@@ -540,24 +505,21 @@ class TestUsesResolution:
         assert all(link is links[0] for link in links)
 
     def test_a_missing_library_is_reported_at_the_uses_key(self, workspace):
-        root = workspace({'api.raml': API + 'uses:\n  gone: gone.raml\n'})
         with pytest.raises(RamlError) as caught:
-            workspace.parse(root / 'api.raml')
+            workspace.document(API + 'uses:\n  gone: gone.raml\n')
         chain = next(iter(caught.value.chains()))
         assert chain[0].message == 'parse uses library'
         uses_key_line = API.count('\n') + 1
         assert chain[0].position.line == uses_key_line + 1, 'the position is the uses: entry, not the uses: key'
 
     def test_duplicate_library_names_are_rejected(self, workspace):
-        root = workspace({'api.raml': API + 'uses:\n  l: a.raml\n  l: b.raml\n'})
         with pytest.raises(RamlError) as caught:
-            workspace.parse(root / 'api.raml')
+            workspace.document(API + 'uses:\n  l: a.raml\n  l: b.raml\n')
         assert caught.value.head.message == 'duplicate key'
         assert caught.value.head.info == {'key': 'l'}
 
     def test_uses_may_be_empty(self, workspace):
-        root = workspace({'api.raml': API + 'uses:\n'})
-        assert workspace.parse(root / 'api.raml').entry_point.uses == {}
+        assert workspace.document(API + 'uses:\n').entry_point.uses == {}
 
 
 class TestProtocolConformance:
@@ -615,8 +577,7 @@ class TestResolverIndex:
             assert raml.resolver_at(uri) is raml.fragments[uri], name
 
     def test_an_unknown_location_has_no_resolver(self, workspace):
-        root = workspace({'api.raml': API})
-        assert workspace.parse(root / 'api.raml').resolver_at('file:///nowhere.raml') is None
+        assert workspace.document(API).resolver_at('file:///nowhere.raml') is None
 
 
 class TestParseCtx:

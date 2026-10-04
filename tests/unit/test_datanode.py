@@ -107,9 +107,10 @@ class TestAnExplicitBoolTagReadsTheCoreSchemaOnly:
         assert first_value(Raml(), 'v: !!bool |\n  true\n').raw == 'true\n'
 
     def test_a_non_core_example_fails_a_boolean_type(self, workspace):
-        root = workspace({'api.raml': API + 'types:\n  T:\n    type: boolean\n    example: !!bool yes\n'})
         with pytest.raises(RamlError) as caught:
-            workspace.parse(root / 'api.raml', ParseOptions(validate=True))
+            workspace.document(
+                API + 'types:\n  T:\n    type: boolean\n    example: !!bool yes\n', ParseOptions(validate=True)
+            )
         [chain] = caught.value.chains()
         assert [(trace.message, trace.info) for trace in chain] == [
             ('invalid example', {}),
@@ -310,21 +311,18 @@ class TestAnnotatedScalar:
         assert (node.value, extensions) == ('text', {})
 
     def test_the_map_form_yields_the_value_and_its_annotations(self, workspace):
-        root = workspace({'api.raml': API + 'description:\n  value: Some text\n  (redirectable): true\n'})
-        api = workspace.parse(root / 'api.raml').entry_point
+        api = workspace.document(API + 'description:\n  value: Some text\n  (redirectable): true\n').entry_point
         assert api.description.value == 'Some text'
         assert api.description.annotations['redirectable'].value.raw is True
 
     def test_a_missing_value_key_is_an_error(self, workspace):
-        root = workspace({'api.raml': API + 'description:\n  (only): 1\n'})
         with pytest.raises(RamlError) as caught:
-            workspace.parse(root / 'api.raml')
+            workspace.document(API + 'description:\n  (only): 1\n')
         assert 'missing value key in annotated scalar' in caught.value.messages()[0]
 
     def test_any_other_key_is_an_error(self, workspace):
-        root = workspace({'api.raml': API + 'description:\n  value: text\n  other: 1\n'})
         with pytest.raises(RamlError) as caught:
-            workspace.parse(root / 'api.raml')
+            workspace.document(API + 'description:\n  value: text\n  other: 1\n')
         trace = next(iter(caught.value.chains()))[-1]
         assert trace.message == 'unknown field in annotated scalar'
         assert trace.info == {'field': 'other'}
@@ -332,18 +330,13 @@ class TestAnnotatedScalar:
     def test_the_form_works_at_every_scalar_facet_because_one_builder_serves_all(self, workspace):
         # title, description, version and baseUri all go through
         # make_scalar_facet, so supporting one supports all of them.
-        root = workspace(
-            {
-                'api.raml': (
-                    '#%RAML 1.0\n'
-                    'annotationTypes:\n  a: any\n  b: any\n  c: any\n'
-                    'title:\n  value: T\n  (a): 1\n'
-                    'version:\n  value: v1\n  (b): 2\n'
-                    'baseUri:\n  value: http://e.com\n  (c): 3\n'
-                )
-            }
-        )
-        api = workspace.parse(root / 'api.raml').entry_point
+        api = workspace.document(
+            '#%RAML 1.0\n'
+            'annotationTypes:\n  a: any\n  b: any\n  c: any\n'
+            'title:\n  value: T\n  (a): 1\n'
+            'version:\n  value: v1\n  (b): 2\n'
+            'baseUri:\n  value: http://e.com\n  (c): 3\n'
+        ).entry_point
         assert (api.title.value, api.version.value, api.base_uri.value) == ('T', 'v1', 'http://e.com')
         assert [set(facet.annotations) for facet in (api.title, api.version, api.base_uri)] == [
             {'a'},

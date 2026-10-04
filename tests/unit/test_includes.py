@@ -260,9 +260,8 @@ class TestCycles:
 
 class TestMissingTargets:
     def test_a_missing_include_names_the_file_it_could_not_read(self, workspace):
-        root = workspace({'api.raml': API + '(a): !include gone.yaml\n'})
         with pytest.raises(RamlError) as caught:
-            workspace.parse(root / 'api.raml')
+            workspace.document(API + '(a): !include gone.yaml\n')
         # Named by the include's `info`; the message is a key (docs/11 § 6).
         include, missing = caught.value.frames()[-2:]
         assert (include.message, missing.message) == ('include', 'file not found')

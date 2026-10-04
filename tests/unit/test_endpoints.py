@@ -17,16 +17,11 @@ JSON = API + 'mediaType: application/json\n'
 
 
 def parse(workspace, body: str, head: str = API, **options):
-    root = workspace({'api.raml': head + body})
-    return workspace.parse(root / 'api.raml', ParseOptions(**options) if options else None)
+    return workspace.document(head + body, ParseOptions(**options) if options else None)
 
 
 def fails(workspace, body: str, head: str = API) -> RamlError | None:
-    try:
-        parse(workspace, body, head)
-    except RamlError as err:
-        return err
-    return None
+    return workspace.rejection(head + body)
 
 
 def messages(error: RamlError) -> set[str]:
@@ -403,8 +398,7 @@ class TestBodyMediaTypeKeys:
     def test_a_bad_key_keeps_its_valid_siblings_in_the_lenient_model(self, workspace, site):
         # `Missing` is kept for P7 to judge; the parse stops at the failing
         # pass, so in this model it stays unresolved and unreported.
-        root = workspace({'api.raml': API + self._beside(site, 'Missing')})
-        raml, error = workspace.lenient(root / 'api.raml')
+        raml, error = workspace.lenient_document(API + self._beside(site, 'Missing'))
         assert error is not None
         operation = raml.endpoints['/a'].operations['post']
         holder = operation.request if site == 'request' else operation.responses['200']
@@ -543,14 +537,12 @@ class TestRegisteredForLaterPasses:
             '/users:\n  post:\n    body:\n      application/json:\n        type: integer\n        example: notanumber\n',
         )
         assert error is None, 'validation is off without the option'
-        root = workspace(
-            {
-                'api.raml': API + '/users:\n  post:\n    body:\n      application/json:\n'
-                '        type: integer\n        example: notanumber\n'
-            }
-        )
         with pytest.raises(RamlError) as caught:
-            workspace.parse(root / 'api.raml', ParseOptions(validate=True, unwrap=True))
+            workspace.document(
+                API + '/users:\n  post:\n    body:\n      application/json:\n'
+                '        type: integer\n        example: notanumber\n',
+                ParseOptions(validate=True, unwrap=True),
+            )
         assert 'invalid example' in {t.message for c in caught.value.chains() for t in c}
 
 
@@ -654,11 +646,7 @@ class TestParameterEntity:
         assert 'reviewId' not in parent.uri_parameters
 
     def test_base_uri_parameters_bind_as_uri(self, workspace):
-        root = workspace(
-            {
-                'api.raml': '#%RAML 1.0\ntitle: T\nbaseUri: http://{host}.example.test\n'
-                'baseUriParameters:\n  host:\n    type: string\n'
-            }
+        raml = workspace.document(
+            '#%RAML 1.0\ntitle: T\nbaseUri: http://{host}.example.test\nbaseUriParameters:\n  host:\n    type: string\n'
         )
-        raml = workspace.parse(root / 'api.raml')
         assert raml.entry_point.base_uri_parameters['host'].binding == 'uri'

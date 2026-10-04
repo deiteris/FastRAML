@@ -143,8 +143,7 @@ class TestTheCorpusIsNotStale:
 
     def test_the_every_kind_tree_is_current(self, workspace):
         source = SOURCES.joinpath('every-kind.raml').read_text(encoding='utf-8')
-        root = workspace({'api.raml': source})
-        projected = build_tree(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
+        projected = build_tree(workspace.document(source, ParseOptions(unwrap=True)))
         current = json.loads((CORPUS / 'trees' / 'every-kind.json').read_text(encoding='utf-8'))
         assert current == projected, f'regenerate the corpus trees -- every-kind.json is stale ({REGENERATE})'
 

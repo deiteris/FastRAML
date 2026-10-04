@@ -39,8 +39,9 @@ def messages(error: RamlError) -> list[str]:
 
 def schema_shape(workspace, schema: dict, **options):
     """The `JsonShape` of `T`, declared inline so the schema is its own."""
-    root = workspace({'api.raml': API + 'types:\n  T: |\n' + indent(json.dumps(schema))})
-    raml = workspace.parse(root / 'api.raml', ParseOptions(regex_engine='re2', **options))
+    raml = workspace.document(
+        API + 'types:\n  T: |\n' + indent(json.dumps(schema)), ParseOptions(regex_engine='re2', **options)
+    )
     return raml.types_in(raml.location)['T'].shape
 
 

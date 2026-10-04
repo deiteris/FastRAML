@@ -10,8 +10,8 @@ like-named properties, which dispatches back to a kind), and the union rules
 construct a `UnionShape`, which `base.py` cannot import.
 
 Nothing here flattens a chain. `unwrap` (docs/07 § 4) decides what to merge
-into what and calls `inherit` once per edge, or `fold` once for several
-parents.
+into what and calls `inherit` once per edge, or `fold_parents` once for
+several parents.
 """
 
 from __future__ import annotations
@@ -51,7 +51,6 @@ if TYPE_CHECKING:
 
 __all__ = [
     'alias_to',
-    'fold',
     'fold_parents',
     'inherit',
 ]
@@ -330,20 +329,19 @@ def _descends(variant: BaseShape, parents: list[BaseShape]) -> bool:
 
 
 def fold_parents(parents: list[BaseShape]) -> BaseShape:
-    """`fold` for a type's own parents: multiple inheritance (docs/07 § 4)."""
+    """`_fold` for a type's own parents: multiple inheritance (docs/07 § 4)."""
     token = _SEVERAL_PARENTS.set(True)
     try:
-        return fold(parents)
+        return _fold(parents)
     finally:
         _SEVERAL_PARENTS.reset(token)
 
 
-def fold(parents: list[BaseShape]) -> BaseShape:
+def _fold(parents: list[BaseShape]) -> BaseShape:
     """A new shape that is a subtype of every one of `parents`, in order.
 
     Unwrap merges several parents through this (docs/07 § 4), by way of
-    `fold_parents`, and a union member narrowed by a non-union through it
-    (docs/07 § 5). The result holds what it took from a parent by reference,
+    `fold_parents`. The result holds what it took from a parent by reference,
     and never narrows that in place (`_borrowed`): a like-named property,
     pattern property or `items` two parents both declare is folded in turn.
     """
@@ -500,7 +498,6 @@ def _narrow_string(target: BaseShape, mine: StringShape, theirs: StringShape) ->
         mine.pattern = theirs.pattern
     elif (
         theirs.pattern is not None
-        and theirs.pattern is not mine.pattern
         and theirs.pattern.value.pattern != mine.pattern.value.pattern
         and _SEVERAL_PARENTS.get()
     ):
@@ -582,7 +579,7 @@ def _narrow_array(target: BaseShape, mine: ArrayShape, theirs: ArrayShape) -> No
         mine.items_written = False
     elif theirs.items is not None:
         if _borrowed(target, theirs, mine.items, _items_of):
-            mine.items = fold([mine.items, theirs.items])
+            mine.items = _fold([mine.items, theirs.items])
         else:
             mine.items = inherit(mine.items, theirs.items)
     _bound(target, mine, theirs, 'min_items', 'minItems constraint violation', operator.lt)
@@ -622,7 +619,7 @@ def _narrow_properties(target: BaseShape, mine: ObjectShape, theirs: ObjectShape
                 info={'property': name},
             )
         if _borrowed(target, theirs, child.base, partial(_property_of, name)):
-            mine.properties[name] = child.with_base(fold([child.base, parent.base]))
+            mine.properties[name] = child.with_base(_fold([child.base, parent.base]))
         else:
             # The merge may hand back another shape: a union parent collapses
             # to the member that survived (docs/07 § 5).
@@ -665,7 +662,7 @@ def _narrow_pattern_properties(target: BaseShape, mine: ObjectShape, theirs: Obj
         if child is None:
             merged[key] = parent
         elif _borrowed(target, theirs, child.base, partial(_pattern_property_of, key)):
-            merged[key] = child.with_base(fold([child.base, parent.base]))
+            merged[key] = child.with_base(_fold([child.base, parent.base]))
         else:
             # The merge may hand back another shape: a union parent collapses
             # to the member that survived (docs/07 § 5).

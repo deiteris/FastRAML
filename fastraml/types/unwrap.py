@@ -5,7 +5,7 @@ docs/07-resolution-and-inheritance.md § 4 and § 6. Opt-in
 formatter or a documentation generator wants: flattening is lossy about which
 declaration a facet came from.
 
-Two halves run here, in order. `unwrap_shape` merges each declaration with its
+Two halves run here, in order. `_unwrap` merges each declaration with its
 parents in place. `finish_unwrap` is the post-pass over the result: one walk
 producing two things, both of which need the *settled* graph.
 
@@ -35,6 +35,7 @@ from fastraml.types.complex_ import (
     ObjectShape,
     RecursiveShape,
     UnionShape,
+    nested,
 )
 from fastraml.types.inherit import alias_to, fold_parents, inherit
 from fastraml.types.values import EnumValues
@@ -51,7 +52,6 @@ if TYPE_CHECKING:
 __all__ = [
     'finish_unwrap',
     'unwrap_detached',
-    'unwrap_shape',
     'unwrap_shapes',
 ]
 
@@ -194,24 +194,7 @@ def _sources(base: BaseShape) -> Iterator[BaseShape]:
     yield from base.inherits
     if base.alias is not None:
         yield base.alias
-    shape = base.shape
-    if isinstance(shape, ArrayShape):
-        if shape.items is not None:
-            yield shape.items
-    elif isinstance(shape, UnionShape):
-        yield from shape.any_of or ()
-    elif isinstance(shape, ObjectShape):
-        for prop in (shape.properties or {}).values():
-            yield prop.base
-        for pattern_prop in (shape.pattern_properties or {}).values():
-            yield pattern_prop.base
-    for prop in base.custom_facet_defs.values():
-        yield prop.base
-
-
-def unwrap_shape(raml: Raml, base: BaseShape) -> BaseShape:
-    """Flatten one declaration. **Use the return value** — it may differ."""
-    return _unwrap(_Walk(raml), base, 0)
+    yield from nested(base)
 
 
 def unwrap_detached(raml: Raml, base: BaseShape) -> BaseShape:
@@ -225,6 +208,13 @@ def unwrap_detached(raml: Raml, base: BaseShape) -> BaseShape:
     copy = _unwrap(_Walk(raml, register=False), base.clone_detached(), 0)
     _finish_roots(_Finishing(raml, register=False), [copy])
     return copy
+
+
+def _too_deep(base: BaseShape, limit: int) -> RamlError:
+    """The ceiling on nesting (docs/12 § 3), reported at `base`."""
+    return RamlError.new(
+        'type nesting too deep', base.location, base.key_pos, kind=ErrorKind.UNWRAPPING, info={'limit': limit}
+    )
 
 
 def _unwrap(walk: _Walk, base: BaseShape, depth: int) -> BaseShape:
@@ -242,13 +232,7 @@ def _unwrap(walk: _Walk, base: BaseShape, depth: int) -> BaseShape:
     if failure is not None:
         raise _Failed(failure)
     if depth > walk.max_depth:
-        raise RamlError.new(
-            'type nesting too deep',
-            base.location,
-            base.key_pos,
-            kind=ErrorKind.UNWRAPPING,
-            info={'limit': walk.max_depth},
-        )
+        raise _too_deep(base, walk.max_depth)
     base._unwrapped = True  # noqa: SLF001 - see above
     try:
         if base.link is not None:
@@ -297,13 +281,7 @@ def _unwrap_alias(walk: _Walk, referent: BaseShape, depth: int) -> BaseShape:
     chain of names cannot recurse without limit.
     """
     if walk.hops >= walk.max_depth and not referent._unwrapped:  # noqa: SLF001 - see `_unwrap`
-        raise RamlError.new(
-            'type nesting too deep',
-            referent.location,
-            referent.key_pos,
-            kind=ErrorKind.UNWRAPPING,
-            info={'limit': walk.max_depth},
-        )
+        raise _too_deep(referent, walk.max_depth)
     walk.hops += 1
     try:
         return _unwrap(walk, referent, depth)
@@ -698,13 +676,7 @@ def _finish(finishing: _Finishing, base: BaseShape, depth: int) -> BaseShape | N
     if referent is not None:
         return _make_recursive(finishing, referent, base)
     if depth > finishing.max_depth:
-        raise RamlError.new(
-            'type nesting too deep',
-            base.location,
-            base.key_pos,
-            kind=ErrorKind.UNWRAPPING,
-            info={'limit': finishing.max_depth},
-        )
+        raise _too_deep(base, finishing.max_depth)
     base._visiting = True  # noqa: SLF001 - see above
     if base.shape is not None:
         _finish_children(finishing, base.shape, depth)
@@ -736,16 +708,18 @@ def _finish_children(finishing: _Finishing, shape: Shape, depth: int) -> None:
         if shape.any_of is not None:
             shape.any_of = [_finish(finishing, member, depth + 1) or member for member in shape.any_of]
     elif isinstance(shape, ObjectShape):
-        for name, prop in (shape.properties or {}).items():
+        properties = shape.properties or {}
+        for name, prop in properties.items():
             marked = _finish(finishing, prop.base, depth + 1)
-            if marked is not None and shape.properties is not None:
-                shape.properties[name] = prop.with_base(marked)
-        for key, pattern_prop in (shape.pattern_properties or {}).items():
+            if marked is not None:
+                properties[name] = prop.with_base(marked)
+        patterns = shape.pattern_properties or {}
+        for key, pattern_prop in patterns.items():
             marked = _finish(finishing, pattern_prop.base, depth + 1)
-            if marked is not None and shape.pattern_properties is not None:
+            if marked is not None:
                 # Replaced, never edited: a subtype shares this declaration,
                 # and the marker belongs to this cycle only.
-                shape.pattern_properties[key] = pattern_prop.with_base(marked)
+                patterns[key] = pattern_prop.with_base(marked)
 
 
 def _make_recursive(finishing: _Finishing, head: BaseShape, slot: BaseShape) -> BaseShape:

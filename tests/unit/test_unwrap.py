@@ -15,7 +15,7 @@ from hypothesis import strategies as st
 
 from fastraml import ParseOptions, RamlError, parse_from_path
 from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
-from fastraml.types.unwrap import unwrap_shape
+from fastraml.types.unwrap import unwrap_detached
 
 LIB = '#%RAML 1.0 Library\n'
 UNWRAP = ParseOptions(unwrap=True)
@@ -875,14 +875,15 @@ class TestAFailedMerge:
         assert raml.broken[types['B'].id] is raml.broken[types['A'].id]
         assert len(list(error.chains())) == 1
 
-    def test_unwrap_shape_leaves_a_failed_clone_unflagged(self, workspace):
-        """The one-declaration entry point; P10 flattens its detached copy through `unwrap_detached`."""
+    def test_a_failed_detached_unwrap_leaves_the_model_unmarked(self, workspace):
+        """P10's private copy fails without touching the declared shape (docs/07 § 6)."""
         root = workspace({'lib.raml': LIB + 'types:\n' + FAILING_MERGE})
         raml = workspace.parse(root / 'lib.raml')
-        clone = raml.types_in(raml.location)['C'].clone_detached()
+        declared = raml.types_in(raml.location)['C']
         with pytest.raises(RamlError):
-            unwrap_shape(raml, clone)
-        assert not clone._unwrapped
+            unwrap_detached(raml, declared)
+        assert not declared._unwrapped
+        assert not raml.broken
 
 
 class TestInvariantI6:

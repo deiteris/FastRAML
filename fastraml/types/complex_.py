@@ -62,7 +62,7 @@ from fastraml.types.values import (
 from fastraml.yamlnode import node_error
 
 if TYPE_CHECKING:
-    from collections.abc import Hashable, Mapping
+    from collections.abc import Hashable, Iterator, Mapping
     from typing import Any
 
     from fastraml.datanode import DataNode
@@ -81,6 +81,7 @@ __all__ = [
     'RecursiveShape',
     'UnionShape',
     'UnknownShape',
+    'nested',
 ]
 
 
@@ -126,25 +127,35 @@ def _count_bounds(
     accumulator.raise_if_any()
 
 
-def _clone_properties(
-    properties: dict[str, Property] | None, memo: dict[int, BaseShape], depth: int
-) -> dict[str, Property] | None:
+def _clone_slots[P: (Property, PatternProperty)](
+    properties: dict[str, P] | None, memo: dict[int, BaseShape], depth: int
+) -> dict[str, P] | None:
     if properties is None:
         return None
-    return {name: prop.with_base(prop.base.clone(memo, depth + 1)) for name, prop in properties.items()}
+    # A pattern property's compiled pattern is shared: `re.Pattern` is
+    # immutable, and it is one of the three things `copy.deepcopy` would have
+    # copied pointlessly.
+    return {key: prop.with_base(prop.base.clone(memo, depth + 1)) for key, prop in properties.items()}
 
 
-def _clone_pattern_properties(
-    properties: dict[str, PatternProperty] | None, memo: dict[int, BaseShape], depth: int
-) -> dict[str, PatternProperty] | None:
-    if properties is None:
-        return None
-    # The compiled pattern is shared: `re.Pattern` is immutable, and it is one
-    # of the three things `copy.deepcopy` would have copied pointlessly.
-    return {
-        key: PatternProperty(pattern=prop.pattern, base=prop.base.clone(memo, depth + 1))
-        for key, prop in properties.items()
-    }
+def nested(base: BaseShape) -> Iterator[BaseShape]:
+    """Every declaration `base` encloses, one level down, in slot order: an
+    array's items, a union's members or an object's properties then pattern
+    properties, then the facets it declares.
+    """
+    shape = base.shape
+    if isinstance(shape, ArrayShape):
+        if shape.items is not None:
+            yield shape.items
+    elif isinstance(shape, UnionShape):
+        yield from shape.any_of or ()
+    elif isinstance(shape, ObjectShape):
+        for prop in (shape.properties or {}).values():
+            yield prop.base
+        for pattern_prop in (shape.pattern_properties or {}).values():
+            yield pattern_prop.base
+    for facet in base.custom_facet_defs.values():
+        yield facet.base
 
 
 class ObjectShape(ComplexKind):
@@ -213,8 +224,8 @@ class ObjectShape(ComplexKind):
 
     def clone(self, base: BaseShape, memo: dict[int, BaseShape], depth: int) -> ObjectShape:
         clone = cast('ObjectShape', super().clone(base, memo, depth))
-        clone.properties = _clone_properties(self.properties, memo, depth)
-        clone.pattern_properties = _clone_pattern_properties(self.pattern_properties, memo, depth)
+        clone.properties = _clone_slots(self.properties, memo, depth)
+        clone.pattern_properties = _clone_slots(self.pattern_properties, memo, depth)
         return clone
 
     def check(self) -> None:

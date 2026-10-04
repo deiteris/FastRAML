@@ -123,7 +123,7 @@ the response, its operation and every enclosing resource, each marked in
 resource whose full URI an earlier one took stays in its parent's
 `endpoints`, outside `Raml.endpoints`, and it and every resource enclosing it
 are marked; a top-level one is in neither, so it is absent, and so are the
-resources beneath it. P6 still runs
+resources beneath it, though their own mistakes are still reported. P6 still runs
 over a kept resource, so an unused URI parameter on it is reported as its own
 mistake. Below a declaration, a failed property, `items` or `anyOf` member
 is absent from its declaration, which keeps its kind and the children that

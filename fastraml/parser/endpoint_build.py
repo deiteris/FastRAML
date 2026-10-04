@@ -139,8 +139,14 @@ def _resolve_directives(raml: Raml, source: SourceEndPoint, acc: Accumulator) ->
     return source.failure
 
 
-def _walk(
-    raml: Raml, endpoint: EndPoint, acc: Accumulator, *, inherited: dict[str, Parameter], held: bool
+def _walk(  # noqa: PLR0913 - the resource, and what its ancestors decided
+    raml: Raml,
+    endpoint: EndPoint,
+    acc: Accumulator,
+    *,
+    inherited: dict[str, Parameter],
+    held: bool,
+    register: bool = True,
 ) -> RamlError | None:
     """Register `endpoint` and its children by full URI, and resolve their URI parameters.
 
@@ -148,8 +154,10 @@ def _walk(
     whether or not it registers. Returns a duplicate URI found here or below:
     a loser that stays in a held resource's `endpoints`, and every resource
     enclosing it, is marked with it. A top-level loser is in no index and no
-    tree, so it is not marked, and its subtree is not registered either: the
-    model does not hold the resource its children hang from (docs/13 § 1).
+    tree, so it is not marked, and its subtree is walked with `register`
+    false: checked and reported as usual, but neither registered nor marked,
+    because the model does not hold the resource its children hang from
+    (docs/13 § 1).
     """
     failure: RamlError | None = None
     if endpoint.full_uri in raml.endpoints:
@@ -163,9 +171,8 @@ def _walk(
             info={'uri': endpoint.full_uri},
         )
         acc.add(failure)
-        if not held:
-            return failure
-    else:
+        register = register and held
+    elif register:
         raml.endpoints[endpoint.full_uri] = endpoint
         held = True
 
@@ -175,7 +182,7 @@ def _walk(
         acc.add(err)
 
     for child in endpoint.endpoints.values():
-        below = _walk(raml, child, acc, inherited=endpoint.uri_parameters, held=held)
+        below = _walk(raml, child, acc, inherited=endpoint.uri_parameters, held=held, register=register)
         if failure is None:
             failure = below
     if failure is not None and held:

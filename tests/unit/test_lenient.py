@@ -793,6 +793,28 @@ class TestTheEndpointTreeKeepsWhatFailed:
         assert list(raml.endpoints) == ['/users', '/users/foo']
         assert raml.broken == {}
 
+    def test_a_top_level_duplicate_uri_still_has_its_subtree_checked(self, workspace):
+        """docs/11 § 2: errors accumulate. The absent subtree is not
+        registered, but its own mistakes are reported, strict or lenient."""
+        root = workspace(
+            {
+                'api.raml': API + '/users:\n  /foo:\n    get:\n'
+                '/users/foo:\n  uriParameters:\n    nope: string\n'
+                '  /{x}:\n    uriParameters:\n      y: string\n    get:\n'
+            }
+        )
+        with pytest.raises(RamlError) as caught:
+            workspace.parse(root / 'api.raml', BOTH)
+        reported = [(chain[-1].message, chain[-1].info) for chain in caught.value.chains()]
+        assert reported == [
+            ('duplicate resource URI', {'uri': '/users/foo'}),
+            ('uri parameter is not used', {'parameter': 'nope', 'uri': '/users/foo'}),
+            ('uri parameter is not used', {'parameter': 'y', 'uri': '/{x}'}),
+        ]
+        raml, _ = workspace.lenient(root / 'api.raml', BOTH)
+        assert list(raml.endpoints) == ['/users', '/users/foo']
+        assert raml.broken == {}
+
 
 class TestItStopsWhereStrictStops:
     """The design decision, pinned with the measurement that produced it.

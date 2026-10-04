@@ -417,8 +417,8 @@ class _Projector:
         if base.annotations:
             applied: list[Json] = [self.applied(name, extension) for name, extension in base.annotations.items()]
             out['annotations'] = applied
-        if base.type_expr:
-            out['type_expr'] = self.value(base.type_expr, seen)
+        if base.type_expr is not None:
+            out['type_expr'] = base.type_expr.value
         if base.shape is not None:
             out.update(self.kind_facets(base.shape, seen))
         if isinstance(base.shape, JsonShape):
@@ -724,11 +724,10 @@ class _Projector:
 def _node(node: Node) -> Json:
     """A YAML node as its text, never its `repr`.
 
-    Two fields hold raw nodes — `type_expr` and the `pending_facets` a union or
-    an unknown kind could not digest — and a node's `repr` carries its source
-    position. Projecting that would put a line number into every view that
-    touches a type expression, which is the churn `positions_of` exists to keep
-    out.
+    One field holds raw nodes — the `pending_facets` a union or an unknown kind
+    could not digest — and a node's `repr` carries its source position.
+    Projecting that would put a line number into every view that touches such
+    a facet, which is the churn `positions_of` exists to keep out.
     """
     if node.kind is NodeKind.SCALAR:
         return node.value

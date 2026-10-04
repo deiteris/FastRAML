@@ -146,6 +146,10 @@ Consumers must honor these contracts:
    traversal after completion is safe; do not concurrently validate one shape.
 4. Without unwrap, a shape exposes only its own declaration. Direct
    `BaseShape.validate()` and `validate_or_raise()` require an unwrapped shape.
+5. A shape's `type_expr` is a `WrittenScalar` in a returned model, strict or
+   partial: the expression's `value` and `position`, not a YAML `Node`. With
+   `retain_source` it stays the `Node`. Read only `value` and `position`
+   (docs/05 § 1).
 
 Parsing, `build_graph`, `build_occurrences`, `Linter` runs, `to_openapi`, and
 the `lsp` verb raise the garbage collector's full-collection threshold while

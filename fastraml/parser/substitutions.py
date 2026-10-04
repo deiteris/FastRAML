@@ -7,11 +7,11 @@ read it to place a name inside a caller's value where the caller wrote it.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from fastraml.positions import Position
-    from fastraml.yamlnode import Node
+    from fastraml.yamlnode import Node, WrittenScalar
 
 __all__ = ['Substitution', 'Substitutions', 'substituted_site']
 
@@ -37,14 +37,17 @@ type Substitutions = dict[Node, tuple[Substitution, ...]]
 
 
 def substituted_site(
-    substitutions: Substitutions, node: Node, offset: int, end: int | None = None
+    substitutions: Substitutions, node: Node | WrittenScalar, offset: int, end: int | None = None
 ) -> tuple[str, Position] | None:
     """Where the characters from `offset` to `end`, or the one at `offset`, in
     `node`'s text were written, if one caller's value holds them all: the file,
     and the caller's own position.
+
+    A `WrittenScalar` is never a key, so it finds none: the substitutions
+    are dropped when P7 ends, before any scalar is detached from its node.
     """
     end = offset + 1 if end is None else end
-    for part in substitutions.get(node, ()):
+    for part in substitutions.get(cast('Node', node), ()):
         if part.start <= offset and end <= part.end:
             written = part.node
             return part.location, written.position.within(written.value).shifted(offset - part.start, end - offset)

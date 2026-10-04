@@ -159,12 +159,7 @@ class PreferOptionalType:
 
     def type_(self, ctx: Context, iri: str, base: BaseShape, shape_kind: str) -> Iterable[Finding]:  # noqa: ARG002
         expr = base.type_expr
-        if (
-            not isinstance(base.shape, UnionShape)
-            or expr is None
-            or expr.kind is not NodeKind.SCALAR
-            or '?' in expr.value
-        ):
+        if not isinstance(base.shape, UnionShape) or expr is None or '?' in expr.value:
             return ()
         parsed = parse_expression(expr.value, ctx.raml.expr_cache)
         if isinstance(parsed, Optional_) or not isinstance(parsed, Union) or len(parsed.members) != 2:  # noqa: PLR2004

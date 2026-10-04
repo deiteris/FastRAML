@@ -7,10 +7,14 @@ the AST is turned into.
 
 from __future__ import annotations
 
+import gc
+
 import pytest
 
-from fastraml import RamlError
+from fastraml import ParseOptions, RamlError
+from fastraml.types.base import BaseShape
 from fastraml.types.complex_ import ArrayShape, UnionShape, UnknownShape
+from fastraml.yamlnode import Node, WrittenScalar
 
 LIB = '#%RAML 1.0 Library\n'
 
@@ -375,6 +379,71 @@ class TestTypeExprRefs:
         assert len(refs) == 1
         assert refs[0].resolved is types['Thing']
         assert refs[0].library_link is None
+
+
+class TestTypeExprIsDetached:
+    """docs/05 § 1 — after P7 a shape keeps its expression's text and span,
+    not the YAML node P7 placed names by."""
+
+    DOCUMENT = (
+        '#%RAML 1.0\ntitle: t\n'
+        'types:\n'
+        '  Base:\n    properties:\n      a: string\n'
+        '  Tagged:\n    type: Base\n    facets:\n      level: integer\n    properties:\n      b: string[]\n'
+        '  Leveled:\n    type: Tagged\n    level: 2\n'
+        '  Either:\n    type: Base | Leveled\n    properties:\n      c: integer?\n'
+        '  Both: [Base, Leveled]\n'
+        '/r:\n  get:\n    queryParameters:\n      q: Either\n'
+        '    responses:\n      200:\n        body:\n          application/json: Tagged[]\n'
+    )
+
+    @staticmethod
+    def shapes_of(raml):
+        """Every shape of this parse anywhere in memory, copies included."""
+        gc.collect()
+        return [obj for obj in gc.get_objects() if isinstance(obj, BaseShape) and obj._raml is raml]
+
+    @pytest.mark.parametrize('options', [ParseOptions(), ParseOptions(unwrap=True, validate=True)])
+    def test_no_shape_keeps_a_node(self, workspace, options):
+        raml = workspace.parse(workspace({'api.raml': self.DOCUMENT}) / 'api.raml', options)
+        written = [base.type_expr for base in self.shapes_of(raml) if base.type_expr is not None]
+        assert written, 'the document writes type expressions'
+        assert all(isinstance(expr, WrittenScalar) for expr in written)
+
+    def test_retained_source_keeps_the_node(self, workspace):
+        # The tree holds the node anyway; a record beside it only adds memory.
+        raml = workspace.parse(workspace({'api.raml': self.DOCUMENT}) / 'api.raml', ParseOptions(retain_source=True))
+        written = [base.type_expr for base in raml.shapes if base.type_expr is not None]
+        assert written
+        assert all(isinstance(expr, Node) for expr in written)
+
+    def test_the_record_is_the_text_and_span_written(self, workspace):
+        item = library(workspace, '  T: string[]\n')['T']
+        assert (item.type_expr.value, item.type_expr.position.line, item.type_expr.position.column) == (
+            'string[]',
+            3,
+            6,
+        )
+
+    def test_an_inner_shape_records_its_template_s_expression(self, workspace):
+        array = library(workspace, '  T: string[]\n')['T']
+        assert array.shape.items.type_expr == array.type_expr
+
+    @pytest.mark.parametrize(
+        'document',
+        [
+            # P7 fails: the shapes it settled and the one it could not.
+            '#%RAML 1.0\ntitle: t\ntypes:\n  A: string[]\n  B: Missing\n',
+            # P4 fails, so P7 never runs.
+            '#%RAML 1.0\ntitle: t\ntypes:\n  A: string[]\n/r:\n  type: missing\n',
+        ],
+    )
+    def test_a_partial_model_keeps_no_node(self, workspace, document):
+        raml, error = workspace.lenient(workspace({'api.raml': document}) / 'api.raml')
+        assert error is not None
+        written = [base.type_expr for base in self.shapes_of(raml) if base.type_expr is not None]
+        assert written
+        assert all(isinstance(expr, WrittenScalar) for expr in written)
 
 
 class TestAnnotationTypes:

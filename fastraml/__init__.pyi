@@ -148,6 +148,7 @@ from fastraml.views.walk import Addresses as Addresses
 from fastraml.views.walk import address as address
 from fastraml.yamlnode import Node as Node
 from fastraml.yamlnode import NodeKind as NodeKind
+from fastraml.yamlnode import WrittenScalar as WrittenScalar
 from fastraml.yamlnode import backend_name as backend_name
 from fastraml.yamlnode import compose as compose
 
@@ -268,6 +269,7 @@ __all__ = (  # noqa: RUF022 - plain sorted, matching the package
     'UnsupportedSchemeError',
     'ValueNode',
     'WorkspaceEscapeError',
+    'WrittenScalar',
     '__version__',
     'address',
     'backend_name',

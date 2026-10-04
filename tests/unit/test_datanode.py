@@ -15,6 +15,7 @@ from fastraml.datanode import make_data_node, value_node_of
 from fastraml.parser.facets import make_string_facet, resolve_annotated_scalar
 from fastraml.registry import Raml
 from fastraml.types.examples import examples_of
+from fastraml.types.shape import make_shape
 from fastraml.yamlnode import compose, pairs
 
 #: Several tests here carry their value on an annotation key, which accepts
@@ -73,6 +74,52 @@ class TestScalarConversion:
     def test_infinity_and_nan_survive(self):
         assert first_value(Raml(), 'v: .inf').raw == math.inf
         assert math.isnan(first_value(Raml(), 'v: .nan').raw)
+
+
+class TestAnExplicitBoolTagReadsTheCoreSchemaOnly:
+    """docs/03 § 2.1: `!!bool` reads the YAML 1.2 core schema on every path.
+
+    A facet reads it through `scalar_bool`, data through `scalar_value`; both
+    agree on what is a boolean, and neither reads `yes` as one.
+    """
+
+    @staticmethod
+    def required_of(text: str) -> bool:
+        key, value = next(iter(pairs(compose(text, uri='file:///a.raml'))))
+        return make_shape(Raml(), key, value, 'file:///a.raml', 'string').shape.properties['a'].required
+
+    @pytest.mark.parametrize(('text', 'expected'), [('True', True), ('TRUE', True), ('false', False), ('FALSE', False)])
+    def test_a_core_spelling_reads_the_same_as_a_facet_and_as_data(self, text, expected):
+        assert (
+            self.required_of(f'T:\n  type: object\n  properties:\n    a:\n      required: !!bool {text}\n') is expected
+        )
+        assert first_value(Raml(), f'v: !!bool {text}').raw is expected
+
+    def test_a_non_core_spelling_is_not_a_boolean_facet_value(self):
+        with pytest.raises(RamlError) as caught:
+            self.required_of('T:\n  type: object\n  properties:\n    a:\n      required: !!bool yes\n')
+        assert [trace.message for chain in caught.value.chains() for trace in chain][-1] == 'expected a boolean value'
+
+    @pytest.mark.parametrize('text', ['yes', 'no', 'on', 'y'])
+    def test_a_non_core_spelling_keeps_its_text_as_data(self, text):
+        assert first_value(Raml(), f'v: !!bool {text}').raw == text
+
+    def test_a_core_spelling_with_a_trailing_newline_is_not_a_boolean(self):
+        # A literal block keeps its final newline; `true\n` is not `true`.
+        with pytest.raises(RamlError) as caught:
+            self.required_of('T:\n  type: object\n  properties:\n    a:\n      required: !!bool |\n        true\n')
+        assert [trace.message for chain in caught.value.chains() for trace in chain][-1] == 'expected a boolean value'
+        assert first_value(Raml(), 'v: !!bool |\n  true\n').raw == 'true\n'
+
+    def test_a_non_core_example_fails_a_boolean_type(self, workspace):
+        root = workspace({'api.raml': API + 'types:\n  T:\n    type: boolean\n    example: !!bool yes\n'})
+        with pytest.raises(RamlError) as caught:
+            workspace.parse(root / 'api.raml', ParseOptions(validate=True))
+        [chain] = caught.value.chains()
+        assert [(trace.message, trace.info) for trace in chain] == [
+            ('invalid example', {}),
+            ('invalid type', {'path': '$', 'expected': 'boolean', 'found': 'str'}),
+        ]
 
 
 class TestStructure:

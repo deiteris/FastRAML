@@ -17,6 +17,7 @@ from fastraml.join import BaseUriOverride, JoinOptions, join
 from fastraml.join.baseuri import common_segments, plan_created, split_base_uri, uri_variables
 from fastraml.join.paths import Rebaser
 from fastraml.join.writer import write_raml
+from fastraml.parser import includes as includes_module
 from fastraml.parser.structural_merge import node_value_equal
 from fastraml.uris import path_to_file_uri
 from fastraml.yamlnode import compose
@@ -172,6 +173,44 @@ class TestIncludes:
             'b.raml': HEAD + 'traits:\n  t:\n    description: x\n',
         }
         assert failures(tmp_path, files)[0][1]['kind'] == 'trait'
+
+    def test_an_include_nothing_read_is_held_to_the_size_limit(self, tmp_path):
+        # docs/20 § 2: an unapplied trait's include is read as the parser reads
+        # one. Truncated at the limit, these two would compare equal.
+        files = {
+            'a/api.raml': HEAD + 'traits:\n  T:\n    description: !include d.txt\n',
+            'a/d.txt': '0123456789AAAA',
+            'b/api.raml': HEAD + 'traits:\n  T:\n    description: !include d.txt\n',
+            'b/d.txt': '0123456789BBBB',
+        }
+        found = failures(tmp_path, files, ('a/api.raml', 'b/api.raml'), parse=ParseOptions(max_include_size=8))
+        assert found == [
+            (
+                'include file exceeds size limit',
+                {'path': path_to_file_uri(tmp_path / 'a' / 'd.txt'), 'limit': 8},
+                'api.raml',
+            )
+        ]
+
+    def test_a_json_include_nothing_read_has_its_tabs_normalized(self, tmp_path, monkeypatch):
+        # docs/20 § 2: the pure-Python scanner rejects a tab in a flow
+        # collection; the parser's JSON normalization applies here too. The
+        # spy makes the libyaml run, which accepts the tab, prove it as well.
+        normalized: list[str] = []
+        original = includes_module._json_tabs_as_spaces
+
+        def spy(text: str) -> str:
+            normalized.append(text)
+            return original(text)
+
+        monkeypatch.setattr(includes_module, '_json_tabs_as_spaces', spy)
+        files = {
+            'a.raml': HEAD + 'traits:\n  T:\n    description: !include d.json\n',
+            'd.json': '{\t"a": 1}\n',
+            'b.raml': HEAD + 'traits:\n  T:\n    description:\n      a: 1\n',
+        }
+        assert document(tmp_path, files)['traits'] == {'T': {'description': '!include ../d.json'}}
+        assert normalized == ['{\t"a": 1}\n']
 
     def test_include_arguments_are_written_relative_to_the_output(self, tmp_path):
         # docs/20 § 7.2.

@@ -8,6 +8,7 @@ names the rule rather than the example.
 
 from __future__ import annotations
 
+from fastraml.parser.extension_merge import merge_extension
 from fastraml.parser.structural_merge import (
     copy_overlay,
     mark_graft,
@@ -161,6 +162,45 @@ class TestSequenceEquality:
     def test_a_structurally_equal_item_is_dropped(self):
         merged = merge('is: [{secured: {tokenName: token}}]\n', 'is: [{secured: {tokenName: token}}]\n')
         assert len(merged.content[1].content) == 1
+
+
+class TestBothMergesShareOneUnionByValue:
+    """A trait into a method (docs/08 § 1) and an extension into its master
+    (docs/19 § 7) union a sequence the same way: the target's items, its own
+    duplicates kept, then each source item not equal to one before it, in order.
+    """
+
+    TARGET = 'x: [a, a, {k: 1}, 1, b]\n'
+    SOURCE = "x: [b, '1', {k: 1}, c, {k: 2}, c, {k: 2}, 1]\n"
+    #: The target's five, then `'1'` (a string, not the int), `c` and `{k: 2}`.
+    EXPECTED = (
+        ('!!str', 'a'),
+        ('!!str', 'a'),
+        ('!!map', ''),
+        ('!!int', '1'),
+        ('!!str', 'b'),
+        ('!!str', '1'),
+        ('!!str', 'c'),
+        ('!!map', ''),
+    )
+
+    @staticmethod
+    def items(sequence) -> tuple[tuple[str, str], ...]:
+        return tuple((item.tag, item.value) for item in sequence.content)
+
+    def test_the_two_merges_agree_on_mixed_scalars_and_composites(self):
+        target, source = tree(self.TARGET), tree(self.SOURCE)
+        overlay: dict = {}
+        trait = merge_structural(target.content[1], source.content[1], SCOPE, overlay)
+        marked: list = []
+        extension = merge_extension(target, source, location=LOCATION, overlay=False, mark=marked.append).tree
+        assert self.items(trait) == self.items(extension.content[1]) == self.EXPECTED
+        # Target items by identity, then exactly the added source items.
+        added = [source.content[1].content[index] for index in (1, 3, 4)]
+        assert trait.content == [*target.content[1].content, *added]
+        assert extension.content[1].content == trait.content
+        assert [node for node in added if node in overlay] == added
+        assert marked == added
 
 
 class TestProvenance:

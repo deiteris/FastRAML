@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import re
 from fractions import Fraction
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any
 
 from fastraml.datanode import included_data_node, make_data_node, parse_int
 from fastraml.facet_names import FACET_VALUE
@@ -31,7 +31,18 @@ from fastraml.parser.annotations import add_domain_extension, is_annotation_key
 from fastraml.parser.includes import IncludeInfo, resolve_include
 from fastraml.positions import UNKNOWN
 from fastraml.types.base import ScalarFacet
-from fastraml.yamlnode import TAG_BOOL, TAG_FLOAT, TAG_INCLUDE, TAG_INT, TAG_NULL, Node, NodeKind, node_error, pairs
+from fastraml.yamlnode import (
+    TAG_BOOL,
+    TAG_FLOAT,
+    TAG_INCLUDE,
+    TAG_INT,
+    TAG_NULL,
+    Node,
+    NodeKind,
+    bool_text,
+    node_error,
+    pairs,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -59,16 +70,17 @@ __all__ = [
     'scalar_str',
 ]
 
-#: Implicit `!!bool` is only `true`/`false` in the YAML 1.2 table; the YAML 1.1
-#: spellings are still honoured under an explicit `!!bool` tag.
-_TRUE_SCALARS: Final = frozenset({'true', 'yes', 'on', 'y'})
-
 
 def scalar_bool(node: Node, location: str) -> bool:
-    """A scalar node as a boolean. Anything but `!!bool` is an error."""
-    if node.kind is not NodeKind.SCALAR or node.tag != TAG_BOOL:
+    """A scalar node as a boolean. Anything but `!!bool` is an error.
+
+    So is an explicit `!!bool` on text outside the YAML 1.2 core schema:
+    `!!bool yes` has no reading (docs/03 § 2.1).
+    """
+    truth = bool_text(node.value) if node.kind is NodeKind.SCALAR and node.tag == TAG_BOOL else None
+    if truth is None:
         raise node_error('expected a boolean value', location, node)
-    return node.value.lower() in _TRUE_SCALARS
+    return truth
 
 
 def scalar_int(node: Node, location: str) -> int:

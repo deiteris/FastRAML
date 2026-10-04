@@ -537,6 +537,18 @@ class Raml:
             AUTHORED_NODES.reset(token)
             self._document_provenance.clear()
 
+    def load_bounded(self, uri: str) -> tuple[bytes, bool]:
+        """`uri`'s bytes under `max_include_size`, and whether it exceeds it.
+
+        The loader is asked for at most one byte past the limit, so an oversized
+        file is detected without ever being read whole; its bytes are then a
+        truncated prefix, which the caller must not use. A non-positive limit
+        reads everything. `OSError` propagates for the caller to report.
+        """
+        limit = self.max_include_size
+        data = self.loader.load(uri, max_bytes=limit if limit > 0 else None)
+        return data, 0 < limit < len(data)
+
     # -- stores ---------------------------------------------------------------
 
     def get_fragment(self, uri: str) -> Fragment | None:

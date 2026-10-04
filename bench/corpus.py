@@ -22,6 +22,7 @@ __all__ = [
     'ENUM_SIZES',
     'FACET_PARENTS',
     'INHERITED_UNION_WIDTHS',
+    'MERGED_ENUM_SIZES',
     'UNION_WIDTHS',
     'UNIQUE_LENGTHS',
     'write_annotation_targets',
@@ -38,6 +39,7 @@ __all__ = [
     'write_projections',
     'write_reference_namespaces',
     'write_schema_allof',
+    'write_sequence_merge',
     'write_small',
     'write_template_scopes',
     'write_templates',
@@ -310,6 +312,38 @@ def write_endpoints(root: Path, *, resource_count: int = 500) -> Path:
             lines.append('        body:')
             lines.append('          application/json:')
             lines.append('            type: Item')
+    _write(root, {'api.raml': '\n'.join(lines) + '\n'})
+    return root / 'api.raml'
+
+
+# -- sequence merge -----------------------------------------------------------
+
+#: Enum lengths a trait merges into a method's own enum, one size per resource
+#: in turn: the common short list, and long ones a union by value must not make
+#: quadratic.
+MERGED_ENUM_SIZES: tuple[int, ...] = (5, 100, 1000)
+
+
+def write_sequence_merge(root: Path, *, resource_count: int = 60) -> Path:
+    """A trait's long `enum` merged into a method's own (docs/08 § 1).
+
+    `endpoints` merges traits whose sequences are short, so it never runs a
+    union by value over a long list. Here each resource's `get` declares query
+    parameter `q` with an enum of one of `MERGED_ENUM_SIZES` values and applies
+    a trait declaring `q` with as many, half of them the method's: the
+    structural merge unions the two and adds the trait's other half.
+    `tests/bench/test_corpus.py` pins that every size is merged.
+    """
+    lines = ['#%RAML 1.0', 'title: Generated sequence merge benchmark', 'traits:']
+    for size in MERGED_ENUM_SIZES:
+        values = ', '.join(f'v{index}' for index in range(size // 2, size + size // 2))
+        lines.append(f'  long{size}:\n    queryParameters:\n      q:\n        enum: [{values}]')
+    for index in range(resource_count):
+        size = MERGED_ENUM_SIZES[index % len(MERGED_ENUM_SIZES)]
+        values = ', '.join(f'v{value}' for value in range(size))
+        lines.append(
+            f'/r{index}:\n  get:\n    is: [long{size}]\n    queryParameters:\n      q:\n        enum: [{values}]'
+        )
     _write(root, {'api.raml': '\n'.join(lines) + '\n'})
     return root / 'api.raml'
 

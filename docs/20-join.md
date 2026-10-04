@@ -42,8 +42,10 @@ files. An input with a header other than `#%RAML 1.0` reports
 The join reads each input's composed source trees, `Raml.source_nodes`, and
 consults the input's parsed model where § 5 and § 6.4 say so. An include target
 the parse already read comes from the parse's caches. One the parse never read,
-such as an include inside a trait no method applies, is loaded through the same
-sandboxed loader and composed once for the join.
+such as an include inside a trait no method applies, is read by the parser's
+own `load_include`: the same sandboxed loader, size limit
+(`include file exceeds size limit`), UTF-8 check, and JSON tab normalization.
+It is composed once for the join and enters none of the parse's caches.
 
 On reading, every `!include` argument is replaced by the absolute URI it names.
 A node then means the same thing wherever the join moves it, so comparing

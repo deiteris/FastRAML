@@ -25,6 +25,8 @@ from fastraml.facet_names import FACET_DEFAULT, FACET_EXAMPLE, FACET_EXAMPLES
 from fastraml.yamlnode import Node, NodeKind, mark_subtree, pairs, with_grafts
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from fastraml.registry import ParseCtx
 
 __all__ = [
@@ -34,6 +36,7 @@ __all__ = [
     'mark_graft',
     'merge_structural',
     'node_value_equal',
+    'union_items',
 ]
 
 #: Where a node was authored, for the nodes whose scope differs from the
@@ -131,13 +134,35 @@ def _merge_sequences(
     parameter both survive — they are not structurally equal. Traits are
     deduplicated by *name* in a separate step (docs/08 § 3.2).
     """
-    merged = list(target.content)
-    for item in source.content:
-        if any(node_value_equal(existing, item) for existing in merged):
-            continue
-        mark_graft(overlay, item, source_scope)
-        merged.append(item)
+    merged = union_items(target.content, source.content, lambda item: mark_graft(overlay, item, source_scope))
     return with_grafts(target, merged)
+
+
+def union_items(existing: list[Node], incoming: list[Node], on_added: Callable[[Node], None]) -> list[Node]:
+    """`existing`, then each `incoming` item not structurally equal to one before it.
+
+    The union by value both merges share: a trait into a method here, and an
+    Overlay or Extension into its master (docs/19 § 7). Duplicates already in
+    `existing` are kept; `on_added` sees each added item before it is appended.
+    Scalars compare through a `(tag, value)` set, so a long `enum` is not
+    quadratic; only composites are compared item by item, among composites.
+    """
+    items = list(existing)
+    scalars = {(item.tag, item.value) for item in items if item.kind is NodeKind.SCALAR}
+    composites = [item for item in items if item.kind is not NodeKind.SCALAR]
+    for item in incoming:
+        if item.kind is NodeKind.SCALAR:
+            identity = (item.tag, item.value)
+            if identity in scalars:
+                continue
+            scalars.add(identity)
+        else:
+            if any(node_value_equal(other, item) for other in composites):
+                continue
+            composites.append(item)
+        on_added(item)
+        items.append(item)
+    return items
 
 
 def mark_graft(overlay: ProvenanceOverlay | None, node: Node | None, scope: ParseCtx | None) -> None:

@@ -30,6 +30,7 @@ from fastraml.yamlnode import (
     TAG_NULL,
     Node,
     NodeKind,
+    bool_text,
     node_error,
 )
 
@@ -50,10 +51,6 @@ __all__ = [
     'parse_int',
     'value_node_of',
 ]
-
-#: The loader resolves YAML 1.2, where `true` is the only true. `yes`, `on`
-#: and `y` are strings and never reach here tagged `!!bool`.
-_TRUE_SCALARS: Final = frozenset({'true'})
 
 #: Only matching outer delimiters identify an inline JSON data value.
 _INLINE_JSON_DELIMITERS: Final = {'{': '}', '[': ']', '"': '"'}
@@ -330,13 +327,15 @@ def scalar_value(node: Node) -> Any:
 
     A tag whose text will not convert also keeps the raw text rather than
     raising: `08` resolves as `!!int` but has no octal reading, and an explicit
-    `!!int abc` has no reading at all.
+    `!!int abc` or `!!bool yes` has no reading at all, and the declared type
+    then rejects the text.
     """
     tag = node.tag
     if tag == TAG_NULL:
         return None
     if tag == TAG_BOOL:
-        return node.value.lower() in _TRUE_SCALARS
+        truth = bool_text(node.value)
+        return node.value if truth is None else truth
     try:
         if tag == TAG_INT:
             return parse_int(node.value)

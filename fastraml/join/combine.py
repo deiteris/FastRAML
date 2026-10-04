@@ -148,7 +148,10 @@ def _expand(source: _Input, node: Node) -> tuple[Node, str | None]:
     file_uri = strip_uri_suffix(target)
     cached = source.expanded.get(target)
     if cached is None:
-        cached = source.expanded[target] = _absolutize(source.reader.content(target), file_uri, source.reader)
+        # The argument is already absolute, so the input's URI serves to locate
+        # a failure to read it.
+        content = source.reader.content(node, source.uri, target)
+        cached = source.expanded[target] = _absolutize(content, file_uri, source.reader)
     return cached, file_uri
 
 

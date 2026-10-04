@@ -68,6 +68,13 @@ The loader resolves YAML 1.2 booleans, integers, and floats. Consequently,
 float; and `0o17` is an integer. Timestamp-tagged scalars retain their written
 text for RAML date and time validation.
 
+An explicit tag does not widen the core schema. `!!bool` reads only
+`true`/`True`/`TRUE` and `false`/`False`/`FALSE` (`yamlnode.bool_text`); other
+text under it, such as `!!bool yes`, has no reading. A boolean facet such as
+`required: !!bool yes` is `expected a boolean value`; a data value such as
+`example: !!bool yes` keeps its text, as `!!int abc` does, so a boolean type
+rejects it.
+
 The underlying scanner has three documented compatibility limits:
 
 - Unquoted U+2028 and U+2029 are rejected with a positioned diagnostic; quoted
@@ -175,14 +182,18 @@ whichever reader follows, so a typed fragment is still read once.
   `Raml.include_nodes`.
 - The default size limit is 64 KiB per include target. Loaders receive the limit
   and may return one additional byte so an oversized target is detected without
-  reading it in full. `0` disables the limit.
+  reading it in full. `0` disables the limit. Every read the limit bounds, an
+  include target and a JSON Schema `$ref` target alike, goes through
+  `Raml.load_bounded`.
 - Scalar include cycles are rejected. Fragment cycles through `uses:` are legal
   and produce cyclic model graphs.
 - Every include occurrence is recorded in `Raml.include_refs` for tooling.
 
 `note_include_ref()` records a typed-fragment include without loading it.
 `resolve_include()` records, loads, and composes a data include. Both return an
-empty URI for a non-include node.
+empty URI for a non-include node. `load_include()` reads and composes a target
+as `resolve_include()` does, through no cache and recording nothing; `join` uses
+it for a target the parse never read (`docs/20` § 2).
 
 ## 5. Resource loaders
 

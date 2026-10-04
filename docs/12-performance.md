@@ -64,7 +64,7 @@ must receive a parser diagnostic rather than `RecursionError`.
 
 ## 4. Benchmark suite
 
-`bench/` generates deterministic corpora and measures twenty-two workloads:
+`bench/` generates deterministic corpora and measures twenty-three workloads:
 
 | Bench | Primary coverage |
 |---|---|
@@ -84,6 +84,7 @@ must receive a parser diagnostic rather than `RecursionError`.
 | `facets` | custom facets declared up every parent of types that inherit from 2, 4, and 8 parents, and a diamond ([10](10-validation.md) § 4) |
 | `inheritance` | a union of 2 and 4 members among a type's parents: after an object, first, and paired with a second union; and a property, pattern property and items property that every parent declares, folded on each merge ([07](07-resolution-and-inheritance.md) § 4 and § 5) |
 | `templates` | resource types and a trait with parameters and transforms: a collection per resource and an item child, applied as real APIs apply them ([08](08-templates-and-endpoints.md) § 5) |
+| `sequence-merge` | a trait's query-parameter `enum` of 5, 100, and 1000 values merged into the method's own, half of them shared: the structural merge's union by value ([08](08-templates-and-endpoints.md) § 1) |
 | `template-scopes` | literal included library resource types using their own security scheme, a literal included trait with parameter annotations restricted to `TypeDeclaration`, and a standalone trait using a scheme from its own imports ([09](09-security-and-annotations.md) § A6, § B4) |
 | `reference-namespaces` | substituted resource-type, trait, security-scheme, annotation and data-type names with caller/library collisions, forwarded nested arguments, and a static annotation name with a substituted value ([08](08-templates-and-endpoints.md) § 4.2) |
 | `includes` | an example per resource from a `.json` and a `.yaml` file each: data includes, the header check, and the `.json` whitespace rule, one in four tab-indented and one in sixteen with a tab before `{`; and a Trait fragment per resource, whose header is read to tell it from content ([03](03-yaml-and-io.md) § 4.2) |
@@ -92,7 +93,7 @@ must receive a parser diagnostic rather than `RecursionError`.
 | `annotation-targets` | included annotation restrictions, query strings and nested body declarations, literal and substituted template-root annotations, annotated substituted type names, and annotated default and discriminator scalars ([09](09-security-and-annotations.md) § B4) |
 
 The six general workloads are `small`, `large`, `endpoints`, `extensions`,
-`validate` and `jsonschema`. The other sixteen are feature workloads:
+`validate` and `jsonschema`. The other seventeen are feature workloads:
 each exists because no general workload runs the code it covers. Their reach
 tests (`tests/bench/test_corpus.py`) count calls or check bound results, and fail
 if a corpus stops reaching that code at every size it covers.

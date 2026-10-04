@@ -322,7 +322,7 @@ New parser-authored diagnostics MUST use a stable message key:
 
 ```python
 raise RamlError.new(
-    'cannot redefine built-in type',
+    'cannot redefine a built-in type',
     location,
     key_pos,
     info={'type': name},
@@ -351,7 +351,7 @@ holds the OS path and the platform's wording. `LoaderError` and
 which the model does not police.
 
 `Trace.rendered_message()` appends `info` entries in insertion order, producing
-`cannot redefine built-in type: type: string` for the example above.
+`cannot redefine a built-in type: type: string` for the example above.
 
 ## 7. Rendering
 
@@ -362,7 +362,9 @@ Two renderers are part of the public error model:
 - `error.to_dict()` returns a `traces` list whose entries contain flattened
   `stack` lists.
 
-Each serialized frame contains `message`, `position`, `severity`, and `type`:
+Each serialized frame contains `message`, `position`, `severity`, and `type`,
+and `origin` when the frame has one: an object with its own `message` and
+`position` (§ 1, § 3.1):
 
 ```json
 {
@@ -370,10 +372,10 @@ Each serialized frame contains `message`, `position`, `severity`, and `type`:
     {
       "stack": [
         {
-          "message": "unwrap shapes",
-          "position": "file:///tmp/library.raml",
+          "message": "unwrap shape",
+          "position": "file:///tmp/library.raml:12:3",
           "severity": "error",
-          "type": "parsing"
+          "type": "unwrapping"
         },
         {
           "message": "cannot inherit from different type: source: string: target: integer",

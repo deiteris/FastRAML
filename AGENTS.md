@@ -33,9 +33,10 @@ message. For a new feature with no base number, use `bench linearity --bench NAM
   states belongs in a pass, nowhere else.
 - `fastraml/views/`: runs after P10 and holds no pass (`docs/16-graph.md`; linting
   in `views/lint/`, `docs/18-linting.md`). The model — `parser/`, `types/`,
-  `nodes.py`, `registry.py`, `datanode.py` — never imports `fastraml.views`; outside
-  `views/`, only `cli.py` does. One view imports another only through the substrates
-  `walk`, `graph` and `severity`. `tests/unit/test_views.py` enforces all three.
+  `nodes.py`, `registry.py`, `datanode.py`, `yamlnode.py` — never imports
+  `fastraml.views`; outside `views/`, only the composition roots `cli.py` and `service/` do. One view imports
+  another only through the substrates `walk`, `graph` and `severity`.
+  `tests/unit/test_views.py` enforces all three.
   `pyoxigraph`, `fastraml-viewer` and `pygls` are optional extras imported inside
   their CLI verb.
 - `fastraml/views/bindings/`: TypeScript, Python and Go backends for the tree's wire
@@ -69,8 +70,9 @@ message. For a new feature with no base number, use `bench linearity --bench NAM
 
 ## Invariants — breaking one is a bug, not a diagnostic
 
-- Every `location` is a `file://` or `http(s)://` URI. OS paths exist only inside
-  `loaders.py`.
+- Every `location` is a `file://` or `http(s)://` URI. OS paths never enter the
+  model: the entry functions convert a path to a URI through `uris.py`, and
+  within the model only `loaders.py` converts one back to read.
 - A file is composed at most once, and decoded at most once, per parse.
 - Structural merge never mutates either input, and preserves node identity.
 - After resolution no reachable shape is an `UnknownShape`; after unwrap every
@@ -108,9 +110,11 @@ Full list, with the pass that establishes each: `docs/02-architecture.md` § 4.
   inheritance merge sharing containers is a corruption (§ 4). Any traversal that
   reaches a type must follow `aliasOf`, or `User[]` reports `User`'s supertypes.
 - Accumulate errors; do not fail fast. `parse_lenient` re-raises an unreadable
-  entry file, or an unknown/unsupported header, fragment-kind mismatch, or
-  non-mapping root only when the outermost frame is located at the entry URI;
-  the same included-fragment failure returns a partial model.
+  entry file, or an unknown/unsupported header, fragment-kind mismatch,
+  non-mapping root, or unloadable `extends` chain (`extends is required`,
+  `extends must be a string`, `resolve extends`) only when the outermost frame
+  is located at the entry URI; the same included-fragment failure returns a
+  partial model.
 - Numbers never pass through `float` on either side of a comparison. Build a facet's
   `Fraction` from the raw scalar text, and a float value from `repr(v)` (through
   `as_fraction`), never `float.as_integer_ratio()`. `multipleOf: 1.1` must accept
@@ -121,8 +125,8 @@ Full list, with the pass that establishes each: `docs/02-architecture.md` § 4.
   every subtype carries an inherited discriminator. The check on discriminator
   values runs in P10, outside the `strict` gate (`docs/05` § 6).
 - Read a shape's examples through `examples_of(base)`, which goes through
-  `Examples.entries()`. Never read `Examples.values`: it is empty when
-  `examples: !include ...` is used.
+  `Examples.entries()`. `Examples._values` is private, so ruff's SLF001 rejects
+  a read of it: it is empty when `examples: !include ...` is used.
 - No per-character Python loops where a compiled regex or C-level string method will
   do (`docs/12` § 2).
 - Compile every RAML regex through `compile_pattern` / `regex_engine` in

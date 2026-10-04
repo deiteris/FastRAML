@@ -46,15 +46,19 @@ in `Raml.stopped_at` (`Stage` in `registry.py`; docs/13 § 1):
 | Parse state | `registry.py`, `domains.py` | this document, [04](04-fragments-and-namespaces.md) |
 | RAML field names | `facet_names.py` | [05](05-type-model.md), [08](08-templates-and-endpoints.md), [09](09-security-and-annotations.md) |
 | Garbage-collector tuning | `gctuning.py` | [12](12-performance.md) |
-| Entry and RAML decoding | `parser/entry.py`, `parser/fragments.py`, `parser/includes.py`, `parser/references.py` | [03](03-yaml-and-io.md), [04](04-fragments-and-namespaces.md) |
+| Configuration file | `config.py` | [13](13-public-api.md), [18](18-linting.md) |
+| Entry and RAML decoding | `parser/entry.py`, `parser/fragments.py`, `parser/documentation.py`, `parser/includes.py`, `parser/references.py` | [03](03-yaml-and-io.md), [04](04-fragments-and-namespaces.md) |
+| Scalar facets, annotated scalars, and regex compilation | `parser/facets.py` | [03](03-yaml-and-io.md), [05](05-type-model.md), [13](13-public-api.md) |
 | Overlays and Extensions | `parser/extensions.py`, `parser/extension_merge.py` | [19](19-overlays-and-extensions.md) |
-| Endpoints and templates | `parser/source_ir.py`, `parser/structural_merge.py`, `parser/source_decode.py`, `parser/endpoint_build.py`, `parser/traits.py`, `parser/resourcetypes.py`, `parser/substitutions.py` | [08](08-templates-and-endpoints.md) |
+| Endpoints and templates | `parser/source_ir.py`, `parser/structural_merge.py`, `parser/source_decode.py`, `parser/endpoint_build.py`, `parser/endpoints.py`, `parser/traits.py`, `parser/resourcetypes.py`, `parser/templates.py`, `parser/substitutions.py`, `parser/uritemplates.py` | [08](08-templates-and-endpoints.md) |
 | Security and annotations | `parser/security.py`, `parser/annotations.py`, `parser/directives.py` | [09](09-security-and-annotations.md) |
 | Type system | `types/` | [05](05-type-model.md) through [10](10-validation.md) |
 | Read-only projections | `views/`, including graph, tree, rendering, queries, compatibility, bindings, JSON Schema, OpenAPI, value samples, occurrences, authorship, and linting | [16](16-graph.md), [18](18-linting.md) |
+| Graph node classes | `nodes.py` | [16](16-graph.md) |
 | Joining API documents | `join/` | [20](20-join.md) |
 | Language service | `service/` | [21](21-language-service.md) |
 | CLI | `cli.py` | [13](13-public-api.md) |
+| Packaged agent guides for `skills` | `skilldata/` | [13](13-public-api.md) |
 
 `views/` is a consumer layer, not a parser pass. Nothing under `parser/` or
 `types/` may import `fastraml.views`; outside `views/`, only the composition
@@ -65,11 +69,28 @@ model; CLI commands do this through `ParseOptions(unwrap=True)`.
 `join/` runs on source trees before decoding, so it is neither a pass nor a view.
 It imports no view, and only `cli.py` imports it ([20](20-join.md) § 9).
 
-`registry.py` imports no parser or type module at runtime. `loaders.py` is the
-only module that reads files or the network. The type layer may import
-`parser/facets.py`, `parser/annotations.py`, and `parser/includes.py` at runtime;
-`types/shape.py` has the sole deferred import that breaks the fragment/shape
-cycle. These boundaries keep the runtime import graph acyclic.
+Every RAML document, `!include` target and `uses:` library is read through the
+parse's loader (`loaders.py`). No module under `parser/`, `types/`, or
+`registry.py`, `nodes.py`, `datanode.py`, `yamlnode.py` opens a file or URL.
+Modules outside the model (`cli.py`, `config.py`, `service/`, `join/`) and
+`views/bindings` may read non-RAML inputs and packaged data.
+`tests/unit/test_layering.py` enforces this.
+
+`registry.py` imports no parser or type module at runtime. At module level the
+type layer imports from `parser/` only `facets.py`, `annotations.py`,
+`includes.py`, `references.py`, and `substitutions.py`; the last two are
+leaves with no runtime `fastraml` imports. Imports deferred into a function
+body break the remaining cycles, and these are the only ones under `parser/`
+and `types/`:
+
+- `types/shape.py` and `types/jsonschema_.py` import `parser/fragments.py`,
+  which imports the type layer;
+- `types/jsonschema_.py` imports `types/schema_intersection.py`, which imports
+  `jsonschema_` at module level.
+
+These boundaries keep the runtime import graph acyclic.
+`tests/unit/test_layering.py` enforces them; imports under `if TYPE_CHECKING:`
+are exempt.
 
 ## 3. The registry (`Raml`)
 

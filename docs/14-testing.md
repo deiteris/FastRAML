@@ -88,7 +88,8 @@ test that exercises both sides or a targeted mutation check. Golden and projecti
 tests must include the object their case claims to protect.
 
 The view boundary is also tested: parser and type modules do not import
-`fastraml.views`, and outside that package only the CLI may do so. Binding tests
+`fastraml.views`, and outside that package only the composition roots, the CLI
+and `service/`, may do so. Binding tests
 reject a projection key that is not declared in the shared tree contract.
 
 `tests/unit/test_doc_refs.py` checks that every `docs/NN § S` reference in a

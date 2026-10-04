@@ -10,6 +10,7 @@ projection, raises it (docs/16 § 8).
 from __future__ import annotations
 
 import json
+import sys
 from itertools import permutations
 from typing import ClassVar
 
@@ -477,3 +478,24 @@ class TestOneFileReadInTwoDrafts:
             k = body.properties['k']
             lengths[name] = (schemas[k.ref.rpartition('/')[2]] if k.ref else k).max_length
         assert lengths == {'S': None, 'W': 3}
+
+
+class TestAMissingRe2FailsTheProjection:
+    """`try_compile`: with `re2` asked for and absent, `pattern` and
+    `patternProperties` alike leave a projection error, never an `ImportError`
+    out of a view (docs/01 § 4.2).
+    """
+
+    @pytest.mark.parametrize(
+        'schema',
+        [
+            '{"type": "string", "pattern": "^a"}',
+            '{"type": "object", "patternProperties": {"^x": {"type": "string"}}}',
+        ],
+    )
+    def test_the_error_names_the_missing_engine(self, memory_workspace, monkeypatch, schema):
+        monkeypatch.setitem(sys.modules, 're2', None)
+        root = memory_workspace({'api.raml': f'#%RAML 1.0\ntitle: t\ntypes:\n  T: |\n    {schema}\n'})
+        shape = declared(memory_workspace.parse(root / 'api.raml', ParseOptions(regex_engine='re2')), 'T').shape
+        assert shape.as_shape() is None
+        assert shape.projection_error().head.message == 're2 engine requested but google-re2 is not installed'

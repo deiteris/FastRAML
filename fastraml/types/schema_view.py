@@ -89,9 +89,20 @@ def try_compile(context: Projection, text: str) -> re.Pattern[str] | None:
 
     A pattern the schema library accepts under ECMA-262 semantics may not
     compile here, and `re2` rejects strictly more than `re` does; each caller
-    decides what an uncompilable pattern costs its projection.
+    decides what an uncompilable pattern costs its projection. A missing `re2`
+    is not the pattern's fault: it fails the projection with the diagnostic
+    `compile_pattern` gives a RAML pattern, never an `ImportError` out of a
+    view (docs/01 § 4.2).
     """
-    engine = regex_engine(context.parent._raml)  # noqa: SLF001 - the parse's engine
+    try:
+        engine = regex_engine(context.parent._raml)  # noqa: SLF001 - the parse's engine
+    except ImportError as err:
+        raise RamlError.new(
+            're2 engine requested but google-re2 is not installed',
+            context.parent.location,
+            context.parent.value_pos,
+            kind=ErrorKind.RESOLVING,
+        ) from err
     try:
         compiled: re.Pattern[str] = engine.compile(text)
     except Exception:  # noqa: BLE001 - whatever the selected engine raises

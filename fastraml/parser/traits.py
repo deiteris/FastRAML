@@ -44,7 +44,7 @@ from fastraml.parser.templates import (
     parameter_node,
 )
 from fastraml.parser.uritemplates import resource_path, resource_path_name
-from fastraml.registry import ParseCtx
+from fastraml.registry import EMPTY_CTX
 from fastraml.yamlnode import pairs, with_content
 
 if TYPE_CHECKING:
@@ -52,7 +52,7 @@ if TYPE_CHECKING:
 
     from fastraml.parser.directives import DirectiveRef
     from fastraml.parser.source_ir import SourceEndPoint, SourceOperation
-    from fastraml.registry import Raml
+    from fastraml.registry import ParseCtx, Raml
     from fastraml.yamlnode import Node
 
 __all__ = [
@@ -194,9 +194,7 @@ def _in_priority_order(endpoint: SourceEndPoint, operation: SourceOperation) -> 
 
 def _definition_for(ref: DirectiveRef) -> TraitDefinition:
     """The trait `ref` names, recorded on the reference for consumers."""
-    definition = find_template_definition(
-        ref, lambda anchor, name: anchor.trait_definition(name), what='trait', info_key='trait'
-    )
+    definition = find_template_definition(ref, lambda anchor, name: anchor.trait_definition(name), what='trait')
     ref.resolved = definition
     return definition
 
@@ -224,14 +222,14 @@ def merge_trait_into(  # noqa: PLR0913 - the application, and where its values a
         definition.source,
         params,
         definition.variable_index,
-        caller_scope if caller_scope is not None else ParseCtx(),
+        caller_scope if caller_scope is not None else EMPTY_CTX,
         operation.provenance,
         written_in=application.location,
         substitutions=raml.substitutions,
         reserved=definition.reserved,
         param_scopes=application.param_scopes,
     )
-    trait_scope = ParseCtx(anchor=definition.anchor, target=DomainLocation.TRAIT)
+    trait_scope = raml.scope(definition.anchor, DomainLocation.TRAIT)
     if definition.may_have_root_annotations and compiled is not definition.source:
         retain_annotation_sites(raml, compiled, trait_scope)
     with raml.active_overlay(operation.provenance):

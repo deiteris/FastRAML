@@ -411,6 +411,21 @@ class TestLineEndings:
         assert crlf.content[0].line == 2
         assert crlf.content[2].line == 3
 
+    def test_a_bare_carriage_return_still_numbers_lines(self):
+        # The converter's line-number table counts `\n` only; a line the
+        # scanner breaks on `\r` falls outside it and is numbered directly.
+        root = parse('a: 1\rb: 2\rc: [x,\r  y]\r')
+        assert [node.line for node in root.content[::2]] == [1, 2, 3]
+        assert (root.content[5].line, root.content[5].end_line) == (3, 4)
+
+    def test_line_numbers_are_shared_per_line(self):
+        # Every node on a line holds the same int, not an equal copy: positions
+        # keep them for the life of the model (docs/12 § 2).
+        root = parse('\n' * 300 + 'key: value\n')
+        key, value = root.content
+        assert key.line == 301
+        assert key.line is value.line is value.end_line
+
     def test_crlf_in_a_block_scalar_is_normalised(self):
         _, value = next(pairs(parse('description: |\r\n  one\r\n  two\r\n')))
         assert value.value == 'one\ntwo\n'
@@ -543,16 +558,29 @@ class TestSpecialisedResolver:
 
         from fastraml.yamlnode import _RamlLoader
 
-        loader = _RamlLoader.__new__(_RamlLoader)
-        for value in self.SCALARS:
-            for implicit in ((True, False), (False, True), (False, False)):
-                ours = _RamlLoader.resolve(loader, ScalarNode, value, implicit)
-                stock = BaseResolver.resolve(loader, ScalarNode, value, implicit)
-                assert ours == stock, (value, implicit)
+        loader = _RamlLoader('')
+        # Twice: the second pass reads the per-document memo.
+        for _ in range(2):
+            for value in self.SCALARS:
+                for implicit in ((True, False), (False, True), (False, False)):
+                    ours = _RamlLoader.resolve(loader, ScalarNode, value, implicit)
+                    stock = BaseResolver.resolve(loader, ScalarNode, value, implicit)
+                    assert ours == stock, (value, implicit)
         for kind in (SequenceNode, MappingNode):
             assert _RamlLoader.resolve(loader, kind, '', (True, False)) == BaseResolver.resolve(
                 loader, kind, '', (True, False)
             )
+
+    def test_its_memo_lives_for_one_document(self):
+        """docs/12 § 2: a cache keyed by document text is never module-global."""
+        from yaml.nodes import ScalarNode
+
+        from fastraml.yamlnode import _RamlLoader
+
+        first = _RamlLoader('')
+        first.resolve(ScalarNode, '42', (True, False))
+        assert first._plain_tags == {'42': 'tag:yaml.org,2002:int'}
+        assert _RamlLoader('')._plain_tags == {}
 
     def test_the_preconditions_it_relies_on_are_checked_at_import(self):
         """A wildcard or path resolver would be skipped silently otherwise."""

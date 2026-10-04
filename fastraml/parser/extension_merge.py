@@ -28,7 +28,7 @@ from fastraml.errors import Accumulator
 from fastraml.parser.annotations import is_annotation_key
 from fastraml.parser.source_ir import METHODS
 from fastraml.parser.structural_merge import node_value_equal, union_items
-from fastraml.yamlnode import TAG_MAP, TAG_SEQ, TAG_STR, Node, NodeKind, is_null, node_error, with_grafts
+from fastraml.yamlnode import TAG_MAP, TAG_SEQ, Node, NodeKind, is_null, node_error, str_scalar, with_grafts
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -506,7 +506,7 @@ def _empty_mapping(at: Node) -> Node:
 
 def _type_mapping(scalar: Node) -> Node:
     """`string` as `{type: string}`, positioned at the scalar."""
-    key = Node(NodeKind.SCALAR, TAG_STR, fn.FACET_TYPE, None, scalar.line, scalar.column, scalar.line, scalar.column)
+    key = str_scalar(fn.FACET_TYPE, scalar)
     return Node(
         NodeKind.MAPPING, TAG_MAP, '', [key, scalar], scalar.line, scalar.column, scalar.end_line, scalar.end_column
     )

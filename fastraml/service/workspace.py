@@ -20,6 +20,7 @@ never collects (docs/21 § 2).
 from __future__ import annotations
 
 import gc
+from codecs import getincrementaldecoder
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from typing import TYPE_CHECKING, Final
@@ -32,6 +33,7 @@ from fastraml.service.text import Lines
 from fastraml.uris import file_uri_to_path, path_to_file_uri, relative_to
 from fastraml.views.lint import configured_linter
 from fastraml.views.occurrences import build_occurrences
+from fastraml.yamlnode import read_head
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Mapping, Sequence
@@ -391,17 +393,33 @@ class Workspace:
         else:
             disk = self._disk(uri)
             try:
-                head = '' if disk is None else disk.load(uri, max_bytes=_HEAD_BYTES).decode('utf-8-sig', 'replace')
+                decoded = '' if disk is None else _decoded_head(disk.load(uri, max_bytes=_HEAD_BYTES))
             except OSError:
                 return False
+            if decoded is None:
+                return False
+            head = decoded
         return identify_fragment(_head(head)) in ROOT_KINDS
+
+
+def _decoded_head(data: bytes) -> str | None:
+    """A file's first bytes as text, or `None` where they are not UTF-8, which
+    the parser rejects (`decode_source`). A character the head read cuts is
+    held back, not an error; bytes past the head are not read, so they are
+    the parser's to reject.
+    """
+    try:
+        return getincrementaldecoder('utf-8')().decode(data, final=len(data) <= _HEAD_BYTES)
+    except UnicodeDecodeError:
+        return None
 
 
 def _head(text: str) -> str:
     """The header line, as the parser matches it (docs/03 § 3), from the first
-    `_HEAD_BYTES` only: a buffer's is compared on every change.
+    `_HEAD_BYTES` only: a buffer's is compared on every change. One byte order
+    mark goes, as `decode_source` drops one, and the line is `read_head`'s.
     """
-    return text[:_HEAD_BYTES].lstrip(BOM).split('\n', 1)[0].rstrip()
+    return read_head(text[:_HEAD_BYTES].removeprefix(BOM))
 
 
 def _read(raml: Raml, root: str) -> frozenset[str]:

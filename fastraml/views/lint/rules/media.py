@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, ClassVar, Final
 
 from fastraml.views.lint.engine import Category, Finding, RuleMeta, Severity
 from fastraml.views.lint.mediatypes import is_json, split_media_type
+from fastraml.views.lint.messages import messages
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Mapping
@@ -60,10 +61,8 @@ class JsonCharset:
 
 
 def _body_maps(operation: Operation) -> Iterator[tuple[str, Mapping[str, Body]]]:
-    if operation.request is not None:
-        yield 'request', operation.request.bodies
-    for code, response in operation.responses.items():
-        yield code, response.bodies
+    for where, message in messages(operation):
+        yield where, message.bodies
 
 
 class DuplicateMediaType:

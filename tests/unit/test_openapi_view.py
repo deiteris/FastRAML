@@ -581,6 +581,25 @@ securitySchemes:
     assert dropped == []
 
 
+def test_a_scheme_declared_with_the_name_null_is_a_named_requirement(workspace):
+    # Only a `null` entry (no scheme) is the anonymous `{}` requirement; a real
+    # scheme whose name is the string 'null' must not open the operation.
+    document, _ = converted(
+        workspace,
+        """title: Secure
+securitySchemes:
+  'null':
+    type: Basic Authentication
+/private:
+  get:
+    securedBy: ['null']
+""",
+    )
+    operation = document.paths['/private'].get
+    assert operation is not None
+    assert operation.security == [{'null': []}]
+
+
 def test_explicit_empty_security_overrides_global_security(workspace):
     document, _ = converted(
         workspace,

@@ -24,6 +24,7 @@ from fastraml import facet_names as fn
 from fastraml.datanode import make_data_node
 from fastraml.domains import DomainLocation
 from fastraml.errors import Accumulator, RamlError
+from fastraml.facet_names import chomp_optional
 from fastraml.parser.annotations import add_domain_extension, is_annotation_key
 from fastraml.parser.facets import (
     annotated_scalar_value,
@@ -91,7 +92,6 @@ __all__ = [
     'COMMON_FACETS',
     'TYPE_SPECIFIC_FACETS',
     'attach_kind',
-    'chomp_optional',
     'make_body_shape',
     'make_declarations',
     'make_parameter_map',
@@ -698,16 +698,6 @@ def _check_custom_facet_names(base: BaseShape) -> None:
 
 
 # -- properties (docs/05 § 4) ----------------------------------------------
-
-
-def chomp_optional(name: str) -> tuple[str, bool]:
-    """Strip **one** trailing `?`, reporting whether there was one.
-
-    Exactly one: `name??` is the optional property `name?` (docs/05 § 4).
-    """
-    if name.endswith('?'):
-        return name[:-1], True
-    return name, False
 
 
 def is_pattern_key(name: str) -> bool:

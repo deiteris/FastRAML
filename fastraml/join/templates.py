@@ -138,7 +138,6 @@ class _Walker:
                         namespace.resource_type_definition(name) if resource_type else namespace.trait_definition(name)
                     ),
                     what='resource type' if resource_type else 'trait',
-                    info_key='resourceType' if resource_type else 'trait',
                 )
             except RamlError:
                 found.unresolved.append(ref.name)

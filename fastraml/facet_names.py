@@ -1,6 +1,8 @@
 """RAML field names shared by fragment, endpoint, and type decoders.
 
 These are wire keys, not Python model attribute names or diagnostic info keys.
+`chomp_optional` is the one spelling rule two of them share: a property name
+and a resource type's method key both mark themselves optional with `?`.
 """
 
 from typing import Final
@@ -71,3 +73,13 @@ FACET_SIGNATURES: Final = 'signatures'
 FACET_ACCESS_TOKEN_URI: Final = 'accessTokenUri'  # noqa: S105 - a RAML settings key
 FACET_AUTHORIZATION_GRANTS: Final = 'authorizationGrants'
 FACET_SCOPES: Final = 'scopes'
+
+
+def chomp_optional(name: str) -> tuple[str, bool]:
+    """Strip **one** trailing `?`, reporting whether there was one.
+
+    Exactly one: `name??` is the optional property `name?` (docs/05 § 4).
+    """
+    if name.endswith('?'):
+        return name[:-1], True
+    return name, False

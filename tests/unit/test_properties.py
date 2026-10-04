@@ -8,8 +8,9 @@ from __future__ import annotations
 import pytest
 
 from fastraml import RamlError
+from fastraml.facet_names import chomp_optional
 from fastraml.registry import Raml
-from fastraml.types.shape import chomp_optional, make_declarations, make_property
+from fastraml.types.shape import make_declarations, make_property
 from fastraml.yamlnode import Node, compose, pairs
 
 LOCATION = 'file:///a.raml'

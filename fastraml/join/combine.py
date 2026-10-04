@@ -41,12 +41,12 @@ from fastraml.yamlnode import (
     TAG_INCLUDE,
     TAG_MAP,
     TAG_SEQ,
-    TAG_STR,
     Node,
     NodeKind,
     is_null,
     node_error,
     pairs,
+    str_scalar,
     with_content,
     with_value,
 )
@@ -276,10 +276,6 @@ def _media_types(node: Node) -> list[str]:
     return [node.value]
 
 
-def _scalar(value: str) -> Node:
-    return Node(NodeKind.SCALAR, TAG_STR, value)
-
-
 def _mapping(content: list[Node], model: Node | None = None) -> Node:
     if model is not None and model.kind is NodeKind.MAPPING:
         return with_content(model, content)
@@ -303,7 +299,7 @@ class _Pusher:
             return body
         content: list[Node] = []
         for media_type in self._media:
-            content += [_scalar(media_type), body]
+            content += [str_scalar(media_type), body]
         return _mapping(content)
 
     def _bodies(self, holder: Node) -> Node:
@@ -336,7 +332,7 @@ class _Pusher:
             pushed = self._push.get(name)
             if pushed is None or name in names or (name == fn.FACET_SECURED_BY and resource_secured):
                 continue
-            added += [_scalar(name), pushed]
+            added += [str_scalar(name), pushed]
         if not added and (base is method or not base.content):
             return method
         return _mapping([*base.content, *added], base)
@@ -479,8 +475,10 @@ class _Endpoints:
             if declared:
                 # Reported, if it conflicts, at the first declaration that moved.
                 key_node = declared[0]
-                props = _Entry(source, source.uri, key_node, _mapping([_scalar('uriParameters'), _mapping(declared)]))
-            parent = self._place(parent, _scalar(step.key), step.full, props)
+                props = _Entry(
+                    source, source.uri, key_node, _mapping([str_scalar('uriParameters'), _mapping(declared)])
+                )
+            parent = self._place(parent, str_scalar(step.key), step.full, props)
         return parent
 
     def add(self, source: _Input, parent: _Endpoint | None, key: Node, resource: Node) -> None:
@@ -684,7 +682,7 @@ def _single_values(inputs: list[_Input], options: JoinOptions, errors: Accumulat
         option = given[name]
         if option is not None:
             if option:
-                out[name] = _scalar(option)
+                out[name] = str_scalar(option)
             continue
         entries = [_Entry(source, source.uri, *source.fields[name]) for source in inputs if name in source.fields]
         if not entries:
@@ -838,16 +836,16 @@ def _root_values(combined: _Combined, writer: _Writer) -> list[Node]:
     content: list[Node] = []
     for name in _SINGLE:
         if name in combined.singles:
-            content += [_scalar(name), combined.singles[name]]
+            content += [str_scalar(name), combined.singles[name]]
     plan = combined.plan
     if plan.base_uri is not None:
-        content += [_scalar(fn.FACET_BASE_URI), _scalar(plan.base_uri)]
+        content += [str_scalar(fn.FACET_BASE_URI), str_scalar(plan.base_uri)]
         if plan.parameters:
-            content += [_scalar(fn.FACET_BASE_URI_PARAMETERS), _entries_mapping(plan.parameters, writer)]
+            content += [str_scalar(fn.FACET_BASE_URI_PARAMETERS), _entries_mapping(plan.parameters, writer)]
     for name in _DEFAULTS:
         kept = combined.defaults.get(name)
         if kept is not None:
-            content += [_scalar(name), kept.value]
+            content += [str_scalar(name), kept.value]
     return content
 
 
@@ -856,15 +854,15 @@ def _output(combined: _Combined, writer: _Writer) -> Node:
     content = _root_values(combined, writer)
     if combined.documentation is not None and combined.documentation.entries:
         items = [writer.value(entry.value, entry.input) for entry in combined.documentation.entries.values()]
-        content += [_scalar(fn.FACET_DOCUMENTATION), Node(NodeKind.SEQUENCE, TAG_SEQ, '', items)]
+        content += [str_scalar(fn.FACET_DOCUMENTATION), Node(NodeKind.SEQUENCE, TAG_SEQ, '', items)]
     if combined.libraries:
         uses: list[Node] = []
         for target, entry in combined.libraries.values():
             uses += [entry.key, writer.library(target, entry)]
-        content += [_scalar(fn.FACET_USES), _mapping(uses)]
+        content += [str_scalar(fn.FACET_USES), _mapping(uses)]
     for name, names in combined.maps.items():
         if names.entries:
-            content += [_scalar(name), _entries_mapping(names.entries.values(), writer)]
+            content += [str_scalar(name), _entries_mapping(names.entries.values(), writer)]
     if combined.annotations is not None:
         for entry in combined.annotations.entries.values():
             content += [entry.key, writer.value(entry.value, entry.input)]

@@ -27,7 +27,11 @@ can duplicate declarations; copying a node can lose its provenance.
 - YAML mapping content is stored as a flat alternating list. Hot decoders should
   index it directly instead of allocating tuples or temporary dictionaries.
 - Allocate per distinct value, not per use. A childless `Node` shares one
-  empty `content` list, `Node.position` is built once per node, and the
+  empty `content` list. A `BaseShape` with no parents, custom facets, facet
+  declarations, annotations or type-expression references shares `EMPTY_LIST`
+  and `EMPTY_DICT`, which raise on any in-place edit; a writer takes its own
+  container through `owned` first, and a copy keeps an empty one shared
+  ([05](05-type-model.md) § 1). `Node.position` is built once per node, and the
   composer takes short tags and line numbers from tables. Equal mapping keys
   share strings through a parse-local pool, never Python's process-global
   intern table. A global table resize can otherwise add fixed retained

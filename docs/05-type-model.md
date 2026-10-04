@@ -23,6 +23,16 @@ enum members, discriminator values, and custom-facet values are not scalar
 facets. `BaseShape` has no value equality or hash; model and YAML-node identity
 are load-bearing elsewhere in the parser.
 
+`inherits`, `custom_facets`, `custom_facet_defs`, `annotations` and
+`type_expr_refs` are never `None`. Until something is written to one, it is
+the process-wide `EMPTY_LIST` or `EMPTY_DICT` from `types/base.py`, which
+compares equal to `[]` or `{}` and raises `TypeError` on an in-place edit. Code
+that fills one in place assigns `owned(...)` back first: `base.inherits =
+owned(base.inherits)`. Rebinding to a new container needs no helper. This is
+the rule `Node.content` follows ([03](03-yaml-and-io.md) § 1), and on the
+`validate` workload it saved a fifth of the retained model
+([12](12-performance.md) § 2).
+
 `BaseShape.type_expr` is the type expression as written. Until P7 ends it is
 the YAML scalar node, because P7 finds where a template caller wrote a name
 inside it by the node's identity ([08](08-templates-and-endpoints.md) § 5.1).

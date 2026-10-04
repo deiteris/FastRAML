@@ -23,7 +23,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Final, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Final, Literal, NoReturn, Protocol
 
 from fastraml.datanode import at_value, make_data_node
 from fastraml.errors import Accumulator, ErrorKind, RamlError
@@ -46,6 +46,8 @@ if TYPE_CHECKING:
 
 __all__ = [
     'BUILTIN_TYPES',
+    'EMPTY_DICT',
+    'EMPTY_LIST',
     'ONE_SHAPE',
     'PROPERTIES',
     'SHAPE_LIST',
@@ -79,6 +81,7 @@ __all__ = [
     'TypeExprRef',
     'checks_memoized',
     'declaration_facets',
+    'owned',
 ]
 
 
@@ -99,6 +102,50 @@ def checks_memoized() -> Iterator[None]:
         yield
     finally:
         _CHECKED.reset(token)
+
+
+def _refuse(_self: object, *_args: object, **_kwargs: object) -> NoReturn:
+    raise TypeError('a shared empty container is read-only: write through owned()')
+
+
+class _EmptyList(list[Any]):
+    """`EMPTY_LIST`'s class: a list every in-place edit raises on."""
+
+    __slots__ = ()
+
+    # `__init__` too: `EMPTY_LIST.__init__([x])` would refill it in place.
+    __init__ = append = extend = insert = remove = pop = clear = sort = reverse = _refuse
+    __setitem__ = __delitem__ = __iadd__ = __imul__ = _refuse
+
+
+class _EmptyDict(dict[Any, Any]):
+    """`EMPTY_DICT`'s class: a dict every in-place edit raises on."""
+
+    __slots__ = ()
+
+    __init__ = setdefault = update = pop = popitem = clear = _refuse
+    __setitem__ = __delitem__ = __ior__ = _refuse
+
+
+#: What an empty `BaseShape` container holds until something is written to it:
+#: `EMPTY_LIST` for `inherits` and `type_expr_refs`, `EMPTY_DICT` for
+#: `custom_facets`, `custom_facet_defs` and `annotations`. Most shapes leave
+#: most of the five empty, so this saves up to five containers a shape, as
+#: `Node` shares its empty `content` (docs/12 § 2). A read costs nothing extra;
+#: a writer goes through `owned`, and an edit that does not raises. Made by
+#: `__new__` alone, since `__init__` refuses.
+EMPTY_LIST: Final[list[Any]] = list.__new__(_EmptyList)
+EMPTY_DICT: Final[dict[Any, Any]] = dict.__new__(_EmptyDict)
+_FROZEN: Final = (_EmptyList, _EmptyDict)
+
+
+def owned[C: (list[Any], dict[Any, Any])](container: C) -> C:
+    """`container`, or a new empty one in place of a shared one.
+
+    Assign the result back before writing: `base.inherits = owned(base.inherits)`.
+    Tested by class, not identity, so a copy of a shared empty counts as one.
+    """
+    return container.copy() if type(container) in _FROZEN else container
 
 
 # The built-in type names (spec section Raml Data Types). `null` is the spec's
@@ -290,21 +337,22 @@ class BaseShape:
         #: means none at all (docs/09 § B4).
         self.allowed_targets: list[DomainLocation] | None = None
 
-        # The containers are allocated eagerly: an empty dict costs less than a
-        # `None` check at every read across four passes.
-        self.inherits: list[BaseShape] = []
+        # Never `None`, which every read across four passes would check. Each
+        # starts as the shared empty container; a writer takes its own through
+        # `owned` (docs/05 § 1).
+        self.inherits: list[BaseShape] = EMPTY_LIST
         self.alias: BaseShape | None = None
         self.link: DataTypeFragment | None = None
-        self.custom_facets: dict[str, DataNode] = {}
-        self.custom_facet_defs: dict[str, Property] = {}
-        self.annotations: dict[str, DomainExtension] = {}
+        self.custom_facets: dict[str, DataNode] = EMPTY_DICT
+        self.custom_facet_defs: dict[str, Property] = EMPTY_DICT
+        self.annotations: dict[str, DomainExtension] = EMPTY_DICT
 
         #: The type expression exactly as written, so P7 can report a column
         #: inside it and tooling can offer go-to-definition on each name. The
         #: node until P7 ends, which places a name by the node's identity; its
         #: text and span after, unless the source is retained (docs/05 § 1).
         self.type_expr: Node | WrittenScalar | None = None
-        self.type_expr_refs: list[TypeExprRef] = []
+        self.type_expr_refs: list[TypeExprRef] = EMPTY_LIST
         self.is_annotation_type = is_annotation_type
         #: The scope unqualified names in this declaration resolve in.
         self.anchor = anchor
@@ -381,16 +429,22 @@ class BaseShape:
         # shared list would let one clone's narrowing reach the original.
         clone.allowed_targets = None if self.allowed_targets is None else list(self.allowed_targets)
         clone.type_expr = self.type_expr
-        clone.type_expr_refs = list(self.type_expr_refs)
         clone._unwrapped = self._unwrapped
 
-        # The containers are what unwrap mutates, so each gets its own.
-        clone.custom_facets = dict(self.custom_facets)
-        clone.annotations = dict(self.annotations)
-        clone.custom_facet_defs = {
-            name: prop.with_base(prop.base.clone(memo, depth + 1)) for name, prop in self.custom_facet_defs.items()
-        }
-        clone.inherits = [parent.clone(memo, depth + 1) for parent in self.inherits]
+        # The containers are what unwrap mutates, so each gets its own. An
+        # empty one keeps the shared empty the constructor set.
+        if self.type_expr_refs:
+            clone.type_expr_refs = list(self.type_expr_refs)
+        if self.custom_facets:
+            clone.custom_facets = dict(self.custom_facets)
+        if self.annotations:
+            clone.annotations = dict(self.annotations)
+        if self.custom_facet_defs:
+            clone.custom_facet_defs = {
+                name: prop.with_base(prop.base.clone(memo, depth + 1)) for name, prop in self.custom_facet_defs.items()
+            }
+        if self.inherits:
+            clone.inherits = [parent.clone(memo, depth + 1) for parent in self.inherits]
         clone.alias = self.alias.clone(memo, depth + 1) if self.alias is not None else None
 
         if self.link is not None and self.link.shape is not None:
@@ -753,9 +807,12 @@ class KindBase:
         self.base = base
 
     def decode_facets(self, pairs: list[Node]) -> None:
+        if not pairs:
+            return
+        facets = self.base.custom_facets = owned(self.base.custom_facets)
         for index in range(0, len(pairs), 2):
             key = pairs[index]
-            self.base.custom_facets[key.value] = make_data_node(
+            facets[key.value] = make_data_node(
                 self.base._raml,  # noqa: SLF001 - the kind is the base's other half
                 key,
                 pairs[index + 1],

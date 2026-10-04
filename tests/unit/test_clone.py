@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 
+from fastraml.types.base import EMPTY_DICT, EMPTY_LIST
 from fastraml.types.complex_ import ArrayShape, ObjectShape, UnionShape
 
 LIB = '#%RAML 1.0 Library\n'
@@ -28,6 +29,14 @@ def library(workspace, body: str, extra: dict[str, str] | None = None):
 
 
 CYCLE = '  Node:\n    properties:\n      name: string\n      next: Node\n'
+
+#: A type that fills `custom_facets`, `annotations`, `inherits` and `type_expr_refs`.
+CHILD = (
+    'annotationTypes:\n  note: string\n'
+    'types:\n'
+    '  Parent:\n    facets:\n      extra: string\n'
+    '  Child:\n    type: Parent\n    extra: x\n    (note): y\n'
+)
 
 
 class TestStructurePreserved:
@@ -66,9 +75,22 @@ class TestDetachment:
         assert clone is not node
         assert clone.shape is not node.shape
         assert clone.shape.properties is not node.shape.properties
-        assert clone.custom_facets is not node.custom_facets
-        assert clone.annotations is not node.annotations
-        assert clone.inherits is not node.inherits
+
+    def test_a_clone_owns_each_container_the_original_filled(self, workspace):
+        raml = workspace.parse(workspace({'lib.raml': LIB + CHILD}) / 'lib.raml')
+        child = raml.types_in(raml.location)['Child']
+        clone = child.clone_detached()
+        for field in ('custom_facets', 'annotations', 'inherits', 'type_expr_refs'):
+            assert getattr(child, field), field
+            assert getattr(clone, field) is not getattr(child, field), field
+
+    def test_an_empty_container_stays_the_shared_one(self, workspace):
+        # A copy of nothing is an allocation, and the shared empty refuses an
+        # edit, so neither side can reach the other through it.
+        clone = library(workspace, CYCLE)['Node'].clone_detached()
+        assert clone.custom_facets is EMPTY_DICT
+        assert clone.annotations is EMPTY_DICT
+        assert clone.inherits is EMPTY_LIST
 
     def test_mutating_a_clone_does_not_reach_the_original(self, workspace):
         node = library(workspace, CYCLE)['Node']

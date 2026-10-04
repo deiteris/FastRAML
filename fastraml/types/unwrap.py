@@ -29,7 +29,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 
 from fastraml.errors import Accumulator, ErrorKind, RamlError
-from fastraml.types.base import TYPE_RECURSIVE, BaseShape, KindBase, declaration_facets
+from fastraml.types.base import EMPTY_DICT, TYPE_RECURSIVE, BaseShape, KindBase, declaration_facets
 from fastraml.types.complex_ import (
     ArrayShape,
     ObjectShape,
@@ -627,7 +627,7 @@ def _unwrap_custom_facet_defs(walk: _Walk, base: BaseShape, depth: int) -> None:
     """
     for name, prop in base.custom_facet_defs.items():
         unwrapped = _unwrap(walk, prop.base, depth + 1)
-        unwrapped.custom_facet_defs = {}
+        unwrapped.custom_facet_defs = EMPTY_DICT
         base.custom_facet_defs[name] = prop.with_base(unwrapped)
 
 

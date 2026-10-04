@@ -30,6 +30,7 @@ from fastraml.types.base import (
     TYPE_UNION,
     BaseShape,
     TypeExprRef,
+    owned,
 )
 from fastraml.types.complex_ import UnknownShape
 from fastraml.types.expressions import (
@@ -273,6 +274,7 @@ def _build_reference(raml: Raml, target: UnknownShape, node: Reference, depth: i
     resolve_shape(raml, ref, depth + 1)
     attach_kind(raml, base, ref.type, facets, from_mapping=from_mapping)
     if from_mapping:
+        base.inherits = owned(base.inherits)
         base.inherits.append(ref)
     else:
         base.alias = ref
@@ -379,6 +381,7 @@ def _note(raml: Raml, base: BaseShape, col: int, *, builtin: str) -> None:
     if base.type_expr is None:
         return
     location, position = _site(raml, base, col)
+    base.type_expr_refs = owned(base.type_expr_refs)
     base.type_expr_refs.append(
         TypeExprRef(line=position.line, column=position.column, location=location, builtin=builtin)
     )
@@ -399,11 +402,10 @@ def _note_reference(
     line, column = position.line, position.column
     prefix, _name, dotted = cut_last(node.name, '.')
     link = resolver.library_link(prefix) if dotted and resolver is not None else None
+    refs = base.type_expr_refs = owned(base.type_expr_refs)
     if link is None:
-        base.type_expr_refs.append(TypeExprRef(line=line, column=column, location=location, resolved=ref))
+        refs.append(TypeExprRef(line=line, column=column, location=location, resolved=ref))
         return
-    base.type_expr_refs.append(
-        TypeExprRef(line=line, column=column, location=location, library_link=link, library_alias=prefix)
-    )
+    refs.append(TypeExprRef(line=line, column=column, location=location, library_link=link, library_alias=prefix))
     # Past the prefix and the dot it is written with.
-    base.type_expr_refs.append(TypeExprRef(line=line, column=column + len(prefix) + 1, location=location, resolved=ref))
+    refs.append(TypeExprRef(line=line, column=column + len(prefix) + 1, location=location, resolved=ref))

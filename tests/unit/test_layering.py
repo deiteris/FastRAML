@@ -193,7 +193,6 @@ _NON_RAML_PATTERNS = frozenset(
         ('fastraml.config', '_compatibility_rule'),
         ('fastraml.parser.facets', 'MEDIA_RANGE'),
         ('fastraml.parser.facets', 'MEDIA_TYPE'),
-        ('fastraml.parser.facets', '_MEDIA_HEAD'),
         ('fastraml.parser.facets', '_PARAMETER'),
         ('fastraml.types.values', 'DATE_ONLY'),
         ('fastraml.types.values', 'TIME_ONLY'),

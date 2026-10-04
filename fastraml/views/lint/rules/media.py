@@ -10,12 +10,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar, Final
 
+from fastraml.parser.facets import media_parts
 from fastraml.views.lint.engine import Category, Finding, RuleMeta, Severity
-from fastraml.views.lint.mediatypes import is_json, split_media_type
+from fastraml.views.lint.mediatypes import is_json
 from fastraml.views.lint.messages import messages
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator, Mapping
+    from collections.abc import Iterable
 
     from fastraml.parser.endpoints import Body, Operation
     from fastraml.views.lint.engine import Context
@@ -42,8 +43,8 @@ class JsonCharset:
     )
 
     def payload(self, ctx: Context, iri: str, body: Body) -> Iterable[Finding]:
-        essence, parameters = split_media_type(body.media_type)
-        charset = parameters.get('charset')
+        essence, parameters = media_parts(body.media_type)
+        charset = dict(parameters).get('charset')
         if charset is None or not is_json(essence):
             return ()
         forbidden = charset.casefold() not in _UTF8
@@ -58,11 +59,6 @@ class JsonCharset:
                 clause='RFC 8259 § 8.1' if forbidden else 'RFC 8259 § 11',
             ),
         )
-
-
-def _body_maps(operation: Operation) -> Iterator[tuple[str, Mapping[str, Body]]]:
-    for where, message in messages(operation):
-        yield where, message.bodies
 
 
 class DuplicateMediaType:
@@ -87,11 +83,10 @@ class DuplicateMediaType:
 
     def operation(self, ctx: Context, iri: str, operation: Operation) -> Iterable[Finding]:
         found = []
-        for where, bodies in _body_maps(operation):
-            seen: dict[tuple[str, tuple[tuple[str, str], ...]], str] = {}
-            for media_type, body in bodies.items():
-                essence, parameters = split_media_type(media_type)
-                first = seen.setdefault((essence, tuple(sorted(parameters.items()))), media_type)
+        for where, message in messages(operation):
+            seen: dict[tuple[str, frozenset[tuple[str, str]]], str] = {}
+            for media_type, body in message.bodies.items():
+                first = seen.setdefault(media_parts(media_type), media_type)
                 if first != media_type:
                     found.append(
                         ctx.on(

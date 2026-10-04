@@ -49,12 +49,6 @@ def _header(parameter: Parameter) -> bool:
     return parameter.binding == 'header'
 
 
-def _header_maps(operation: Operation) -> Iterator[tuple[str, Mapping[str, Parameter]]]:
-    """Each header map of one operation, named by where it sits."""
-    for where, message in messages(operation):
-        yield where, message.headers
-
-
 def _scheme_header_maps(definition: SecuritySchemeDefinition) -> Iterator[tuple[str, Mapping[str, Parameter]]]:
     described = definition.resolved().described_by
     if described is None:
@@ -161,7 +155,8 @@ class DuplicateHeader:
                     )
 
     def operation(self, ctx: Context, iri: str, operation: Operation) -> Iterable[Finding]:
-        return list(self._check(ctx, iri, _header_maps(operation)))
+        maps = ((where, message.headers) for where, message in messages(operation))
+        return list(self._check(ctx, iri, maps))
 
     def security_scheme(self, ctx: Context, iri: str, definition: SecuritySchemeDefinition) -> Iterable[Finding]:
         return list(self._check(ctx, iri, _scheme_header_maps(definition)))

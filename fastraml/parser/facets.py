@@ -82,19 +82,19 @@ _RESTRICTED_NAME: Final = r'[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,126}'
 #: with optional whitespace around the `;` and an empty one allowed, as there.
 _TOKEN: Final = r"[!#$%&'*+.^_`|~0-9A-Za-z-]+"  # noqa: S105 - an HTTP token grammar, not a credential
 _QUOTED: Final = r'"(?:[\t \x21\x23-\x5b\x5d-\x7e\x80-\xff]|\\[\t \x21-\x7e\x80-\xff])*"'
-_PARAMETERS: Final = rf'(?:[ \t]*;[ \t]*(?:{_TOKEN}=(?:{_TOKEN}|{_QUOTED}))?)*'
+_ONE_PARAMETER: Final = rf'[ \t]*;[ \t]*(?:({_TOKEN})=({_TOKEN}|{_QUOTED}))?'
 
 #: A media type, `type/subtype` plus parameters: what the root `mediaType`
 #: takes (spec section Default Media Types names RFC 6838). Use `fullmatch`.
-MEDIA_TYPE: Final = re.compile(rf'{_RESTRICTED_NAME}/{_RESTRICTED_NAME}{_PARAMETERS}')
+MEDIA_TYPE: Final = re.compile(rf'{_RESTRICTED_NAME}/{_RESTRICTED_NAME}(?:{_ONE_PARAMETER})*')
 
 #: A media range, RFC 9110 § 12.5.1: a media type, `type/*` or `*/*`. What
 #: `fileTypes` takes, where the spec requires `*/*` (docs/10 § 2), and what a
-#: `body:` key takes (docs/08 § 6.3).
-MEDIA_RANGE: Final = re.compile(rf'(?:\*/\*|{_RESTRICTED_NAME}/(?:\*|{_RESTRICTED_NAME})){_PARAMETERS}')
+#: `body:` key takes (docs/08 § 6.3). Group 1 is `type/subtype`.
+MEDIA_RANGE: Final = re.compile(rf'(\*/\*|{_RESTRICTED_NAME}/(?:\*|{_RESTRICTED_NAME}))(?:{_ONE_PARAMETER})*')
 
-_MEDIA_HEAD: Final = re.compile(rf'\*/\*|{_RESTRICTED_NAME}/(?:\*|{_RESTRICTED_NAME})')
-_PARAMETER: Final = re.compile(rf'[ \t]*;[ \t]*(?:({_TOKEN})=({_TOKEN}|{_QUOTED}))?')
+#: One parameter, its name and value captured; `None` for an empty one.
+_PARAMETER: Final = re.compile(_ONE_PARAMETER)
 _QUOTED_PAIR: Final = re.compile(r'\\(.)', re.DOTALL)
 
 
@@ -107,19 +107,18 @@ def media_parts(text: str) -> tuple[str, frozenset[tuple[str, str]]]:
     outside `MEDIA_RANGE` is returned lowercased, whole, with no parameters:
     P10 reports it, and a comparison before then must not fail on it.
     """
-    if MEDIA_RANGE.fullmatch(text) is None:
+    whole = MEDIA_RANGE.fullmatch(text)
+    if whole is None:
         return text.lower(), frozenset()
-    head = _MEDIA_HEAD.match(text)
-    assert head is not None  # noqa: S101 - `MEDIA_RANGE` matched, and starts with this
     parameters = set()
-    for found in _PARAMETER.finditer(text, head.end()):
+    for found in _PARAMETER.finditer(text, whole.end(1)):
         name, value = found.group(1), found.group(2)
         if name is None:
             continue
         if value[:1] == '"':
             value = _QUOTED_PAIR.sub(r'\1', value[1:-1])
         parameters.add((name.lower(), value))
-    return head.group().lower(), frozenset(parameters)
+    return whole.group(1).lower(), frozenset(parameters)
 
 
 def scalar_bool(node: Node, location: str) -> bool:

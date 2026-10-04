@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING
 
 from fastraml.datanode import at_value, locate
 from fastraml.errors import Accumulator, ErrorKind, RamlError, Trace
+from fastraml.parser.facets import media_parts
 from fastraml.types.base import TYPE_JSON, checks_memoized
 from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape, nested
 from fastraml.types.examples import examples_of
@@ -210,7 +211,7 @@ def _validate_json_schema_placement(raml: Raml, cache: dict[int, BaseShape], acc
 
 def _allows_json(media_type: str) -> bool:
     """`application/json`, a `+json` suffix (RFC 6839 § 3.1), or a range that admits one."""
-    kind, _, subtype = media_type.partition(';')[0].strip().casefold().partition('/')
+    kind, _, subtype = media_parts(media_type)[0].partition('/')
     if kind == '*' or (kind == 'application' and subtype in {'json', '*'}):
         return True
     return subtype.endswith('+json')

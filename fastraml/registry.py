@@ -36,7 +36,7 @@ if TYPE_CHECKING:
     from fastraml.parser.substitutions import Substitutions
     from fastraml.positions import Position
     from fastraml.types.expressions import ExprCache
-    from fastraml.types.jsonschema_ import SchemaRegistry
+    from fastraml.types.schema_compile import SchemaRegistry
     from fastraml.yamlnode import Node
 
     # Written out so the field list below remains readable without runtime
@@ -266,7 +266,7 @@ class Raml:
         # One parse per distinct expression text, not per occurrence. Held here
         # rather than on the expression parser so it dies with the parse.
         self.expr_cache: ExprCache = {}
-        # Built on first use by `types/jsonschema_.py`: this module imports
+        # Built on first use by `types/schema_compile.py`: this module imports
         # nothing from `types/` at runtime (docs/02 § 2).
         self.json_schema_registry: SchemaRegistry | None = None
 

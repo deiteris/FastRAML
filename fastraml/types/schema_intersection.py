@@ -1,60 +1,49 @@
 """Order-independent JSON Schema conjunction for the RAML projection (docs/10 § 7).
 
-Source schemas retain their resolvers until child declarations are projected.
-No input schema, cached projection, or RAML inheritance rule is changed here.
+The `allOf` reducers behind `schema_projection.py`. Source schemas retain their
+resolvers until child declarations are projected. No input schema, cached
+projection, or RAML inheritance rule is changed here. A child left unchanged
+goes back through the projection, which `intersect` is handed rather than
+imports, so the two modules form no cycle.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from fractions import Fraction
+from functools import cache
 from math import ceil, floor, gcd, isfinite, lcm
 from typing import TYPE_CHECKING, Any, Final
 from urllib.parse import urldefrag, urljoin
 
-from jsonschema import (
-    Draft4Validator,
-    Draft6Validator,
-    Draft7Validator,
-    Draft201909Validator,
-    Draft202012Validator,
-    FormatChecker,
-)
-from jsonschema.validators import validator_for
-
 from fastraml.errors import ErrorKind, RamlError
+from fastraml.parser.facets import regex_engine
 from fastraml.types.base import BaseShape, Property, ScalarFacet
 from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
-from fastraml.types.jsonschema_ import (
-    _KEYWORD_TYPE,
-    JsonShape,
-    _attach,
-    _data,
-    _document_of,
-    _kind,
-    _pattern_facet,
-    _project,
-    _specification_of,
-    _unsupported,
-    _view_base,
-)
 from fastraml.types.scalars import AnyShape, BooleanShape, IntegerShape, NilShape, NumberShape, StringShape
+from fastraml.types.schema_compile import document_of, specification_of
+from fastraml.types.schema_view import KEYWORD_TYPE, attach, attach_kind, unsupported, view_base, view_data
 from fastraml.types.values import EnumValues, as_fraction
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    import re
+    from collections.abc import Callable, Iterator
 
-    from fastraml.types.jsonschema_ import _Projection, _Visiting
+    from fastraml.types.schema_view import Projection, Visiting
 
-type _Part = tuple[_Projection, dict[str, Any]]
-type _Source = tuple[_Projection, Any]
+type _Part = tuple[Projection, dict[str, Any]]
+type _Source = tuple[Projection, Any]
 type _ScopeKey = tuple[int, str | None]
 type _CompositeKey = frozenset[tuple[str | None, str]]
+#: The projection of one schema node: the walk that called `intersect`, handed
+#: in so that the two modules do not import each other.
+type _Project = Callable[[Projection, Any, Visiting], BaseShape]
 
 
 @dataclass(slots=True, eq=False)
 class _Intersection:
-    visiting: _Visiting
+    visiting: Visiting
+    project: _Project
     strict: bool = True
     built: dict[_CompositeKey, BaseShape] = field(default_factory=dict)
     active: set[_CompositeKey] = field(default_factory=set)
@@ -86,22 +75,46 @@ _UNSUPPORTED: Final = frozenset(
         'prefixItems',
     }
 )
-_ACTIVE: Final = {
-    'draft-04': frozenset(Draft4Validator.VALIDATORS) | {'exclusiveMinimum', 'exclusiveMaximum'},
-    'draft-06': frozenset(Draft6Validator.VALIDATORS),
-    'draft-07': frozenset(Draft7Validator.VALIDATORS) | {'then', 'else'},
-    'draft2019-09': frozenset(Draft201909Validator.VALIDATORS) | {'then', 'else', 'minContains', 'maxContains'},
-    'draft2020-12': frozenset(Draft202012Validator.VALIDATORS) | {'then', 'else', 'minContains', 'maxContains'},
-}
-_VALIDATORS: Final = {
-    'draft-04': Draft4Validator,
-    'draft-06': Draft6Validator,
-    'draft-07': Draft7Validator,
-    'draft2019-09': Draft201909Validator,
-    'draft2020-12': Draft202012Validator,
-}
-_KNOWN: Final = frozenset().union(*_ACTIVE.values())
-_CONDITIONAL: Final = _KEYWORD_TYPE | {
+
+
+@dataclass(frozen=True, slots=True)
+class _Drafts:
+    """The keywords each draft acts on, and its validator class."""
+
+    active: dict[str, frozenset[str]]
+    validators: dict[str, Any]
+    known: frozenset[str]
+
+
+@cache
+def _drafts() -> _Drafts:
+    """Built on first use, which keeps `jsonschema` off the import path."""
+    from jsonschema import (  # noqa: PLC0415 - deferred for startup cost
+        Draft4Validator,
+        Draft6Validator,
+        Draft7Validator,
+        Draft201909Validator,
+        Draft202012Validator,
+    )
+
+    active = {
+        'draft-04': frozenset(Draft4Validator.VALIDATORS) | {'exclusiveMinimum', 'exclusiveMaximum'},
+        'draft-06': frozenset(Draft6Validator.VALIDATORS),
+        'draft-07': frozenset(Draft7Validator.VALIDATORS) | {'then', 'else'},
+        'draft2019-09': frozenset(Draft201909Validator.VALIDATORS) | {'then', 'else', 'minContains', 'maxContains'},
+        'draft2020-12': frozenset(Draft202012Validator.VALIDATORS) | {'then', 'else', 'minContains', 'maxContains'},
+    }
+    validators = {
+        'draft-04': Draft4Validator,
+        'draft-06': Draft6Validator,
+        'draft-07': Draft7Validator,
+        'draft2019-09': Draft201909Validator,
+        'draft2020-12': Draft202012Validator,
+    }
+    return _Drafts(active, validators, frozenset().union(*active.values()))
+
+
+_CONDITIONAL: Final = KEYWORD_TYPE | {
     'dependentRequired': 'object',
     'dependentSchemas': 'object',
     'unevaluatedProperties': 'object',
@@ -112,7 +125,7 @@ _CONDITIONAL: Final = _KEYWORD_TYPE | {
 }
 # Length bounds make `$` an absolute end for the fixed-width spelling, including
 # on `re`, where `$` alone also matches before a trailing newline (docs/10 § 7).
-_STRING_FORMATS: Final = {
+STRING_FORMATS: Final = {
     'uuid': (r'^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$', 36),
 }
 
@@ -134,18 +147,25 @@ class _JsonEnumValues(EnumValues):
         return _json_key(value) in self._json_keys
 
 
-def intersect(
-    context: _Projection, contents: dict, base: BaseShape, visiting: _Visiting, *, strict: bool = True
+def intersect(  # noqa: PLR0913 - the walk's state, and the walk itself
+    context: Projection,
+    contents: dict,
+    base: BaseShape,
+    visiting: Visiting,
+    project: _Project,
+    *,
+    strict: bool = True,
 ) -> BaseShape:
     try:
-        return _intersect(context, [(context, contents)], base, _Intersection(visiting, strict), len(visiting))
+        state = _Intersection(visiting, project, strict)
+        return _intersect(context, [(context, contents)], base, state, len(visiting))
     except _EmptyIntersection:
         if context.allow_empty:
             raise
-        raise _unsupported(context, 'unsatisfiable allOf') from None
+        raise unsupported(context, 'unsatisfiable allOf') from None
 
 
-def _depth(context: _Projection, depth: int) -> None:
+def _depth(context: Projection, depth: int) -> None:
     if depth > context.parent._raml.max_depth:  # noqa: SLF001 - the projection shares the parse's ceiling
         raise RamlError.new(
             'JSON schema nesting too deep',
@@ -156,28 +176,27 @@ def _depth(context: _Projection, depth: int) -> None:
         )
 
 
-def _effective_specification(context: _Projection, contents: dict[str, Any]) -> tuple[Any, Any]:
-    assert isinstance(context.parent.shape, JsonShape)  # noqa: S101 - entered by the JSON Schema projection
+def _effective_specification(context: Projection, contents: dict[str, Any]) -> tuple[Any, Any]:
     # A JSON Pointer entry's selected schema need not repeat its document's
     # $schema. The compiled validator, not that selected body, owns the draft.
-    root_spec = _specification_of(type(context.parent.shape.validator).META_SCHEMA)
+    root_spec = specification_of(type(context.validator).META_SCHEMA)
     if '$schema' in contents:
-        return _specification_of(contents), root_spec
-    resource = context.resolver._registry.get(_document_of(context.resolver) or '')  # noqa: SLF001
+        return specification_of(contents), root_spec
+    resource = context.resolver._registry.get(document_of(context.resolver) or '')  # noqa: SLF001
     if resource is not None and isinstance(resource.contents, dict) and '$schema' in resource.contents:
         return resource._specification, root_spec  # noqa: SLF001 - referencing exposes no specification query
     return root_spec, root_spec
 
 
-def ref_siblings_apply(context: _Projection, contents: dict[str, Any]) -> bool:
+def ref_siblings_apply(context: Projection, contents: dict[str, Any]) -> bool:
     specification, _ = _effective_specification(context, contents)
     return specification.name not in {'draft-04', 'draft-06', 'draft-07'} and bool(
-        contents.keys() & (_KNOWN - {'$ref'})
+        contents.keys() & (_drafts().known - {'$ref'})
     )
 
 
 def _parts(  # noqa: PLR0912 - refs, draft-specific siblings, and nested conjunctions
-    context: _Projection, contents: Any, active: set[_ScopeKey], done: set[_ScopeKey], depth: int
+    context: Projection, contents: Any, active: set[_ScopeKey], done: set[_ScopeKey], depth: int
 ) -> Iterator[_Part]:
     """Flatten conjunctions and references, keeping each leaf's resolution scope."""
     _depth(context, depth)
@@ -185,9 +204,9 @@ def _parts(  # noqa: PLR0912 - refs, draft-specific siblings, and nested conjunc
         raise _EmptyIntersection
     if contents is True:
         return
-    key = id(contents), _document_of(context.resolver)
+    key = id(contents), document_of(context.resolver)
     if key in active:
-        raise _unsupported(context, 'recursive allOf member')
+        raise unsupported(context, 'recursive allOf member')
     if key in done:
         return
     active.add(key)
@@ -203,18 +222,19 @@ def _parts(  # noqa: PLR0912 - refs, draft-specific siblings, and nested conjunc
             if specification != root_spec and len(contents.keys() - {'$schema', '$id', '$ref', 'id'}) > 0:
                 # jsonschema.descend selects applicable $ref siblings with the
                 # enclosing validator class before evolving to the new draft.
-                raise _unsupported(context, 'allOf mixed-draft $ref siblings')
+                raise unsupported(context, 'allOf mixed-draft $ref siblings')
             resolved = context.resolver.lookup(reference)
-            _, pointer = urldefrag(urljoin(_document_of(context.resolver) or '', reference))
+            _, pointer = urldefrag(urljoin(document_of(context.resolver) or '', reference))
             yield from _parts(context.at(resolved.resolver, pointer), resolved.contents, active, done, depth + 1)
             # Draft 4/6/7 ignore siblings of $ref; newer drafts apply them.
             if specification in (DRAFT4, DRAFT6, DRAFT7):
                 return
-        keywords = _ACTIVE.get(specification.name)
+        drafts = _drafts()
+        keywords = drafts.active.get(specification.name)
         siblings = {
             key: value
             for key, value in contents.items()
-            if key not in {'allOf', '$ref'} and (keywords is None or key not in _KNOWN or key in keywords)
+            if key not in {'allOf', '$ref'} and (keywords is None or key not in drafts.known or key in keywords)
         }
         if 'if' not in contents:
             siblings.pop('then', None)
@@ -224,7 +244,7 @@ def _parts(  # noqa: PLR0912 - refs, draft-specific siblings, and nested conjunc
             siblings.pop('maxContains', None)
         if not isinstance(contents.get('items'), list):
             siblings.pop('additionalItems', None)
-        if siblings.keys() & _KNOWN:
+        if siblings.keys() & drafts.known:
             yield context, siblings
         for index, member in enumerate(contents.get('allOf', ()) if keywords is None or 'allOf' in keywords else ()):
             yield from _parts(context.into('allOf', str(index)), member, active, done, depth + 1)
@@ -263,6 +283,8 @@ def _types(parts: list[_Part]) -> list[str]:
 
 
 def _inferred_types(parts: list[_Part]) -> list[str]:
+    from jsonschema import FormatChecker  # noqa: PLC0415 - deferred for startup cost
+
     values = _finite_values(parts)
     if values is not None:
         names = dict.fromkeys(_value_type(value) for value in values)
@@ -273,21 +295,21 @@ def _inferred_types(parts: list[_Part]) -> list[str]:
     if any(contents.get('format') in FormatChecker.checkers for _, contents in parts):
         hinted.add('string')
     if len(hinted) > 1:
-        raise _unsupported(parts[0][0], 'allOf constraints on multiple inferred types')
+        raise unsupported(parts[0][0], 'allOf constraints on multiple inferred types')
     return list(hinted) or ['any']
 
 
 def _intersect(
-    context: _Projection, sources: list[_Source], base: BaseShape, state: _Intersection, depth: int
+    context: Projection, sources: list[_Source], base: BaseShape, state: _Intersection, depth: int
 ) -> BaseShape:
     _depth(context, depth)
     done: set[_ScopeKey] = set()
     parts = [part for scope, schema in sources for part in _parts(scope, schema, set(), done, depth)]
-    key = frozenset((_document_of(scope.resolver), scope.pointer) for scope, _ in parts)
+    key = frozenset((document_of(scope.resolver), scope.pointer) for scope, _ in parts)
     previous = state.built.get(key)
     if previous is not None:
         if key in state.active:
-            return _kind(_view_base(context), 'recursive', RecursiveShape, head=previous)
+            return attach_kind(view_base(context), 'recursive', RecursiveShape, head=previous)
         return previous
     state.built[key] = base
     state.active.add(key)
@@ -300,14 +322,14 @@ def _intersect(
         state.active.remove(key)
 
 
-def _build(context: _Projection, parts: list[_Part], base: BaseShape, state: _Intersection, depth: int) -> BaseShape:
+def _build(context: Projection, parts: list[_Part], base: BaseShape, state: _Intersection, depth: int) -> BaseShape:
     names = _types(parts)
     if len(names) == 1:
         _body(context, parts, names[0], base, state, depth)
     else:
         members = []
         for name in names:
-            member = _view_base(context)
+            member = view_base(context)
             try:
                 _body(context, parts, name, member, state, depth)
                 _enum(member, parts, name)
@@ -316,13 +338,13 @@ def _build(context: _Projection, parts: list[_Part], base: BaseShape, state: _In
             members.append(member)
         if not members:
             raise _EmptyIntersection
-        _kind(base, 'union', UnionShape, any_of=members)
+        attach_kind(base, 'union', UnionShape, any_of=members)
     _enum(base, parts, names[0] if len(names) == 1 else 'union')
     return base
 
 
 def _body(  # noqa: PLR0913, PLR0917 - the selected kind and recursion state
-    context: _Projection, parts: list[_Part], name: str, base: BaseShape, state: _Intersection, depth: int
+    context: Projection, parts: list[_Part], name: str, base: BaseShape, state: _Intersection, depth: int
 ) -> None:
     if state.strict:
         _check_keywords(parts, name)
@@ -335,24 +357,24 @@ def _body(  # noqa: PLR0913, PLR0917 - the selected kind and recursion state
     elif name == 'string':
         _string(context, parts, base, strict=state.strict)
     elif name == 'any':
-        _kind(base, name, AnyShape)
+        attach_kind(base, name, AnyShape)
     elif name == 'boolean':
-        _kind(base, name, BooleanShape)
+        attach_kind(base, name, BooleanShape)
     elif name == 'null':
-        _kind(base, 'nil', NilShape)
+        attach_kind(base, 'nil', NilShape)
     else:
-        raise _unsupported(context, f'type: {name}')
+        raise unsupported(context, f'type: {name}')
 
 
-def _string(context: _Projection, parts: list[_Part], base: BaseShape, *, strict: bool) -> None:
+def _string(context: Projection, parts: list[_Part], base: BaseShape, *, strict: bool) -> None:
     shape = StringShape(base)
     shape.min_length, shape.max_length = _bounds(base, parts, 'minLength', 'maxLength')
     patterns = {contents['pattern'] for _, contents in parts if 'pattern' in contents}
     for _, contents in parts:
         format_name = contents.get('format')
-        if format_name not in _STRING_FORMATS:
+        if format_name not in STRING_FORMATS:
             continue
-        pattern, length = _STRING_FORMATS[format_name]
+        pattern, length = STRING_FORMATS[format_name]
         patterns.add(pattern)
         if (shape.min_length is not None and shape.min_length.value > length) or (
             shape.max_length is not None and shape.max_length.value < length
@@ -361,29 +383,29 @@ def _string(context: _Projection, parts: list[_Part], base: BaseShape, *, strict
         shape.min_length = ScalarFacet(value=length, location=base.location)
         shape.max_length = ScalarFacet(value=length, location=base.location)
     if len(patterns) > 1:
-        raise _unsupported(context, 'allOf with multiple patterns')
+        raise unsupported(context, 'allOf with multiple patterns')
     if patterns:
         shape.pattern = _pattern_facet(base, patterns.pop())
-        if shape.pattern is None and (
-            strict or any(contents.get('format') in _STRING_FORMATS for _, contents in parts)
-        ):
-            raise _unsupported(context, 'allOf pattern')
-    _attach(base, 'string', shape)
+        if shape.pattern is None and (strict or any(contents.get('format') in STRING_FORMATS for _, contents in parts)):
+            raise unsupported(context, 'allOf pattern')
+    attach(base, 'string', shape)
 
 
 def _check_keywords(parts: list[_Part], name: str) -> None:
+    from jsonschema import FormatChecker  # noqa: PLC0415 - deferred for startup cost
+
     for scope, contents in parts:
         for key in contents:
             if key not in _UNSUPPORTED:
                 continue
             if key == 'format' and (
-                name != 'string' or contents[key] in _STRING_FORMATS or contents[key] not in FormatChecker.checkers
+                name != 'string' or contents[key] in STRING_FORMATS or contents[key] not in FormatChecker.checkers
             ):
                 continue
             applies = _CONDITIONAL.get(key)
             if applies is not None and applies != name and not (applies == 'number' and name == 'integer'):
                 continue
-            raise _unsupported(scope, f'allOf keyword: {key}')
+            raise unsupported(scope, f'allOf keyword: {key}')
 
 
 def _bounds(
@@ -400,7 +422,7 @@ def _bounds(
     )
 
 
-def _count(context: _Projection, value: Any, keyword: str) -> int:
+def _count(context: Projection, value: Any, keyword: str) -> int:
     # The entry schema is checked, but a referenced document need not be. JSON
     # Schema accepts integral JSON numbers such as 1.0; RAML count facets are int.
     if (
@@ -410,7 +432,7 @@ def _count(context: _Projection, value: Any, keyword: str) -> int:
         or int(value) != value
         or value < 0
     ):
-        raise _unsupported(context, f'allOf invalid {keyword}')
+        raise unsupported(context, f'allOf invalid {keyword}')
     return int(value)
 
 
@@ -428,15 +450,15 @@ def _numeric_bound(parts: list[_Part], keyword: str) -> tuple[Fraction, bool] | 
     return max(bounds) if keyword == 'minimum' else min(bounds, key=lambda bound: (bound[0], not bound[1]))
 
 
-def _fraction(context: _Projection, value: Any) -> Fraction:
+def _fraction(context: Projection, value: Any) -> Fraction:
     number = as_fraction(value) if isinstance(value, int | float) and not isinstance(value, bool) else None
     if number is None:
-        raise _unsupported(context, 'allOf invalid numeric facet')
+        raise unsupported(context, 'allOf invalid numeric facet')
     return number
 
 
 def _number(  # noqa: PLR0912 - per-kind bounds and exact multiples share their consistency check
-    context: _Projection, parts: list[_Part], name: str, base: BaseShape
+    context: Projection, parts: list[_Part], name: str, base: BaseShape
 ) -> None:
     low, high = _numeric_bound(parts, 'minimum'), _numeric_bound(parts, 'maximum')
     if low and high and (low[0] > high[0] or (low[0] == high[0] and (low[1] or high[1]))):
@@ -447,7 +469,7 @@ def _number(  # noqa: PLR0912 - per-kind bounds and exact multiples share their 
         shape: IntegerShape | NumberShape = IntegerShape(base)
     else:
         if (low and low[1]) or (high and high[1]):
-            raise _unsupported(context, 'allOf exclusive number bound')
+            raise unsupported(context, 'allOf exclusive number bound')
         minimum, maximum = low[0] if low else None, high[0] if high else None
         shape = NumberShape(base)
     if minimum is not None and maximum is not None and minimum > maximum:
@@ -464,7 +486,7 @@ def _number(  # noqa: PLR0912 - per-kind bounds and exact multiples share their 
             continue
         value = as_fraction(contents['multipleOf']) if isinstance(contents['multipleOf'], int | float) else None
         if value is None or value <= 0:
-            raise _unsupported(scope, 'allOf invalid multipleOf')
+            raise unsupported(scope, 'allOf invalid multipleOf')
         multiple = (
             value
             if multiple is None
@@ -476,17 +498,17 @@ def _number(  # noqa: PLR0912 - per-kind bounds and exact multiples share their 
         shape.multiple_of = ScalarFacet(value=multiple, location=base.location)
         if minimum is not None and maximum is not None and ceil(Fraction(minimum) / multiple) * multiple > maximum:
             raise _EmptyIntersection
-    _attach(base, name, shape)
+    attach(base, name, shape)
 
 
-def _check_child(scope: _Projection, contents: Any, state: _Intersection, depth: int) -> None:
+def _check_child(scope: Projection, contents: Any, state: _Intersection, depth: int) -> None:
     """Check representability before a canonical cache can bypass the source walk."""
     _depth(scope, depth)
     target, target_scope = contents, scope
     if isinstance(contents, dict) and set(contents) == {'$ref'}:
         resolved = scope.resolver.lookup(contents['$ref'])
         target, target_scope = resolved.contents, scope.at(resolved.resolver, '')
-    key = id(target), _document_of(target_scope.resolver)
+    key = id(target), document_of(target_scope.resolver)
     if key in state.checked:
         return
     parts = list(_parts(scope, contents, set(), set(), depth))
@@ -511,7 +533,7 @@ def _check_child(scope: _Projection, contents: Any, state: _Intersection, depth:
             continue
 
 
-def _child(context: _Projection, sources: list[_Source], state: _Intersection, depth: int) -> BaseShape:
+def _child(context: Projection, sources: list[_Source], state: _Intersection, depth: int) -> BaseShape:
     _depth(context, depth + 1)
     if len(sources) == 1:
         scope, contents = sources[0]
@@ -519,12 +541,12 @@ def _child(context: _Projection, sources: list[_Source], state: _Intersection, d
         # reference cache and recursion heads. Only combined children get a new head.
         if state.strict:
             _check_child(scope, contents, state, depth + 1)
-        return _project(replace(scope, allow_empty=True), contents, state.visiting)
-    return _intersect(context, sources, _view_base(context), state, depth + 1)
+        return state.project(replace(scope, allow_empty=True), contents, state.visiting)
+    return _intersect(context, sources, view_base(context), state, depth + 1)
 
 
 def _object(  # noqa: PLR0912 - closed members and impossible optional properties are distinct cases
-    context: _Projection, parts: list[_Part], base: BaseShape, state: _Intersection, depth: int
+    context: Projection, parts: list[_Part], base: BaseShape, state: _Intersection, depth: int
 ) -> None:
     required: dict[str, None] = {}
     properties: dict[str, list[_Source]] = {}
@@ -532,7 +554,7 @@ def _object(  # noqa: PLR0912 - closed members and impossible optional propertie
     for scope, contents in parts:
         extras = contents.get('additionalProperties')
         if isinstance(extras, dict):
-            raise _unsupported(scope, 'schema-form additionalProperties')
+            raise unsupported(scope, 'schema-form additionalProperties')
         declared = contents.get('properties', {})
         if extras is False:
             allowed = set(declared) if allowed is None else allowed & declared.keys()
@@ -549,13 +571,13 @@ def _object(  # noqa: PLR0912 - closed members and impossible optional propertie
             continue
         scope = context.into('properties', name)
         try:
-            child = _child(scope, sources, state, depth) if sources else _kind(_view_base(scope), 'any', AnyShape)
+            child = _child(scope, sources, state, depth) if sources else attach_kind(view_base(scope), 'any', AnyShape)
         except _EmptyIntersection:
             if name in required:
                 raise
             if allowed is not None:
                 continue
-            raise _unsupported(scope, 'allOf with an impossible optional property') from None
+            raise unsupported(scope, 'allOf with an impossible optional property') from None
         built[name] = Property(name=name, base=child, required=name in required)
     shape = ObjectShape(base, properties=built or None)
     shape.min_properties, shape.max_properties = _bounds(base, parts, 'minProperties', 'maxProperties')
@@ -565,13 +587,13 @@ def _object(  # noqa: PLR0912 - closed members and impossible optional propertie
         shape.additional_properties = ScalarFacet(value=False, location=base.location)
         if shape.min_properties is not None and shape.min_properties.value > len(built):
             raise _EmptyIntersection
-    _attach(base, 'object', shape)
+    attach(base, 'object', shape)
 
 
-def _array(context: _Projection, parts: list[_Part], base: BaseShape, state: _Intersection, depth: int) -> None:
+def _array(context: Projection, parts: list[_Part], base: BaseShape, state: _Intersection, depth: int) -> None:
     sources = [(scope.into('items'), contents['items']) for scope, contents in parts if 'items' in contents]
     if any(isinstance(contents, list) for _, contents in sources):
-        raise _unsupported(context, 'tuple-form items')
+        raise unsupported(context, 'tuple-form items')
     shape = ArrayShape(base)
     shape.min_items, shape.max_items = _bounds(base, parts, 'minItems', 'maxItems')
     if sources:
@@ -583,7 +605,7 @@ def _array(context: _Projection, parts: list[_Part], base: BaseShape, state: _In
             shape.max_items = ScalarFacet(value=0, location=base.location)
     if any(contents.get('uniqueItems') for _, contents in parts):
         shape.unique_items = ScalarFacet(value=True, location=base.location)
-    _attach(base, 'array', shape)
+    attach(base, 'array', shape)
 
 
 def _json_key(value: Any) -> Any:
@@ -625,6 +647,9 @@ def _finite_values(parts: list[_Part]) -> list[Any] | None:
 
 
 def _enum(base: BaseShape, parts: list[_Part], name: str) -> None:
+    from jsonschema import FormatChecker  # noqa: PLC0415 - deferred for startup cost
+    from jsonschema.validators import validator_for  # noqa: PLC0415
+
     candidates = _finite_values(parts)
     if candidates is None:
         base.enum = None
@@ -650,15 +675,31 @@ def _enum(base: BaseShape, parts: list[_Part], name: str) -> None:
             continue
         if not all(validator.is_valid(value) for validator in validators):
             continue
-        values.append(_data(base, value))
+        values.append(view_data(base, value))
     if not values:
         raise _EmptyIntersection
     base.enum = _JsonEnumValues(values)
 
 
-def _validator_at(scope: _Projection) -> Any:
-    resource = scope.resolver._registry.get(_document_of(scope.resolver) or '')  # noqa: SLF001
+def _validator_at(scope: Projection) -> Any:
+    resource = scope.resolver._registry.get(document_of(scope.resolver) or '')  # noqa: SLF001
     if resource is not None and isinstance(resource.contents, dict) and '$schema' in resource.contents:
-        return _VALIDATORS.get(resource._specification.name, Draft7Validator)  # noqa: SLF001 - authored draft
-    assert isinstance(scope.parent.shape, JsonShape)  # noqa: S101 - JSON Schema projection context
-    return type(scope.parent.shape.validator)
+        validators = _drafts().validators
+        return validators.get(resource._specification.name, validators['draft-07'])  # noqa: SLF001 - authored draft
+    return type(scope.validator)
+
+
+def _pattern_facet(base: BaseShape, value: Any) -> ScalarFacet[re.Pattern[str]] | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        compiled = regex_engine(base._raml).compile(value)  # noqa: SLF001 - the parse's engine (docs/01 § 4.2)
+    except ImportError:
+        raise
+    except Exception:  # noqa: BLE001 - whatever the selected engine raises
+        # A pattern the schema library accepts under ECMA-262 semantics may not
+        # compile here, and `re2` rejects strictly more than `re` does. The
+        # projection is a view, so the constraint is dropped rather than the
+        # whole shape refused; `validate()` still enforces it.
+        return None
+    return ScalarFacet(value=compiled, location=base.location)

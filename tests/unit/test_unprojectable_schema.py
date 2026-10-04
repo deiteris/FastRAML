@@ -16,6 +16,8 @@ from typing import ClassVar
 import pytest
 
 import fastraml.types.jsonschema_ as module
+import fastraml.types.schema_compile as compile_module
+import fastraml.types.schema_projection as projection_module
 from fastraml import ParseOptions, RamlError, to_openapi, to_raml
 from fastraml.service import outline, queries
 from fastraml.service.workspace import Workspace
@@ -96,13 +98,15 @@ class TestTheFailureIsKeptNotRaised:
     def test_the_failure_is_computed_once(self, raml, monkeypatch):
 
         calls = []
-        walk = module._project
+        walk = projection_module.project
 
         def counted(*args, **kwargs):
             calls.append(args[1])
             return walk(*args, **kwargs)
 
-        monkeypatch.setattr(module, '_project', counted)
+        # Where the walk starts, and where it recurses.
+        monkeypatch.setattr(module, 'project', counted)
+        monkeypatch.setattr(projection_module, 'project', counted)
         shape = declared(raml, 'Broken').shape
         first = shape.projection_error()
         walked = len(calls)
@@ -115,10 +119,11 @@ class TestTheFailureIsKeptNotRaised:
         """`Broken` and `Again` include one schema file: one projection, so one failure."""
 
         first = declared(raml, 'Broken').shape.projection_error()
-        monkeypatch.setattr(module, '_project', pytest.fail)
+        monkeypatch.setattr(module, 'project', pytest.fail)
+        monkeypatch.setattr(projection_module, 'project', pytest.fail)
         assert declared(raml, 'Again').shape.projection_error() is first
         again = declared(raml, 'Again').shape
-        assert schema_registry(raml).failed(again.canonical_uri, module._draft_of(again.validator)) is first
+        assert schema_registry(raml).failed(again.canonical_uri, compile_module.draft_of(again.validator)) is first
 
 
 class TestEveryViewDegradesLocally:
@@ -382,7 +387,7 @@ def test_a_shared_projection_wins_over_a_cached_failure(raml):
     shape = declared(raml, 'Broken').shape
     assert shape.projection_error() is not None
     sound = declared(raml, 'Sound')
-    schema_registry(raml).share(shape.canonical_uri, module._draft_of(shape.validator), sound, {})
+    schema_registry(raml).share(shape.canonical_uri, compile_module.draft_of(shape.validator), sound, {})
     assert shape.as_shape() is sound
     assert shape.projection_error() is None
 

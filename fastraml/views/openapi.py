@@ -395,7 +395,7 @@ class _SchemaConversion:
     A component per *named* type, and everything else written where it stands. A
     type is named when a `types:` block named it -- the API's own and every
     library's -- or when the projection named it, which it does for the
-    subschemas a `$ref` can address (`types/jsonschema_.py`, `_subschema_name`).
+    subschemas a `$ref` can address (`types/schema_view.py`, `subschema_name`).
     """
 
     __slots__ = ('by_id', 'by_schema', 'components', 'dropped', 'taken')

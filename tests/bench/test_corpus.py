@@ -190,8 +190,8 @@ class TestFeatureCorporaReachTheirCode:
 
     @pytest.mark.parametrize('count', [6, 12])
     def test_schema_allof_projects_every_composite_without_narrowing_shared_refs(self, tmp_path, monkeypatch, count):
-        import fastraml.types.jsonschema_ as schema_module
         import fastraml.types.schema_intersection as intersection_module
+        import fastraml.types.schema_projection as schema_module
         from fastraml import build_graph
 
         calls = []

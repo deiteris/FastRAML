@@ -14,15 +14,18 @@ from typing import TYPE_CHECKING
 import pytest
 
 from fastraml.config import FastRamlConfig
-from fastraml.errors import ErrorKind
+from fastraml.errors import ErrorKind, RamlError
 from fastraml.gctuning import tuned_gc
 from fastraml.registry import Raml
-from fastraml.service.workspace import Workspace, canonical
+from fastraml.service.workspace import _HEAD_BYTES, BOM, Workspace, _head, canonical
 from fastraml.uris import path_to_file_uri
+from fastraml.yamlnode import decode_source, read_head
 from tests.unit.conftest import write_files
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from tests.unit.conftest import MemoryWorkspace
 
 API = '#%RAML 1.0\ntitle: T\n'
 LIBRARY = '#%RAML 1.0 Library\ntypes:\n  User: string\n'
@@ -98,6 +101,57 @@ class TestRoots:
     def test_an_editors_spelling_of_a_uri_is_the_parsers(self, tmp_path):
         uri = path_to_file_uri(tmp_path / 'api.raml')
         assert canonical(uri.replace(':', '%3A', 1).replace('file%3A', 'file:')) == uri
+
+
+class TestHeaderLine:
+    """A root is decided by the header line the parser reads (docs/03 § 3)."""
+
+    @pytest.mark.parametrize(
+        'text',
+        [
+            '#%RAML 1.0\ntitle: T\n',
+            '#%RAML 1.0 \t\r\ntitle: T\n',
+            f'{BOM}#%RAML 1.0\ntitle: T\n',
+            f'{BOM}{BOM}#%RAML 1.0\ntitle: T\n',
+            '#%RAML 1.0\x0c\ntitle: T\n',
+            '#%RAML 1.0\xa0\ntitle: T\n',
+        ],
+    )
+    def test_the_head_is_the_parsers(self, text):
+        assert _head(text) == read_head(decode_source(text.encode()))
+
+    @staticmethod
+    def _is_root(memory_workspace: MemoryWorkspace, data: bytes) -> bool:
+        """Whether a file holding `data` is a root, read in memory: `_is_root`
+        only loads, so the folder's loader is swapped for the in-memory one.
+        """
+        folder = memory_workspace({})
+        uri = path_to_file_uri(folder / 'api.raml')
+        memory_workspace.files[uri] = data
+        workspace = Workspace([path_to_file_uri(folder)])
+        workspace._disks = dict.fromkeys(workspace._disks, memory_workspace)  # type: ignore[arg-type]
+        return workspace._is_root(canonical(uri))
+
+    def test_a_file_with_a_byte_order_mark_is_a_root(self, memory_workspace):
+        assert self._is_root(memory_workspace, (BOM + API).encode())
+
+    def test_a_file_that_is_not_utf8_is_no_root(self, memory_workspace):
+        data = API.encode() + b'description: \xff\n'
+        folder = memory_workspace({})
+        memory_workspace.files[path_to_file_uri(folder / 'api.raml')] = data
+        with pytest.raises(RamlError):
+            memory_workspace.parse(folder / 'api.raml')
+        assert not self._is_root(memory_workspace, data)
+
+    def test_a_character_cut_by_the_head_read_is_not_an_error(self, memory_workspace):
+        prefix = (API + 'description: ').encode()
+        # A loader returns `_HEAD_BYTES + 1` bytes of a longer file; the last
+        # is the first byte of a two-byte `é`.
+        prefix += b'x' * ((_HEAD_BYTES - len(prefix)) % 2)
+        data = prefix + ('é' * 200 + '\n').encode()
+        with pytest.raises(UnicodeDecodeError):
+            data[: _HEAD_BYTES + 1].decode('utf-8')
+        assert self._is_root(memory_workspace, data)
 
 
 class TestSnapshots:

@@ -1083,14 +1083,13 @@ def _value(facet: Any) -> Any:
     return None if facet is None else facet.value
 
 
-def _number(value: Any) -> int | float | None:
-    if value is None:
-        return None
+def _number(value: Fraction | int | None) -> int | float | None:
+    """A bound as JSON writes it: an `integer` bound is an int, a `number`
+    bound a `Fraction`, read as an int where it is whole.
+    """
     if isinstance(value, Fraction):
         return int(value) if value.denominator == 1 else float(value)
-    if isinstance(value, int | float):
-        return value
-    return float(value)
+    return value
 
 
 def _server_default(value: Any) -> str:
@@ -1127,7 +1126,7 @@ def _oauth1_settings(settings: SecuritySchemeSettings | None) -> dict[str, Any]:
 
 
 def _security_requirement(scheme: SecurityScheme) -> OAS3SecurityRequirement:
-    if scheme.is_null or scheme.name == TYPE_NULL:
+    if scheme.is_null:
         return {}
     return {scheme.name: list(scheme.compiled_params or ())}
 

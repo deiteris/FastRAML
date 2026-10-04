@@ -38,9 +38,10 @@ need a real filesystem base. Strict entry points raise `RamlError`.
 nonfatal accumulated error. It stops at the pass where strict parsing stops; it
 does not run later passes against incomplete prerequisites. An entry load failure
 always raises. During parsing, an unknown or unsupported fragment kind, a
-fragment-kind mismatch, or a non-mapping root raises only when the outer frame's
-location is the entry URI; the same failure in an included fragment is returned
-with the partial model.
+fragment-kind mismatch, a non-mapping root, or an `extends` chain that cannot
+be loaded (`extends is required`, `extends must be a string`, `resolve
+extends`) raises only when the outer frame's location is the entry URI; the
+same failure in an included fragment is returned with the partial model.
 
 A returned model says how far it got. `Raml.completed` lists the stages that
 finished, in order, and `Raml.stopped_at` names the stage that raised, or is
@@ -129,9 +130,10 @@ Consumers must honor these contracts:
 4. Without unwrap, a shape exposes only its own declaration. Direct
    `BaseShape.validate()` and `validate_or_raise()` require an unwrapped shape.
 
-Parsing, `build_graph`, `Linter` runs, and `to_openapi` raise the garbage
-collector's full-collection threshold while they run and restore it afterwards
-([12](12-performance.md) § 6). Thresholds are process-wide, so other threads
+Parsing, `build_graph`, `build_occurrences`, `Linter` runs, `to_openapi`, and
+the `lsp` verb raise the garbage collector's full-collection threshold while
+they run and restore it afterwards ([12](12-performance.md) § 6); `lsp` holds
+it for the server's whole run. Thresholds are process-wide, so other threads
 also skip full collections during that time. Young collections run as usual.
 `set_gc_tuning(False)` turns this off for the whole process:
 
@@ -186,13 +188,13 @@ All parsing commands except `skills` and `lsp` accept the common configuration
 and workspace options; `lsp` takes `--config` and `-r`, and its sandbox is the
 editor's folders. CLI parsing always unwraps. `validate` and `info` validate;
 reading and view commands parse without validation so a partially invalid
-document remains navigable. Diagnostics use stderr; document output uses stdout
-or `-o FILE` with UTF-8 and LF newlines. `query` needs `fastraml[graph]`;
-`serve` needs `fastraml[serve]`; `lsp` needs `fastraml[lsp]`; `-r` needs an
+document remains navigable. Diagnostics use stderr; document output uses
+stdout, or `-o FILE` where offered, with UTF-8 and LF newlines. `query` needs
+`fastraml[graph]`; `serve` needs `fastraml[serve]`; `lsp` needs `fastraml[lsp]`; `-r` needs an
 HTTP client such as `fastraml[http]`. Lint defaults to failing on `error`;
 `--fail-on warning` also fails on warnings.
 The CLI's `-r` client follows HTTP redirects; a library caller supplying its own
 `http_client` controls that client's redirect policy.
 
-For library callers, `to_raml(json_shape, name=None)` accepts a compiled
+For library callers, `to_raml(shape, *, name=None)` accepts a compiled
 `JsonShape` and returns the same complete RAML document (docs/16 § 8).

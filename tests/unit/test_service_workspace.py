@@ -7,12 +7,14 @@ the sandboxed loader does.
 
 from __future__ import annotations
 
+import errno
 import gc
 from typing import TYPE_CHECKING
 
 import pytest
 
 from fastraml.config import FastRamlConfig
+from fastraml.errors import ErrorKind
 from fastraml.gctuning import tuned_gc
 from fastraml.registry import Raml
 from fastraml.service.workspace import Workspace, canonical
@@ -121,6 +123,22 @@ class TestSnapshots:
         (snapshot,) = workspace.serving(f'{folder}/lib.raml')
         assert snapshot.root == f'{folder}/lib.raml'
         assert snapshot.error is None
+
+    def test_an_os_error_is_keyed_by_its_errno(self, tmp_path, monkeypatch):
+        """docs/11 § 6: an `OSError` past the parse reports a key, not the OS text."""
+        workspace, folder = _workspace(tmp_path, {'api.raml': API})
+
+        def refused(path: str, options: object) -> None:
+            raise PermissionError(errno.EACCES, 'Access is denied', path)
+
+        monkeypatch.setattr('fastraml.service.workspace.parse_lenient', refused)
+        snapshot = workspace.snapshot(f'{folder}/api.raml')
+        assert snapshot.error is not None
+        (chain,) = snapshot.error.chains()
+        assert [(frame.message, frame.location, frame.kind) for frame in chain] == [
+            ('load resource', f'{folder}/api.raml', ErrorKind.READING),
+            ('permission denied', f'{folder}/api.raml', ErrorKind.READING),
+        ]
 
     def test_a_snapshot_is_kept_until_a_file_it_read_changes(self, tmp_path):
         workspace, folder = _workspace(tmp_path, self.FILES)

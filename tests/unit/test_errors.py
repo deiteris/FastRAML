@@ -88,9 +88,9 @@ class TestInfo:
     def test_info_is_rendered_after_the_message(self):
         # Variable values stay out of `message` so diagnostics group cleanly and
         # tests can match on the message alone. See docs/11 § 6.
-        err = RamlError.new('cannot redefine built-in type', LOC, POS, info={'type': 'string'})
-        assert err.head.message == 'cannot redefine built-in type'
-        assert err.head.rendered_message() == 'cannot redefine built-in type: type: string'
+        err = RamlError.new('cannot redefine a built-in type', LOC, POS, info={'type': 'string'})
+        assert err.head.message == 'cannot redefine a built-in type'
+        assert err.head.rendered_message() == 'cannot redefine a built-in type: type: string'
 
     def test_a_frame_without_info_renders_unchanged(self):
         assert Trace('plain', LOC).rendered_message() == 'plain'

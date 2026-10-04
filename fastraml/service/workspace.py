@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from typing import TYPE_CHECKING, Final
 
-from fastraml.errors import RamlError
+from fastraml.errors import ErrorKind, RamlError
 from fastraml.loaders import SafeFileLoader
 from fastraml.parser.entry import ParseOptions, parse_lenient
 from fastraml.parser.fragments import FragmentKind, identify_fragment
@@ -347,7 +347,12 @@ class Workspace:
         try:
             raml, error = parse_lenient(file_uri_to_path(root), options)
         except (RamlError, OSError) as err:
-            failure = err if isinstance(err, RamlError) else RamlError.new(str(err), root)
+            # An `OSError` is keyed by its errno, as `_open` keys one (docs/11 § 6).
+            failure = (
+                err
+                if isinstance(err, RamlError)
+                else RamlError.wrap('load resource', err, root, kind=ErrorKind.READING)
+            )
             return Snapshot(root, None, failure, frozenset({root}))
         return Snapshot(root, raml, error, _read(raml, root), linter=self.linter)
 

@@ -22,9 +22,11 @@ decides no RAML rule, and reads the model without writing to it. Nothing under
     occurrences where each name is written and what it names (§ 9)
     authored    what a file, or an entity, wrote (§ 10)
 
-`walk` is the shared substrate rather than a view of its own: `graph` and `tree`
+Three modules are substrates that any view may import: `walk`, `graph` and
+`severity` (docs/16 § 1). `walk` is not a view of its own: `graph` and `tree`
 are lossy on orthogonal axes, and both are addressed by the same walk so a node
-in one is joinable with the same entity in the other.
+in one is joinable with the same entity in the other. `graph` is the model as
+the later views read it.
 
 `severity` is substrate too, and holds less than it looks. `backward` and `lint`
 grade on **different axes** — what a change does to a caller against how much a

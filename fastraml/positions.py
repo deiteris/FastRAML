@@ -11,7 +11,7 @@ without an off-by-one.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
@@ -78,9 +78,6 @@ class Position:
         item's title); this key alone when `value` is unknown.
         """
         return Position.covering((self, value)) if value.is_known else self
-
-    def with_end(self, end_line: int, end_column: int) -> Position:
-        return replace(self, end_line=end_line, end_column=end_column)
 
     def contains(self, inner: Position) -> bool:
         """Whether `inner` lies within this span, ends included."""

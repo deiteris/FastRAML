@@ -537,8 +537,8 @@ class _Projector:
         if isinstance(value, Fraction):
             return str(value)
         if isinstance(value, Examples):
-            # `entries()`, never `values`: with `examples: !include e.raml` the
-            # examples live on the fragment and `values` is empty, so reading it
+            # `entries()`, never `_values`: with `examples: !include e.raml` the
+            # examples live on the fragment and `_values` is empty, so reading it
             # does not fail — it silently sees nothing.
             return {name: self.example(one, seen) for name, one in value.entries().items()}
         if isinstance(value, Example):

@@ -47,11 +47,6 @@ class TestWithin:
         assert span.within('User') is span
 
 
-def test_with_end_replaces_only_the_end():
-    span = Position(3, 1).with_end(9, 4)
-    assert (span.line, span.column, span.end_line, span.end_column) == (3, 1, 9, 4)
-
-
 def test_positions_are_frozen_and_hashable():
     assert Position(1, 2) == Position(1, 2)
     assert len({Position(1, 2), Position(1, 2)}) == 1

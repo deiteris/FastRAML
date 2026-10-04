@@ -109,8 +109,9 @@ def scalar_fraction(node: Node, location: str) -> Fraction:
 def regex_engine(raml: Raml) -> Any:
     """The `re`-compatible module this parse compiles patterns with.
 
-    Every regex fastRAML compiles goes through here, so that `regex_engine='re2'`
-    means what it says. Raises `ImportError` when `re2` was asked for and the
+    Every RAML regex goes through here, so that `regex_engine='re2'` means what
+    it says; `tests/unit/test_layering.py` lists the patterns that are not
+    RAML's. Raises `ImportError` when `re2` was asked for and the
     package is absent; each caller turns that into a diagnostic positioned where
     it actually is, which is why this does not do it for them.
 

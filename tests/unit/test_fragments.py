@@ -5,6 +5,8 @@ See docs/04-fragments-and-namespaces.md.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from fastraml import (
@@ -152,6 +154,12 @@ class TestEntryPoints:
         with pytest.raises(RamlError) as caught:
             parse_from_string(API, file_name='api.raml', base_dir='relative')
         assert traces(caught.value)[0].message == 'base_dir must be an absolute path'
+
+    def test_a_relative_base_dir_is_reported_at_a_uri(self):
+        """I1: a location is a URI even when the caller handed in a path."""
+        with pytest.raises(RamlError) as caught:
+            parse_from_string(API, file_name='api.raml', base_dir='relative')
+        assert caught.value.head.location == path_to_file_uri(Path.cwd() / 'relative' / 'api.raml')
 
     def test_an_unreadable_entry_file_fails_fast(self, tmp_path):
         with pytest.raises(RamlError) as caught:

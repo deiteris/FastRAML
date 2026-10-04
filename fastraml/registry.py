@@ -253,6 +253,8 @@ class Raml:
         self.regex_engine = regex_engine
 
         self.fragments: dict[str, Fragment] = {}
+        #: Each composed include target. Emptied when the parse ends, unless
+        #: `retain_source` keeps it (docs/03 § 4.3).
         self.include_nodes: dict[str, Node] = {}
         # Equal YAML mapping keys share a string across this parse's files,
         # without depending on Python's process-global intern table.

@@ -23,6 +23,20 @@ enum members, discriminator values, and custom-facet values are not scalar
 facets. `BaseShape` has no value equality or hash; model and YAML-node identity
 are load-bearing elsewhere in the parser.
 
+`BaseShape.type_expr` is the type expression as written. Until P7 ends it is
+the YAML scalar node, because P7 finds where a template caller wrote a name
+inside it by the node's identity ([08](08-templates-and-endpoints.md) § 5.1).
+When P7 ends, or the parse stops before it, the driver replaces each node with
+a `WrittenScalar`: the text and the token's `Position`, without the node.
+Each shape gets its own record, inner shapes an expression implies included:
+sharing the template's would need a map of every node, alive until the last
+is replaced, which raised the parse's peak by more than sharing saved. It
+happens before P9, so every copy unwrap makes takes the record. A model
+returned to a caller holds no type-expression node, unless it was parsed with
+`retain_source`: that keeps the tree and with it the nodes, so a record beside
+each would only add memory, 2.4 MB on the `validate` workload's `service`
+configuration. Read only `value` and `position`, which both forms have.
+
 ## 2. Kinds and facets
 
 | Kind | Kind-specific facets |

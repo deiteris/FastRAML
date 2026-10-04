@@ -179,7 +179,16 @@ whichever reader follows, so a typed fragment is still read once.
 ### 4.3 Caching, limits, and cycles
 
 - A composed include target is read and composed once per parse through
-  `Raml.include_nodes`.
+  `Raml.include_nodes`. The cache is emptied when the parse ends, strict or
+  partial, unless `retain_source` is set: the model already holds what it read
+  from each file, and the rest of the tree is 1.2 MB, 16 % of what the
+  `includes` workload retains. The one reader after a parse is `join`'s
+  include reader, and `join` parses its inputs with `retain_source`. An
+  `unwrap_detached` of a union from a parse without `unwrap` decodes the
+  facets beside the union only then, so an include among them is read through
+  the parse's loader and limit, a second time if the parse read that file for
+  something else. That read fills the cache again, and the cache keeps what
+  it holds until the `Raml` is dropped.
 - The default size limit is 64 KiB per include target. Loaders receive the limit
   and may return one additional byte so an oversized target is detected without
   reading it in full. `0` disables the limit. Every read the limit bounds, an

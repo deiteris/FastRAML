@@ -16,7 +16,6 @@ from fastraml.types.base import BaseShape
 from fastraml.types.jsonschema_ import JsonShape
 from fastraml.views import authored
 from fastraml.views.render import type_name
-from fastraml.yamlnode import NodeKind
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Mapping
@@ -144,10 +143,8 @@ def _written(base: BaseShape) -> str:
     if isinstance(base.shape, JsonShape):
         return 'JSON schema'
     written = base.type_expr
-    if written is None or written.kind is NodeKind.MAPPING:
+    if written is None:
         return type_name(base)
-    if written.kind is NodeKind.SEQUENCE:
-        return ', '.join(item.value for item in written.content if item.kind is NodeKind.SCALAR)
     return written.value.lstrip()
 
 

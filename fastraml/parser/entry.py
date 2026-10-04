@@ -27,7 +27,7 @@ from fastraml.types.resolve import resolve_shapes
 from fastraml.types.unwrap import unwrap_shapes
 from fastraml.types.validate import check_declared_discriminators, validate_shapes
 from fastraml.uris import path_to_file_uri
-from fastraml.yamlnode import DEFAULT_MAX_DEPTH, decode_source, read_head
+from fastraml.yamlnode import DEFAULT_MAX_DEPTH, Node, WrittenScalar, decode_source, read_head
 
 if TYPE_CHECKING:
     from fastraml.loaders import ResourceLoader
@@ -205,7 +205,14 @@ _FATAL: Final = frozenset(
 def _parse(raml: Raml, uri: str, text: str, options: ParseOptions) -> Raml:
     """The pass driver, with diagnostics naming each node's authoring document."""
     with raml.authorship():
-        return _run_passes(raml, uri, text, options)
+        try:
+            return _run_passes(raml, uri, text, options)
+        finally:
+            # The include cache is for the passes: what a model needs of an
+            # included file it already holds. Retained source keeps it
+            # (docs/03 § 4.3).
+            if not raml.retain_source:
+                raml.include_nodes.clear()
 
 
 def _run_passes(raml: Raml, uri: str, text: str, options: ParseOptions) -> Raml:
@@ -214,6 +221,55 @@ def _run_passes(raml: Raml, uri: str, text: str, options: ParseOptions) -> Raml:
     Each step runs in `raml.stage(...)`, which records whether it finished, so
     a model `parse_lenient` returns says how far it got (docs/13 § 1).
     """
+    try:
+        _resolve(raml, uri, text)
+    finally:
+        # P7 is the last reader of a type expression's node. Before P9, so
+        # every copy unwrap makes takes the record, and on a failure too, so
+        # a partial model holds no node either. Retained source keeps the
+        # nodes anyway, and a record beside each would only add to it
+        # (docs/05 § 1).
+        if not raml.retain_source:
+            _detach_type_expressions(raml)
+
+    # P8 — bind every `(annotation)` application to the type it names.
+    # Unconditional: an undeclared annotation is malformed input whether or not
+    # the caller asked to unwrap or validate.
+    with raml.stage(Stage.ANNOTATIONS):
+        resolve_domain_extensions(raml)
+
+    # P9 — flatten every inheritance chain, then mark the cycles. Opt-in: the
+    # un-flattened model is what a formatter or a doc generator wants.
+    if options.unwrap:
+        with raml.stage(Stage.UNWRAPPED):
+            unwrap_shapes(raml)
+
+    # P10 — check every declaration and validate every example, default,
+    # custom facet and annotation value. Opt-in; when P9 did not run, each
+    # declaration is validated against a private unwrapped copy of itself.
+    if options.validate:
+        with raml.stage(Stage.VALIDATED):
+            validate_shapes(raml)
+    return raml
+
+
+def _detach_type_expressions(raml: Raml) -> None:
+    """Swap each shape's type-expression node for its text and span.
+
+    Every shape that holds a node is in `raml.shapes`: nothing copies one
+    before P9. An inner shape an expression implies gets a record of its own
+    rather than its template's: finding the template's would mean a map of
+    every node, alive until the last is swapped, which raised the peak by
+    more than sharing saves.
+    """
+    for base in raml.shapes:
+        node = base.type_expr
+        if isinstance(node, Node):
+            base.type_expr = WrittenScalar(node.value, node.position)
+
+
+def _resolve(raml: Raml, uri: str, text: str) -> None:
+    """P0 to P7, and the one declaration check that cannot wait for P10."""
     with raml.stage(Stage.DECODED):
         # P0 — identify the fragment kind from the first line. Fails fast: a
         # document with no recognised header is not RAML.
@@ -255,23 +311,3 @@ def _run_passes(raml: Raml, uri: str, text: str, options: ParseOptions) -> Raml:
         # inherited, so after P9 every subtype of a discriminated type looks
         # like an inline declaration that wrote one (docs/05 § 6).
         check_declared_discriminators(raml)
-
-    # P8 — bind every `(annotation)` application to the type it names.
-    # Unconditional: an undeclared annotation is malformed input whether or not
-    # the caller asked to unwrap or validate.
-    with raml.stage(Stage.ANNOTATIONS):
-        resolve_domain_extensions(raml)
-
-    # P9 — flatten every inheritance chain, then mark the cycles. Opt-in: the
-    # un-flattened model is what a formatter or a doc generator wants.
-    if options.unwrap:
-        with raml.stage(Stage.UNWRAPPED):
-            unwrap_shapes(raml)
-
-    # P10 — check every declaration and validate every example, default,
-    # custom facet and annotation value. Opt-in; when P9 did not run, each
-    # declaration is validated against a private unwrapped copy of itself.
-    if options.validate:
-        with raml.stage(Stage.VALIDATED):
-            validate_shapes(raml)
-    return raml

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 from contextvars import ContextVar
+from dataclasses import dataclass
 from enum import IntEnum
 from typing import TYPE_CHECKING, Any, Final, Protocol
 
@@ -32,6 +33,7 @@ __all__ = [
     'MAX_NODES',
     'Node',
     'NodeKind',
+    'WrittenScalar',
     'backend_name',
     'bool_text',
     'compose',
@@ -376,6 +378,18 @@ class _Grafted(Node):
         return Position(self.line, self.column, *end)
 
 
+@dataclass(frozen=True, slots=True)
+class WrittenScalar:
+    """A scalar's text and the span of its token, kept without the node.
+
+    What the model holds of a scalar once no pass needs the node's identity:
+    under half a `Node`'s size, and sharing its `Position` (docs/05 § 1).
+    """
+
+    value: str
+    position: Position
+
+
 def with_content(model: Node, content: list[Node]) -> Node:
     """A fresh node with `model`'s kind, tag and span, holding `content`.
 
@@ -498,7 +512,7 @@ def is_null(node: Node) -> bool:
 def node_error(
     message: str,
     location: str,
-    node: Node | None = None,
+    node: Node | WrittenScalar | None = None,
     *,
     kind: ErrorKind = ErrorKind.PARSING,
     info: Mapping[str, object] | None = None,
@@ -508,9 +522,15 @@ def node_error(
     Returned rather than raised, because a decoder more often hands the result
     to an `Accumulator` than raises it, and because a factory call keeps the
     message text out of the `raise` statement.
+
+    A `WrittenScalar` is placed at its token in `location`: it no longer
+    knows which document wrote it.
     """
     position = None
-    if node is not None:
+    if isinstance(node, WrittenScalar):
+        # Unreachable: every caller reports during P7 or earlier, before any node is detached.
+        position = node.position
+    elif node is not None:
         position = node.full_position
         authors = AUTHORED_NODES.get()
         if authors:

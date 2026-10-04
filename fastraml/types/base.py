@@ -40,7 +40,7 @@ if TYPE_CHECKING:
     from fastraml.registry import Raml
     from fastraml.types.examples import Example, Examples
     from fastraml.types.xml import XmlSerialization
-    from fastraml.yamlnode import Node
+    from fastraml.yamlnode import Node, WrittenScalar
 
 __all__ = [
     'BUILTIN_TYPES',
@@ -277,8 +277,10 @@ class BaseShape:
         self.annotations: dict[str, DomainExtension] = {}
 
         #: The type expression exactly as written, so P7 can report a column
-        #: inside it and tooling can offer go-to-definition on each name.
-        self.type_expr: Node | None = None
+        #: inside it and tooling can offer go-to-definition on each name. The
+        #: node until P7 ends, which places a name by the node's identity; its
+        #: text and span after, unless the source is retained (docs/05 § 1).
+        self.type_expr: Node | WrittenScalar | None = None
         self.type_expr_refs: list[TypeExprRef] = []
         self.is_annotation_type = is_annotation_type
         #: The scope unqualified names in this declaration resolve in.

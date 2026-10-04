@@ -205,7 +205,14 @@ _FATAL: Final = frozenset(
 def _parse(raml: Raml, uri: str, text: str, options: ParseOptions) -> Raml:
     """The pass driver, with diagnostics naming each node's authoring document."""
     with raml.authorship():
-        return _run_passes(raml, uri, text, options)
+        try:
+            return _run_passes(raml, uri, text, options)
+        finally:
+            # The include cache is for the passes: what a model needs of an
+            # included file it already holds. Retained source keeps it
+            # (docs/03 § 4.3).
+            if not raml.retain_source:
+                raml.include_nodes.clear()
 
 
 def _run_passes(raml: Raml, uri: str, text: str, options: ParseOptions) -> Raml:

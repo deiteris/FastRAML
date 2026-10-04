@@ -528,6 +528,7 @@ def node_error(
     """
     position = None
     if isinstance(node, WrittenScalar):
+        # Unreachable: every caller reports during P7 or earlier, before any node is detached.
         position = node.position
     elif node is not None:
         position = node.full_position

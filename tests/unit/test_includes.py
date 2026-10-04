@@ -144,6 +144,48 @@ class TestCachingAndLimits:
         parse_from_path(root / 'api.raml', ParseOptions(file_loader=loader))
         assert loader.counts[path_to_file_uri(root / 'shared.yaml')] == 1
 
+    def test_the_cache_is_released_when_the_parse_ends(self, memory_workspace):
+        root = memory_workspace({'api.raml': API + '(a): !include shared.yaml\n', 'shared.yaml': 'k: v\n'})
+        raml = memory_workspace.parse(root / 'api.raml')
+        assert raml.include_nodes == {}
+        assert raml.entry_point.annotations['a'].value.raw == {'k': 'v'}, 'the model keeps what it read'
+
+    def test_a_partial_model_releases_the_cache(self, memory_workspace):
+        root = memory_workspace({'api.raml': API + '(a): !include shared.yaml\n(z): 1\n', 'shared.yaml': 'k: v\n'})
+        raml, error = memory_workspace.lenient(root / 'api.raml')
+        assert error is not None
+        assert raml.include_nodes == {}
+
+    def test_retained_source_keeps_the_cache(self, memory_workspace):
+        root = memory_workspace({'api.raml': API + '(a): !include shared.yaml\n', 'shared.yaml': 'k: v\n'})
+        raml = memory_workspace.parse(root / 'api.raml', ParseOptions(retain_source=True))
+        assert list(raml.include_nodes) == [path_to_file_uri(root / 'shared.yaml')]
+
+    def test_an_unwrap_after_the_parse_reads_a_union_s_include_again(self, memory_workspace):
+        # A union keeps the facets beside it as YAML until P9 (docs/07 § 5).
+        # Unwrapped after a parse that did not unwrap, an include among them
+        # is read through the parse's own loader and limit, again if the parse
+        # read the file for something else (docs/03 § 4.3).
+        from fastraml.types.unwrap import unwrap_detached
+
+        root = memory_workspace(
+            {
+                'api.raml': '#%RAML 1.0\ntitle: t\ntypes:\n'
+                '  S:\n    type: string\n    pattern: !include pattern.yaml\n'
+                '  U:\n    type: string | string\n    pattern: !include pattern.yaml\n',
+                'pattern.yaml': '^a+$\n',
+            }
+        )
+        loader = CountingLoader(root, memory_workspace)
+        raml = parse_from_path(root / 'api.raml', ParseOptions(file_loader=loader))
+        pattern_uri = path_to_file_uri(root / 'pattern.yaml')
+        assert loader.counts[pattern_uri] == 1
+        copy = unwrap_detached(raml, raml.types_in(raml.location)['U'])
+        assert [member.shape.pattern.value.pattern for member in copy.shape.any_of] == ['^a+$', '^a+$']
+        assert loader.counts[pattern_uri] == 2
+        # The read fills the cache again, and it stays filled (docs/03 § 4.3).
+        assert list(raml.include_nodes) == [pattern_uri]
+
     def test_the_reference_is_recorded_once_per_occurrence(self, memory_workspace):
         # The cache is about I/O; tooling still wants every document link.
         root = memory_workspace(

@@ -191,7 +191,10 @@ class TestI2AndI3:
         offenders: list[str] = []
         for name, raml in corpus:
             seen: dict[str, str] = {}
-            for uri in [*raml.fragments, *raml.include_nodes]:
+            # Every include target, by the URI the cache keyed it under: the
+            # cache itself is released when the parse ends (docs/03 § 4.3).
+            targets = [ref.abs_uri for refs in raml.include_refs.values() for ref in refs]
+            for uri in [*raml.fragments, *targets]:
                 if not uri.startswith('file://'):
                     continue
                 try:

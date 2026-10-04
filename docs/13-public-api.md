@@ -112,7 +112,7 @@ returns RAML text ([20](20-join.md) § 8). It is not part of `fastraml.__all__`.
 |---|---|
 | `unwrap` | Flatten type inheritance and mark recursive shapes. |
 | `validate` | Check declarations and validate examples, defaults, enums, custom facets, and annotations. It privately unwraps copies when `unwrap` is false; they are not added to `Raml.shapes` (docs/10 § 1). |
-| `retain_source` | Retain source nodes, texts, and shape source information for source-aware consumers. |
+| `retain_source` | Retain source nodes, texts, and shape source information for source-aware consumers, and keep `Raml.include_nodes`, which is otherwise emptied when the parse ends ([03](03-yaml-and-io.md) § 4.3). |
 | `retain_text` | Retain each file's text only, which the occurrence index needs ([16](16-graph.md) § 9). Implied by `retain_source`. |
 | `workspace_root` | Set the file-access sandbox root and the base for RAML-absolute includes. Defaults to the entry file directory. |
 | `max_include_size` | Limit each `!include` target; zero disables the limit. |

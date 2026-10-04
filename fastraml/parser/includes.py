@@ -195,7 +195,8 @@ def resolve_include(raml: Raml, node: Node, location: str) -> tuple[str, Node]:
         cached, header = _compose_include(raml, node, data, target, location)
         if header:
             raml.include_heads[target] = header
-        raml.include_nodes[target] = cached
+        if raml.caching_includes:
+            raml.include_nodes[target] = cached
     head = raml.include_heads.get(target)
     if head is not None:
         # A typed fragment is a declaration of its kind, which has a place of

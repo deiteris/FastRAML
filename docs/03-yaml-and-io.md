@@ -186,9 +186,8 @@ whichever reader follows, so a typed fragment is still read once.
   include reader, and `join` parses its inputs with `retain_source`. An
   `unwrap_detached` of a union from a parse without `unwrap` decodes the
   facets beside the union only then, so an include among them is read through
-  the parse's loader and limit, a second time if the parse read that file for
-  something else. That read fills the cache again, and the cache keeps what
-  it holds until the `Raml` is dropped.
+  the parse's loader and limit, once for each member it is distributed to,
+  and the cache stays empty.
 - The default size limit is 64 KiB per include target. Loaders receive the limit
   and may return one additional byte so an oversized target is detected without
   reading it in full. `0` disables the limit. Every read the limit bounds, an

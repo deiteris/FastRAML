@@ -4,9 +4,9 @@
 means by a regular expression. `re2` is linear-time and is what a server parsing
 untrusted RAML should select; it accepts strictly less, which is the trade.
 
-The rule pinned here is narrow and worth stating exactly: **every regex fastRAML
-compiles goes through `regex_engine`**, RAML facets and the JSON Schema
-projection alike. What it does *not* reach is the regexes executed inside an
+The rule pinned here is narrow and worth stating exactly: **every RAML regex
+goes through `regex_engine`**, RAML facets and the JSON Schema projection
+alike. What it does *not* reach is the regexes executed inside an
 external JSON Schema at validation time — the schema library calls `re.search`
 itself and offers no hook. The last test names that, so the limit of the
 guarantee is recorded rather than assumed.

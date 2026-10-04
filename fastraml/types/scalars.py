@@ -191,8 +191,8 @@ class ScalarKind(KindBase):
     """A kind whose values are single scalars rather than structures.
 
     `check` does nothing by default: most scalar kinds hold no facet that can
-    contradict another. The four that do — string, number, integer, file —
-    override it (docs/10 § 2).
+    be wrong on its own or contradict another. The five that do — datetime
+    (its `format`), string, number, integer, file — override it (docs/10 § 2).
     """
 
     __slots__ = ()

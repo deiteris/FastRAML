@@ -72,28 +72,29 @@ class Examples:
     location: str
     position: Position = UNKNOWN
     #: Declaration order is preserved, as everywhere the model is exposed.
-    values: dict[str, Example] = field(default_factory=dict)
-    #: Set instead of `values` when `examples:` was an `!include`.
+    #: Private: empty when `link` is set, so read `entries()` instead.
+    _values: dict[str, Example] = field(default_factory=dict)
+    #: Set instead of `_values` when `examples:` was an `!include`.
     link: NamedExample | None = None
 
     def __repr__(self) -> str:
-        return f'Examples({list(self.values)!r})' if self.link is None else 'Examples(link)'
+        return f'Examples({list(self._values)!r})' if self.link is None else 'Examples(link)'
 
     def entries(self) -> dict[str, Example]:
         """The examples this facet holds, following an `!include` if there is one.
 
-        Consumers must read this, not `values`, which is empty when the
+        Consumers must read this, not `_values`, which is empty when the
         examples are on a linked NamedExample fragment.
         """
         if self.link is not None:
             return self.link.examples
-        return self.values
+        return self._values
 
 
 def examples_of(base: BaseShape) -> Iterator[Example]:
     """Every example *base* carries: `example`, then each entry of `examples`.
 
-    The one reading of the two facets, so no caller reaches `Examples.values`,
+    The one reading of the two facets, so no caller reaches `Examples._values`,
     which is empty when `examples: !include ...` linked a NamedExample. Yields
     each example as declared: whether one with `strict: false` or no data
     counts is the caller's decision.

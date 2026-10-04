@@ -713,8 +713,9 @@ class KindBase:
 
         Every facet a kind holds is a `ScalarFacet` or a list of them, and
         nothing ever mutates one in place — `inherit` only ever rebinds the
-        field — so they are shared rather than copied. The three kinds that hold
-        *declarations* override this and clone those through `memo`.
+        field — so they are shared rather than copied. The four kinds that hold
+        *declarations* — object, array, union and recursive — override this and
+        clone those through `memo`.
 
         Driven off `__slots__` rather than written out seventeen times. That is
         sound here only because `__slots__` on every model class is a project

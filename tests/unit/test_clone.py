@@ -181,16 +181,14 @@ class TestNoDeepcopy:
         # back-pointer, the compiled patterns and the YAML nodes. Asserted over
         # the import graph rather than by grepping, which would trip over the
         # several docstrings that name it in order to rule it out.
-        import ast
-        import pathlib
+        from tests.sources import imports, module_name, sources
 
-        offenders: list[str] = []
-        for path in pathlib.Path('fastraml').rglob('*.py'):
-            for node in ast.walk(ast.parse(path.read_text(encoding='utf-8'))):
-                if isinstance(node, ast.Import) and any(alias.name == 'copy' for alias in node.names):
-                    offenders.append(f'{path}:{node.lineno} import copy')
-                elif isinstance(node, ast.ImportFrom) and node.module == 'copy':
-                    offenders.append(f'{path}:{node.lineno} from copy import ...')
+        offenders = [
+            f'{module_name(path)}:{found.line} imports {found.module}'
+            for path in sources('fastraml')
+            for found in imports(path)
+            if found.module == 'copy' or found.module.startswith('copy.')
+        ]
         assert not offenders, '\n'.join(offenders)
 
 

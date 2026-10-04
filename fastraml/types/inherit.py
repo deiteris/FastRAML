@@ -38,6 +38,7 @@ from fastraml.types.scalars import (
     NumberShape,
     StringShape,
 )
+from fastraml.types.shape import KIND_TO_CLASS
 from fastraml.types.values import is_subset
 
 if TYPE_CHECKING:
@@ -359,9 +360,6 @@ def _empty_subtype(parents: list[BaseShape]) -> BaseShape:
             target for target in restrictions[0] if all(target in allowed for allowed in restrictions[1:])
         ]
     folded._unwrapped = True  # noqa: SLF001 - built from parents P9 has flattened
-    # `shape` reaches this module through `jsonschema_`.
-    from fastraml.types.shape import KIND_TO_CLASS  # noqa: PLC0415
-
     kind = KIND_TO_CLASS.get(first.type)
     if kind is ObjectShape:
         folded.shape = ObjectShape(folded, properties={}, pattern_properties={})

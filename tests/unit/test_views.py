@@ -13,12 +13,10 @@ the language ends up outside the passes, where nothing runs it in order and
 from __future__ import annotations
 
 import ast
-import pathlib
 
-#: Everything the parser is: the passes, the model they build, and the support
-#: modules underneath both. `cli` is deliberately absent — it is the one caller
-#: allowed to see both sides, which is what a command line is.
-_MODEL = ('fastraml/parser', 'fastraml/types', 'fastraml/nodes.py', 'fastraml/registry.py', 'fastraml/datanode.py')
+import pytest
+
+from tests.sources import MODEL, PACKAGE, imports, module_name, parse, sources
 
 _VIEWS = (
     'walk',
@@ -39,34 +37,45 @@ _VIEWS = (
     'authored',
 )
 
-
-def _imports(path: pathlib.Path) -> list[tuple[int, str]]:
-    """Every module `path` imports, by dotted name, with its line."""
-    found: list[tuple[int, str]] = []
-    for node in ast.walk(ast.parse(path.read_text(encoding='utf-8'))):
-        if isinstance(node, ast.Import):
-            found.extend((node.lineno, alias.name) for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
-            found.append((node.lineno, node.module))
-    return found
+#: The modules every view may import (docs/16 § 1).
+_SUBSTRATES = frozenset({'fastraml.views.walk', 'fastraml.views.graph', 'fastraml.views.severity'})
 
 
-def _sources(*roots: str) -> list[pathlib.Path]:
-    out: list[pathlib.Path] = []
-    for root in roots:
-        path = pathlib.Path(root)
-        out.extend(sorted(path.rglob('*.py')) if path.is_dir() else [path])
-    return out
+def _within(module: str, package: str) -> bool:
+    return module == package or module.startswith(f'{package}.')
+
+
+def _view_crossings(importer: str, imported: list[str]) -> list[str]:
+    """The modules of `imported` that view module `importer` may not import:
+    another view's, unless it is a substrate. A view that is a package may
+    import itself.
+    """
+    own = importer.split('.')[2] if _within(importer, 'fastraml.views') and importer.count('.') >= 2 else None
+    return [
+        module
+        for module in imported
+        if module.startswith('fastraml.views.')
+        and not any(_within(module, substrate) for substrate in _SUBSTRATES)
+        and not (own is not None and _within(module, f'fastraml.views.{own}'))
+    ]
+
+
+def _offenders(roots: tuple[str, ...], banned: str, *, allowed: tuple[str, ...] = ()) -> list[str]:
+    """Each import of `banned` or below it from a module under `roots`,
+    other than from a module under one of `allowed`.
+    """
+    return [
+        f'{module_name(path)}:{found.line} imports {found.module}'
+        for path in sources(*roots)
+        if not any(_within(module_name(path), root) for root in allowed)
+        for found in imports(path)
+        if _within(found.module, banned)
+    ]
 
 
 class TestTheModelDoesNotSeeTheViews:
     def test_no_pass_imports_the_view_layer(self):
-        offenders = [
-            f'{path}:{line} imports {module}'
-            for path in _sources(*_MODEL)
-            for line, module in _imports(path)
-            if module == 'fastraml.views' or module.startswith('fastraml.views.')
-        ]
+        offenders = _offenders(MODEL, 'fastraml.views')
         assert not offenders, '\n'.join(offenders)
 
     def test_no_module_outside_the_package_reaches_a_view_but_the_composition_roots(self):
@@ -74,13 +83,8 @@ class TestTheModelDoesNotSeeTheViews:
         # import, so it does not appear here and must not: importing `fastraml`
         # would then build a graph module nobody asked for. The CLI and the
         # language service compose views; nothing else does (docs/02 § 2).
-        offenders = [
-            f'{path}:{line} imports {module}'
-            for path in _sources('fastraml')
-            if path != pathlib.Path('fastraml/cli.py') and not {'views', 'service'} & set(path.parts)
-            for line, module in _imports(path)
-            if module.startswith('fastraml.views')
-        ]
+        allowed = ('fastraml.cli', 'fastraml.views', 'fastraml.service')
+        offenders = _offenders(('fastraml',), 'fastraml.views', allowed=allowed)
         assert not offenders, '\n'.join(offenders)
 
 
@@ -88,13 +92,7 @@ class TestTheServiceIsACompositionRoot:
     """`fastraml/service/` composes the views for an editor (docs/21 § 1)."""
 
     def test_nothing_but_the_cli_imports_the_service(self):
-        offenders = [
-            f'{path}:{line} imports {module}'
-            for path in _sources('fastraml')
-            if path != pathlib.Path('fastraml/cli.py') and 'service' not in path.parts
-            for line, module in _imports(path)
-            if module == 'fastraml.service' or module.startswith('fastraml.service.')
-        ]
+        offenders = _offenders(('fastraml',), 'fastraml.service', allowed=('fastraml.cli', 'fastraml.service'))
         assert not offenders, '\n'.join(offenders)
 
 
@@ -102,24 +100,67 @@ class TestTheJoinIsNeitherAPassNorAView:
     """`fastraml/join/` runs on source trees before decoding (docs/20 § 9)."""
 
     def test_nothing_but_the_cli_imports_the_join(self):
-        allowed = {pathlib.Path('fastraml/cli.py')}
-        offenders = [
-            f'{path}:{line} imports {module}'
-            for path in _sources('fastraml')
-            if path not in allowed and 'join' not in path.parts
-            for line, module in _imports(path)
-            if module == 'fastraml.join' or module.startswith('fastraml.join.')
-        ]
+        offenders = _offenders(('fastraml',), 'fastraml.join', allowed=('fastraml.cli', 'fastraml.join'))
         assert not offenders, '\n'.join(offenders)
 
     def test_the_join_imports_no_view(self):
-        offenders = [
-            f'{path}:{line} imports {module}'
-            for path in _sources('fastraml/join')
-            for line, module in _imports(path)
-            if module.startswith('fastraml.views')
-        ]
+        offenders = _offenders(('fastraml/join',), 'fastraml.views')
         assert not offenders, '\n'.join(offenders)
+
+
+class TestTheCheckerSeesEveryEvasion:
+    """The import walk the boundary tests stand on: each spelling below once
+    slipped past it, so a test above passed over the import it exists to catch.
+    """
+
+    @pytest.mark.parametrize(
+        ('module', 'source', 'expected'),
+        [
+            ('fastraml.parser.x', 'from fastraml import views\n', 'fastraml.views'),
+            ('fastraml.parser.x', 'from ..views import tree\n', 'fastraml.views.tree'),
+            ('fastraml.parser.x', 'from .. import views\n', 'fastraml.views'),
+            ('fastraml.parser.x', 'def f():\n    from ..views.walk import walk\n', 'fastraml.views.walk'),
+            (
+                'fastraml.parser.x',
+                'try:\n    import fastraml.views.graph\nexcept ImportError:\n    pass\n',
+                'fastraml.views.graph',
+            ),
+        ],
+        ids=['from-package-import-name', 'relative', 'relative-package', 'deferred', 'in-try'],
+    )
+    def test_an_import_of_the_views_is_found(self, module, source, expected):
+        assert expected in {found.module for found in imports(source, module)}
+
+    def test_a_package_resolves_relative_imports_against_itself(self):
+        found = imports('from .rules import x\n', 'fastraml.views.lint', is_package=True)
+        assert 'fastraml.views.lint.rules.x' in {each.module for each in found}
+
+    def test_type_checking_and_deferred_imports_are_marked(self):
+        source = 'from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    import a\ndef f():\n    import b\n'
+        found = {each.module: (each.deferred, each.type_checking) for each in imports(source, 'fastraml.x')}
+        assert (found['a'], found['b']) == ((False, True), (True, False))
+
+    @pytest.mark.parametrize(
+        'source',
+        ['from fastraml.views.lint.graph import x\n', 'from fastraml.views import tree\n', 'from .tree import x\n'],
+        ids=['a-view-module-named-like-a-substrate', 'from-package-import-view', 'relative'],
+    )
+    def test_a_view_reaching_another_view_is_a_crossing(self, source):
+        importer = 'fastraml.views.raml'
+        crossings = _view_crossings(importer, [found.module for found in imports(source, importer)])
+        assert crossings
+
+    @pytest.mark.parametrize(
+        ('importer', 'source'),
+        [
+            ('fastraml.views.raml', 'from fastraml.views.walk import walk\n'),
+            ('fastraml.views.raml', 'from fastraml.views import graph\n'),
+            ('fastraml.views.lint.rules.x', 'from ..config import y\n'),
+        ],
+        ids=['substrate', 'substrate-by-name', 'own-package'],
+    )
+    def test_a_substrate_or_the_view_itself_is_not(self, importer, source):
+        assert _view_crossings(importer, [found.module for found in imports(source, importer)]) == []
 
 
 class TestThePackageCostsNothingToImport:
@@ -143,18 +184,10 @@ class TestThePackageCostsNothingToImport:
         five files is not five views, and `backward` says so thirteen times over
         where the concerns used to interleave.
         """
-        substrates = {'walk', 'graph', 'severity'}
-        crossings = {
-            (path, module)
-            for path in _sources('fastraml/views')
-            for _, module in _imports(path)
-            if module.startswith('fastraml.views.')
-        }
         unexpected = {
-            (path.as_posix(), module)
-            for path, module in crossings
-            if module.rsplit('.', 1)[1] not in substrates
-            and not any(part in path.parts and module.startswith(f'fastraml.views.{part}') for part in _VIEWS)
+            (module_name(path), module)
+            for path in sources('fastraml/views')
+            for module in _view_crossings(module_name(path), [found.module for found in imports(path)])
         }
         assert not unexpected, unexpected
 
@@ -163,7 +196,7 @@ class TestThePackageCostsNothingToImport:
         grade, the two scales have started to look like one — which is the
         assumption docs/18 § 1 exists to refuse.
         """
-        tree = ast.parse(pathlib.Path('fastraml/views/severity.py').read_text(encoding='utf-8'))
+        tree = parse(PACKAGE / 'views' / 'severity.py')
         docstrings = {
             id(node.body[0].value)
             for node in ast.walk(tree)
@@ -191,7 +224,7 @@ class TestTheStubMatchesTheExports:
 
         declared = {
             alias.asname or alias.name
-            for node in ast.walk(ast.parse(pathlib.Path('fastraml/__init__.pyi').read_text(encoding='utf-8')))
+            for node in ast.walk(parse(PACKAGE / '__init__.pyi'))
             if isinstance(node, ast.ImportFrom)
             for alias in node.names
         }
@@ -202,7 +235,7 @@ class TestTheStubMatchesTheExports:
 
         declared = {
             alias.asname or alias.name
-            for node in ast.walk(ast.parse(pathlib.Path('fastraml/__init__.pyi').read_text(encoding='utf-8')))
+            for node in ast.walk(parse(PACKAGE / '__init__.pyi'))
             if isinstance(node, ast.ImportFrom)
             for alias in node.names
         }
@@ -213,7 +246,7 @@ class TestTheStubMatchesTheExports:
 
         stub = {
             (alias.asname or alias.name): node.module
-            for node in ast.walk(ast.parse(pathlib.Path('fastraml/__init__.pyi').read_text(encoding='utf-8')))
+            for node in ast.walk(parse(PACKAGE / '__init__.pyi'))
             if isinstance(node, ast.ImportFrom) and node.module
             for alias in node.names
         }
@@ -224,7 +257,7 @@ class TestTheStubMatchesTheExports:
 
 
 def test_the_view_modules_are_the_ones_the_package_documents():
-    root = pathlib.Path('fastraml/views')
+    root = PACKAGE / 'views'
     on_disk = {path.stem for path in root.glob('*.py')} - {'__init__'}
     on_disk.update(path.name for path in root.iterdir() if path.is_dir() and not path.name.startswith('__'))
     assert on_disk == set(_VIEWS)

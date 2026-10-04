@@ -452,7 +452,7 @@ def _decode_examples(raml: Raml, base: BaseShape, value_node: Node) -> None:
     if value_node.kind is not NodeKind.MAPPING:
         raise node_error('examples must be a mapping', location, value_node)
     values = {key.value: make_example(raml, key, value, key.value, location) for key, value in pairs(value_node)}
-    base.examples = Examples(location=base.location, position=position, values=values)
+    base.examples = Examples(location=base.location, position=position, _values=values)
 
 
 def _decode_custom_facet_defs(raml: Raml, base: BaseShape, value_node: Node) -> None:

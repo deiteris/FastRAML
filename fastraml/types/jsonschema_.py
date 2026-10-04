@@ -1102,7 +1102,7 @@ def _decorate(base: BaseShape, contents: dict) -> BaseShape:
     if isinstance(examples, list) and examples:
         base.examples = Examples(
             location=base.location,
-            values={
+            _values={
                 str(index): Example(
                     id=base._raml.next_id(),  # noqa: SLF001 - one counter per parse
                     name=str(index),

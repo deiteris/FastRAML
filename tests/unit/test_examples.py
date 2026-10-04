@@ -127,7 +127,7 @@ class TestIncludedExample:
 class TestIncludedNamedExamples:
     """`examples: !include e.raml` — the examples are on the fragment.
 
-    `Examples.values` is empty in that form, so a consumer reading it directly
+    `Examples._values` is empty in that form, so a consumer reading it directly
     sees no examples and validates none. `entries()` is the one accessor.
     """
 
@@ -188,7 +188,7 @@ class TestIdentity:
 
 
 class TestExamplesOf:
-    """`examples_of` is the one reading of `example` and `examples` (AGENTS.md: `entries()`, never `values`)."""
+    """`examples_of` is the one reading of `example` and `examples` (AGENTS.md: `entries()`, never `_values`)."""
 
     API = '#%RAML 1.0\ntitle: T\ntypes:\n  T:\n    type: integer\n'
 
@@ -215,7 +215,7 @@ class TestExamplesOf:
                 'e.raml': '#%RAML 1.0 NamedExample\nfirst: 3\n',
             },
         )
-        assert shape.examples.values == {}, 'the case this guards: `values` is empty'
+        assert shape.examples._values == {}, 'the case this guards: `_values` is empty'
         assert [example.data.raw for example in examples_of(shape)] == [3]
 
     def test_a_non_strict_example_is_the_callers_to_skip(self, workspace):

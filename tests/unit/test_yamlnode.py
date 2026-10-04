@@ -117,7 +117,7 @@ class TestMappingKeySharing:
         assert first.content[0].value is second.content[0].value
         assert pool[self.KEY] is first.content[0].value
 
-    def test_fragments_libraries_and_data_includes_share_only_their_parse_pool(self, memory_workspace):
+    def test_fragments_libraries_and_data_includes_share_only_their_parse_pool(self, workspace):
         files = {
             'api.raml': (
                 '#%RAML 1.0\ntitle: Keys\nuses:\n  lib: lib.raml\ntypes:\n'
@@ -128,10 +128,10 @@ class TestMappingKeySharing:
             'type.raml': f'#%RAML 1.0 DataType\nproperties:\n  {self.KEY}: string\n',
             'example.yaml': f'{self.KEY}: value\n',
         }
-        root = memory_workspace(files)
+        root = workspace(files)
         options = ParseOptions(retain_source=True)
-        first = memory_workspace.parse(root / 'api.raml', options)
-        second = memory_workspace.parse(root / 'api.raml', options)
+        first = workspace.parse(root / 'api.raml', options)
+        second = workspace.parse(root / 'api.raml', options)
         shared = first.mapping_keys[self.KEY]
         assert shared == second.mapping_keys[self.KEY]
         assert shared is not second.mapping_keys[self.KEY]

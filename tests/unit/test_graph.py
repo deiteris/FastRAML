@@ -84,11 +84,6 @@ types:
 
 
 @pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
-@pytest.fixture
 def graph(workspace) -> Graph:
     root = workspace({'api.raml': API, 'lib.raml': LIB})
     return build_graph(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))

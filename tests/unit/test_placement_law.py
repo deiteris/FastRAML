@@ -256,14 +256,14 @@ def _misplace_example(raml: Raml) -> None:
         pytest.param(_misplace_example, 'example', id='an example off its key'),
     ],
 )
-def test_a_misplaced_entity_breaks_the_law(memory_workspace, move, rule):
+def test_a_misplaced_entity_breaks_the_law(workspace, move, rule):
     # The law's own check: each rule reports what breaks it.
     api = (
         '#%RAML 1.0\ntitle: T\nuses:\n  lib: lib.raml\ndocumentation:\n  - title: Home\n    content: c\n'
         'types:\n  T:\n    type: string\n    example: x\n/a:\n  get:\n    description: d\n  /b:\n'
     )
-    root = memory_workspace({'api.raml': api, 'lib.raml': '#%RAML 1.0 Library\n'})
-    raml = memory_workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, retain_text=True))
+    root = workspace({'api.raml': api, 'lib.raml': '#%RAML 1.0 Library\n'})
+    raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, retain_text=True))
     assert violations(raml) == []
     move(raml)
     assert any(rule in problem for problem in violations(raml)), violations(raml)

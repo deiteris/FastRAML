@@ -23,11 +23,6 @@ from fastraml.yamlnode import compose, pairs
 API = '#%RAML 1.0\ntitle: T\nannotationTypes:\n  a: any\n  redirectable: any\n  only: any\n'
 
 
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
 def first_value(raml: Raml, text: str):
     """Build a DataNode from the first key of a one-mapping document."""
     root = compose(text, uri='file:///a.raml')

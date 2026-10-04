@@ -31,11 +31,6 @@ RUNAWAY = 60
 PARSER_STATE = frozenset({'id', 'type_expr'})
 
 
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
 class RunawayError(RecursionError):
     """The naive walk did not terminate."""
 

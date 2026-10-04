@@ -40,11 +40,6 @@ API = '#%RAML 1.0\ntitle: Example\nannotationTypes:\n  a: any\n  here: any\n'
 BARE_API = '#%RAML 1.0\ntitle: Example\n'
 
 
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
 def messages(error: RamlError) -> list[str]:
     return error.messages()
 

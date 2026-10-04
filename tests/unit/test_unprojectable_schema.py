@@ -65,9 +65,9 @@ FILES = {'api.raml': API, 'broken.json': json.dumps({'allOf': [{'type': 'string'
 
 
 @pytest.fixture
-def raml(memory_workspace):
-    root = memory_workspace(FILES)
-    return memory_workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, retain_source=True))
+def raml(workspace):
+    root = workspace(FILES)
+    return workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, retain_source=True))
 
 
 def declared(raml, name):
@@ -83,9 +83,9 @@ class TestTheFailureIsKeptNotRaised:
         tuple_failure = declared(raml, 'Tuple').shape.projection_error()
         assert (tuple_failure.head.message, tuple_failure.head.info) == (NO_EQUIVALENT, TUPLE)
 
-    def test_a_sound_schema_has_no_error(self, memory_workspace):
-        root = memory_workspace({'api.raml': '#%RAML 1.0\ntitle: t\ntypes:\n  T: |\n    {"type": "string"}\n'})
-        shape = declared(memory_workspace.parse(root / 'api.raml'), 'T').shape
+    def test_a_sound_schema_has_no_error(self, workspace):
+        root = workspace({'api.raml': '#%RAML 1.0\ntitle: t\ntypes:\n  T: |\n    {"type": "string"}\n'})
+        shape = declared(workspace.parse(root / 'api.raml'), 'T').shape
         assert shape.projection_error() is None
         assert shape.as_shape() is not None
 
@@ -185,18 +185,18 @@ class TestTheFailureIsALintFinding:
             (broken, NO_EQUIVALENT, {**UNSATISFIABLE, **WHOLE}),
         ]
 
-    def test_an_inline_schema_is_reported_once_however_many_types_inherit_it(self, memory_workspace):
+    def test_an_inline_schema_is_reported_once_however_many_types_inherit_it(self, workspace):
         document = (
             '#%RAML 1.0\ntitle: t\ntypes:\n'
             '  Tup: |\n    {"type": "array", "items": [{"type": "string"}]}\n'
             '  Child: Tup\n  Child2:\n    type: Tup\n'
         )
-        root = memory_workspace({'api.raml': document})
-        raml = memory_workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, retain_source=True))
+        root = workspace({'api.raml': document})
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, retain_source=True))
         findings = [f for f in configured_linter({}).run(raml) if f.rule == 'unprojectable-json-schema']
         assert [(f.message, f.info) for f in findings] == [(NO_EQUIVALENT, {**TUPLE, **WHOLE})]
 
-    def test_two_failing_subschemas_of_one_file_are_told_apart(self, memory_workspace):
+    def test_two_failing_subschemas_of_one_file_are_told_apart(self, workspace):
         unsatisfiable = {'allOf': [{'type': 'string'}, {'type': 'integer'}]}
         files = {
             'api.raml': (
@@ -205,13 +205,13 @@ class TestTheFailureIsALintFinding:
             ),
             's.json': json.dumps({'definitions': {'A': unsatisfiable, 'B': unsatisfiable}}),
         }
-        root = memory_workspace(files)
-        raml = memory_workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, retain_source=True))
+        root = workspace(files)
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, retain_source=True))
         findings = [f for f in configured_linter({}).run(raml) if f.rule == 'unprojectable-json-schema']
         assert sorted(f.info['pointer'] for f in findings) == ['/definitions/A', '/definitions/B']
         assert all(f.info['construct'] == 'unsatisfiable allOf' for f in findings)
 
-    def test_two_false_schemas_in_two_files_are_two_findings(self, memory_workspace):
+    def test_two_false_schemas_in_two_files_are_two_findings(self, workspace):
         """`false` is one Python object wherever it is written, so it identifies no schema."""
         files = {
             'api.raml': (
@@ -221,21 +221,21 @@ class TestTheFailureIsALintFinding:
             'a.json': json.dumps({'definitions': {'X': False}}),
             'b.json': json.dumps({'definitions': {'Y': False}}),
         }
-        root = memory_workspace(files)
-        raml = memory_workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, retain_source=True))
+        root = workspace(files)
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, retain_source=True))
         findings = [f for f in configured_linter({}).run(raml) if f.rule == 'unprojectable-json-schema']
         assert sorted((f.location.rpartition('/')[2], f.info['pointer'], f.info['construct']) for f in findings) == [
             ('a.json', '/definitions/X', 'false schema'),
             ('b.json', '/definitions/Y', 'false schema'),
         ]
 
-    def test_the_language_service_answers_and_reports_it(self, memory_workspace):
-        folder = path_to_file_uri(memory_workspace.root)
-        workspace = Workspace([folder])
+    def test_the_language_service_answers_and_reports_it(self, workspace):
+        folder = path_to_file_uri(workspace.root)
+        service = Workspace([folder])
         for name, text in FILES.items():
-            workspace.open(f'{folder}/{name}', text, 1)
+            service.open(f'{folder}/{name}', text, 1)
         uri = f'{folder}/api.raml'
-        snapshot = workspace.snapshot(uri)
+        snapshot = service.snapshot(uri)
         found = queries.diagnostics(snapshot)
         assert [(d.code, d.info) for d in found[uri] if d.code == 'unprojectable-json-schema'] == [
             ('unprojectable-json-schema', {**TUPLE, **WHOLE})
@@ -260,10 +260,10 @@ class TestTheOutcomeDoesNotDependOnTheEntry:
     INCLUDES: ClassVar = {'Loop': 'loop.json', 'Loop2': 'loop.json', 'Holder': 'holder.json'}
 
     @pytest.mark.parametrize('order', list(permutations(INCLUDES)), ids='-'.join)
-    def test_every_type_projects_in_every_order(self, memory_workspace, order):
+    def test_every_type_projects_in_every_order(self, workspace, order):
         types = ''.join(f'  {name}: !include {self.INCLUDES[name]}\n' for name in order)
-        root = memory_workspace({'api.raml': f'#%RAML 1.0\ntitle: t\ntypes:\n{types}', **self.FILES})
-        raml = memory_workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
+        root = workspace({'api.raml': f'#%RAML 1.0\ntitle: t\ntypes:\n{types}', **self.FILES})
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
         for name in order:
             shape = declared(raml, name).shape
             assert shape.projection_error() is None, name
@@ -290,13 +290,13 @@ class TestTheOutcomeDoesNotDependOnTheEntry:
 
     @pytest.mark.parametrize('order', list(permutations(('A', 'A2', 'B'))), ids='-'.join)
     @pytest.mark.parametrize('through', list(CYCLES))
-    def test_a_cycle_through_each_applicator_projects_from_every_entry(self, memory_workspace, through, order):
+    def test_a_cycle_through_each_applicator_projects_from_every_entry(self, workspace, through, order):
         a, b, kinds = self.CYCLES[through]
         includes = {'A': 'a.json', 'A2': 'a.json', 'B': 'b.json'}
         types = ''.join(f'  {name}: !include {includes[name]}\n' for name in order)
         files = {'api.raml': f'#%RAML 1.0\ntitle: t\ntypes:\n{types}', 'a.json': json.dumps(a), 'b.json': json.dumps(b)}
-        root = memory_workspace(files)
-        raml = memory_workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
+        root = workspace(files)
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
         found = {}
         for name in order:
             shape = declared(raml, name).shape
@@ -304,13 +304,13 @@ class TestTheOutcomeDoesNotDependOnTheEntry:
             found[name] = type(shape.as_shape().shape).__name__
         assert found == kinds
 
-    def test_a_cycle_flattened_through_an_all_of_member_is_recursion(self, memory_workspace):
+    def test_a_cycle_flattened_through_an_all_of_member_is_recursion(self, workspace):
         """docs/12 § 3: re-entering an open subschema without a `$ref` is a back-edge, not a `RecursionError`."""
         schema = {'type': 'object', 'properties': {'n': {'allOf': [{'$ref': 'h.json'}, {'type': 'object'}]}}}
-        root = memory_workspace(
+        root = workspace(
             {'api.raml': '#%RAML 1.0\ntitle: t\ntypes:\n  H: !include h.json\n', 'h.json': json.dumps(schema)}
         )
-        raml = memory_workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
         shape = declared(raml, 'H').shape
         assert shape.projection_error() is None
         inner = shape.as_shape().shape.properties['n'].base.shape
@@ -318,7 +318,7 @@ class TestTheOutcomeDoesNotDependOnTheEntry:
         assert isinstance(inner.properties['n'].base.shape, RecursiveShape)
 
     @pytest.mark.parametrize('order', [('S', 'W'), ('W', 'S')], ids='-'.join)
-    def test_a_document_naming_no_draft_is_read_in_each_entry_draft(self, memory_workspace, order):
+    def test_a_document_naming_no_draft_is_read_in_each_entry_draft(self, workspace, order):
         """`dependencies` is a draft 7 keyword and a 2020-12 annotation, so the
         same file fails in one reading and projects in the other, in either order.
         """
@@ -328,8 +328,8 @@ class TestTheOutcomeDoesNotDependOnTheEntry:
             's.json': json.dumps({'allOf': [{'type': 'object'}], 'dependencies': {'a': ['b']}}),
             'w.json': json.dumps({'$schema': 'https://json-schema.org/draft/2020-12/schema', '$ref': 's.json'}),
         }
-        root = memory_workspace(files)
-        raml = memory_workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
+        root = workspace(files)
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
         outcomes = {}
         for name in order:
             failure = declared(raml, name).shape.projection_error()
@@ -342,7 +342,7 @@ class TestTheOutcomeDoesNotDependOnTheEntry:
         assert isinstance(declared(raml, 'W').shape.as_shape().shape, ObjectShape)
 
     @pytest.mark.parametrize('order', [('S', 'W'), ('W', 'S')], ids='-'.join)
-    def test_ref_siblings_are_read_in_each_entry_draft(self, memory_workspace, order):
+    def test_ref_siblings_are_read_in_each_entry_draft(self, workspace, order):
         """Draft 7 ignores a `$ref`'s siblings and 2020-12 applies them, so the
         `if` beside it is nothing to S and an unprojectable conditional to W.
         """
@@ -353,8 +353,8 @@ class TestTheOutcomeDoesNotDependOnTheEntry:
             's.json': json.dumps(s),
             'w.json': json.dumps({'$schema': 'https://json-schema.org/draft/2020-12/schema', '$ref': 's.json'}),
         }
-        root = memory_workspace(files)
-        raml = memory_workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
+        root = workspace(files)
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
 
         def outcome(name):
             failure = declared(raml, name).shape.projection_error()
@@ -365,14 +365,14 @@ class TestTheOutcomeDoesNotDependOnTheEntry:
         assert {name: outcome(name) for name in order} == first
         assert isinstance(declared(raml, 'S').shape.as_shape().shape, ObjectShape)
 
-    def test_a_reference_only_cycle_fails_from_every_entry(self, memory_workspace):
+    def test_a_reference_only_cycle_fails_from_every_entry(self, workspace):
         files = {
             'api.raml': '#%RAML 1.0\ntitle: t\ntypes:\n  A: !include a.json\n  B: !include b.json\n',
             'a.json': json.dumps({'$ref': 'b.json'}),
             'b.json': json.dumps({'$ref': 'a.json'}),
         }
-        root = memory_workspace(files)
-        raml = memory_workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
+        root = workspace(files)
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
         for name in ('B', 'A'):
             failure = declared(raml, name).shape.projection_error()
             assert (failure.head.message, failure.head.info) == (NO_EQUIVALENT, {'construct': 'reference-only cycle'})
@@ -412,7 +412,7 @@ class TestOneFileReadInTwoDrafts:
     BODY = '    responses:\n      200:\n        body:\n          application/json: {0}\n'
 
     @pytest.fixture(params=[('S', 'W'), ('W', 'S')], ids='-'.join)
-    def raml(self, memory_workspace, request):
+    def raml(self, workspace, request):
         declarations = ''.join(f'  {name}: !include {name.lower()}.json\n' for name in request.param)
         resources = ''.join(f'/{name.lower()}:\n  get:\n' + self.BODY.format(name) for name in request.param)
         files = {
@@ -420,8 +420,8 @@ class TestOneFileReadInTwoDrafts:
             's.json': json.dumps(self.S),
             'w.json': json.dumps(self.W),
         }
-        root = memory_workspace(files)
-        return memory_workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, retain_text=True))
+        root = workspace(files)
+        return workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, retain_text=True))
 
     @staticmethod
     def readings(raml):

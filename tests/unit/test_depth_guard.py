@@ -21,11 +21,6 @@ from fastraml.yamlnode import DEFAULT_MAX_DEPTH
 LIB = '#%RAML 1.0 Library\n'
 
 
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
 def messages(error: RamlError) -> list[str]:
     return [trace.message for chain in error.chains() for trace in chain]
 

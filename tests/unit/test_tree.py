@@ -61,11 +61,6 @@ types:
 REFERENCE_KEYS = frozenset({'$ref', 'declaration', 'id', 'type'})
 
 
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
 def references(value: object, key: str = '') -> list[tuple[str, str]]:
     """Every `(key, address)` pair the projection emits, however deep."""
     found: list[tuple[str, str]] = []

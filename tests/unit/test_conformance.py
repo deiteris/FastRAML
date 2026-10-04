@@ -42,11 +42,6 @@ REGENERATE = 'python -m fastraml.views.bindings.conformance'
 ORDERED_MAP = 'github.com/wk8/go-ordered-map/v2@v2.1.8'
 
 
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
 @pytest.fixture(scope='module')
 def expected():
     return load_corpus()

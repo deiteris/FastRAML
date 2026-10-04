@@ -19,11 +19,6 @@ from fastraml.yamlnode import Node, WrittenScalar
 LIB = '#%RAML 1.0 Library\n'
 
 
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
 def library(workspace, body: str, extra: dict[str, str] | None = None):
     """Parse a one-file library whose `types:` is `body`."""
     files = {'lib.raml': LIB + 'types:\n' + body}

@@ -77,11 +77,6 @@ types:
 
 
 @pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
-@pytest.fixture
 def shown(workspace):
     root = workspace({'lib.raml': LIB})
     raml = workspace.parse(root / 'lib.raml', ParseOptions(unwrap=True))

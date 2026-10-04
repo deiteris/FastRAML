@@ -69,10 +69,16 @@ class MemoryWorkspace:
 
 
 @pytest.fixture
-def memory_workspace(request: pytest.FixtureRequest) -> MemoryWorkspace:
+def workspace(request: pytest.FixtureRequest) -> MemoryWorkspace:
     """Give each test an absolute URI base without creating a directory."""
     key = hashlib.blake2b(request.node.nodeid.encode(), digest_size=12).hexdigest()
     return MemoryWorkspace(request.config.rootpath / '.fastraml-virtual' / key)
+
+
+@pytest.fixture
+def memory_workspace(workspace: MemoryWorkspace) -> MemoryWorkspace:
+    """`workspace`, for a module where that name is a service `Workspace`."""
+    return workspace
 
 
 class CountingLoader:
@@ -99,8 +105,10 @@ class CountingLoader:
 
 
 @pytest.fixture
-def workspace(tmp_path: Path):
-    """Write a set of files under `tmp_path` and return the directory."""
+def disk_workspace(tmp_path: Path):
+    """Write a set of files under `tmp_path` and return the directory: for a
+    test of filesystem behaviour, or a caller that reads paths itself.
+    """
 
     def build(files: dict[str, str]) -> Path:
         return write_files(tmp_path, files)

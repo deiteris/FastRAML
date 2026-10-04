@@ -33,11 +33,6 @@ RE2 = ParseOptions(regex_engine='re2')
 BACKREFERENCE = '(a)\\1'
 
 
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
 def messages(error: RamlError) -> list[str]:
     return [trace.message for chain in error.chains() for trace in chain]
 

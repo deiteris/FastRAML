@@ -16,11 +16,6 @@ API = '#%RAML 1.0\ntitle: T\n'
 JSON = API + 'mediaType: application/json\n'
 
 
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
 def parse(workspace, body: str, head: str = API, **options):
     root = workspace({'api.raml': head + body})
     return workspace.parse(root / 'api.raml', ParseOptions(**options) if options else None)

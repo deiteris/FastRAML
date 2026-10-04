@@ -38,11 +38,6 @@ PERSON = json.dumps(
 )
 
 
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
 def parse(workspace, files: dict[str, str], **options):
     """Parse `api.raml` out of `files`; return the error, or `None`."""
     root = workspace(files)

@@ -14,11 +14,6 @@ from fastraml.parser.references import (
 from fastraml.registry import Raml
 
 
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
 def library_with(raml: Raml, location: str, **tables) -> Library:
     library = Library(raml, location)
     for name, table in tables.items():

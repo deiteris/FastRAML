@@ -76,11 +76,6 @@ type: number
 """
 
 
-@pytest.fixture
-def workspace(memory_workspace: MemoryWorkspace) -> MemoryWorkspace:
-    return memory_workspace
-
-
 def _write(workspace: MemoryWorkspace, api: str = API) -> Path:
     files = {'lib.raml': LIBRARY, 'money.raml': MONEY, 'readme.md': 'Read me.', 'api.raml': api}
     return workspace(files) / 'api.raml'

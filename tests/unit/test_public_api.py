@@ -121,9 +121,9 @@ class TestNarrowing:
 
         assert fastraml.RAML_NS == RAML_NS
 
-    def test_narrowing_reads_the_way_the_doc_writes_it(self, workspace):
+    def test_narrowing_reads_the_way_the_doc_writes_it(self, disk_workspace):
         """docs/13 § 1's example, run rather than quoted."""
-        root = workspace({'lib.raml': '#%RAML 1.0 Library\ntypes:\n  T:\n    properties:\n      a: string\n'})
+        root = disk_workspace({'lib.raml': '#%RAML 1.0 Library\ntypes:\n  T:\n    properties:\n      a: string\n'})
         raml = fastraml.parse_from_path(root / 'lib.raml', fastraml.ParseOptions(unwrap=True))
         shape = raml.entry_point.types['T'].shape
         assert isinstance(shape, fastraml.ObjectShape)

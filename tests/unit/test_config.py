@@ -47,8 +47,8 @@ compatibility:
     assert config.compatibility.rules[0].id == 'protocol-removed'
 
 
-def test_precise_protocol_override_changes_the_exit_code(workspace, tmp_path, capsys):
-    root = workspace({'old.raml': OLD, 'new.raml': NEW})
+def test_precise_protocol_override_changes_the_exit_code(disk_workspace, tmp_path, capsys):
+    root = disk_workspace({'old.raml': OLD, 'new.raml': NEW})
     config = tmp_path / 'fastraml.yaml'
     config.write_text(
         """compatibility:
@@ -68,8 +68,8 @@ def test_precise_protocol_override_changes_the_exit_code(workspace, tmp_path, ca
     assert '| `protocols` | `HTTP`, `HTTPS` -> `HTTPS` | Compatible |' in output
 
 
-def test_nonmatching_protocol_override_does_not_hide_a_break(workspace, tmp_path, capsys):
-    root = workspace({'old.raml': OLD, 'new.raml': NEW})
+def test_nonmatching_protocol_override_does_not_hide_a_break(disk_workspace, tmp_path, capsys):
+    root = disk_workspace({'old.raml': OLD, 'new.raml': NEW})
     config = tmp_path / 'fastraml.yaml'
     config.write_text(
         """compatibility:
@@ -100,13 +100,13 @@ title: T
 SHAPE_NEW = SHAPE_OLD.replace('code: {type: string, maxLength: 10}', 'code: {type: string, maxLength: 5}')
 
 
-def test_an_override_can_name_the_schema_path_it_applies_to(workspace, tmp_path, capsys):
+def test_an_override_can_name_the_schema_path_it_applies_to(disk_workspace, tmp_path, capsys):
     """`match.path` selects one coordinate inside a shape, spelled as the report
     spells it. Every other match field had a test and this one had none, which
     left the rendered path doing two jobs -- a table cell and a config key -- with
     only the first of them proven.
     """
-    root = workspace({'old.raml': SHAPE_OLD, 'new.raml': SHAPE_NEW})
+    root = disk_workspace({'old.raml': SHAPE_OLD, 'new.raml': SHAPE_NEW})
     config = tmp_path / 'fastraml.yaml'
     config.write_text(
         """compatibility:
@@ -123,8 +123,8 @@ def test_an_override_can_name_the_schema_path_it_applies_to(workspace, tmp_path,
     assert '`$.code`' in capsys.readouterr().out
 
 
-def test_an_override_naming_a_different_path_leaves_the_break_alone(workspace, tmp_path, capsys):
-    root = workspace({'old.raml': SHAPE_OLD, 'new.raml': SHAPE_NEW})
+def test_an_override_naming_a_different_path_leaves_the_break_alone(disk_workspace, tmp_path, capsys):
+    root = disk_workspace({'old.raml': SHAPE_OLD, 'new.raml': SHAPE_NEW})
     config = tmp_path / 'fastraml.yaml'
     config.write_text(
         """compatibility:
@@ -140,8 +140,8 @@ def test_an_override_naming_a_different_path_leaves_the_break_alone(workspace, t
     assert main(['compat', '--config', str(config), str(root / 'old.raml'), str(root / 'new.raml')]) == EXIT_INVALID
 
 
-def test_disabled_compatibility_rule_is_absent_and_nonblocking(workspace, tmp_path, capsys):
-    root = workspace({'old.raml': OLD, 'new.raml': NEW})
+def test_disabled_compatibility_rule_is_absent_and_nonblocking(disk_workspace, tmp_path, capsys):
+    root = disk_workspace({'old.raml': OLD, 'new.raml': NEW})
     config = tmp_path / 'fastraml.yaml'
     config.write_text(
         """compatibility:
@@ -157,8 +157,8 @@ def test_disabled_compatibility_rule_is_absent_and_nonblocking(workspace, tmp_pa
     assert captured.err == ''
 
 
-def test_cli_rule_override_applies_after_the_file(workspace, tmp_path, capsys):
-    root = workspace({'old.raml': OLD, 'new.raml': NEW})
+def test_cli_rule_override_applies_after_the_file(disk_workspace, tmp_path, capsys):
+    root = disk_workspace({'old.raml': OLD, 'new.raml': NEW})
     config = tmp_path / 'fastraml.yaml'
     config.write_text(
         """compatibility:
@@ -181,9 +181,9 @@ def test_cli_rule_override_applies_after_the_file(workspace, tmp_path, capsys):
     assert '| `protocols` | `HTTP`, `HTTPS` -> `HTTPS` | Compatible |' in capsys.readouterr().out
 
 
-def test_cli_rule_override_revives_a_rule_the_file_disables(workspace, tmp_path, capsys):
+def test_cli_rule_override_revives_a_rule_the_file_disables(disk_workspace, tmp_path, capsys):
     # docs/16 § 5: `--rule` applies after the file, so the file's `off` is not final.
-    root = workspace({'old.raml': OLD, 'new.raml': NEW})
+    root = disk_workspace({'old.raml': OLD, 'new.raml': NEW})
     config = tmp_path / 'fastraml.yaml'
     config.write_text('compatibility:\n  rules:\n    - id: protocol-removed\n      disabled: true\n', encoding='utf-8')
     args = ['compat', '--config', str(config), '--rule', 'protocol-removed=breaking']
@@ -204,26 +204,26 @@ def test_cli_rule_override_revives_a_rule_the_file_disables(workspace, tmp_path,
         ),
     ],
 )
-def test_the_last_matching_file_entry_decides(workspace, tmp_path, entries, expected):
+def test_the_last_matching_file_entry_decides(disk_workspace, tmp_path, entries, expected):
     # docs/16 § 5: entries are ordered overrides, so the first `off` is not final.
-    root = workspace({'old.raml': OLD, 'new.raml': NEW})
+    root = disk_workspace({'old.raml': OLD, 'new.raml': NEW})
     config = tmp_path / 'fastraml.yaml'
     config.write_text(f'compatibility:\n  rules:\n{entries}', encoding='utf-8')
     assert main(['compat', '--config', str(config), str(root / 'old.raml'), str(root / 'new.raml')]) == expected
 
 
-def test_cli_rule_override_names_each_rule_once(workspace, capsys):
+def test_cli_rule_override_names_each_rule_once(disk_workspace, capsys):
     # Shared with `lint --rule`: two overrides of one rule contradict each other.
-    root = workspace({'old.raml': OLD, 'new.raml': NEW})
+    root = disk_workspace({'old.raml': OLD, 'new.raml': NEW})
     args = ['compat', '--rule', 'protocol-removed=off', '--rule', 'protocol-removed=breaking']
     assert main([*args, str(root / 'old.raml'), str(root / 'new.raml')]) == EXIT_INVALID
     assert 'duplicate compatibility rule override: protocol-removed' in capsys.readouterr().err
 
 
 @pytest.mark.parametrize('raw', ['protocol-removed', 'protocol-removed=Severe'])
-def test_an_invalid_cli_rule_override_is_quoted_as_typed(workspace, capsys, raw):
+def test_an_invalid_cli_rule_override_is_quoted_as_typed(disk_workspace, capsys, raw):
     # The message names the argument the user wrote, not a re-spelling of it.
-    root = workspace({'old.raml': OLD, 'new.raml': NEW})
+    root = disk_workspace({'old.raml': OLD, 'new.raml': NEW})
     assert main(['compat', '--rule', raw, str(root / 'old.raml'), str(root / 'new.raml')]) == EXIT_INVALID
     assert f'invalid compatibility rule override: {raw!r}' in capsys.readouterr().err
 
@@ -232,9 +232,9 @@ def test_an_invalid_cli_rule_override_is_quoted_as_typed(workspace, capsys, raw)
     ('action', 'expected', 'refused'),
     [('off', EXIT_OK, False), ('cosmetic', EXIT_OK, False), ('severe', EXIT_INVALID, True)],
 )
-def test_cli_rule_override_accepts_an_impact_or_off(workspace, capsys, action, expected, refused):
+def test_cli_rule_override_accepts_an_impact_or_off(disk_workspace, capsys, action, expected, refused):
     # The accepted actions are `Impact`'s values and `off`, read off the type.
-    root = workspace({'old.raml': OLD, 'new.raml': NEW})
+    root = disk_workspace({'old.raml': OLD, 'new.raml': NEW})
     args = ['compat', '--rule', f'protocol-removed={action}', str(root / 'old.raml'), str(root / 'new.raml')]
     assert main(args) == expected
     assert ('invalid compatibility rule override' in capsys.readouterr().err) is refused
@@ -258,8 +258,8 @@ def test_parser_workspace_root_applies_to_validate(tmp_path, capsys):
     assert capsys.readouterr().err == ''
 
 
-def test_unknown_compatibility_rule_is_rejected(workspace, tmp_path, capsys):
-    root = workspace({'old.raml': OLD, 'new.raml': NEW})
+def test_unknown_compatibility_rule_is_rejected(disk_workspace, tmp_path, capsys):
+    root = disk_workspace({'old.raml': OLD, 'new.raml': NEW})
     config = tmp_path / 'fastraml.yaml'
     config.write_text(
         'compatibility:\n  rules:\n    - id: imaginary-rule\n      disabled: true\n',

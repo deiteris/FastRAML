@@ -17,11 +17,6 @@ from fastraml import ParseOptions, RamlError
 API = '#%RAML 1.0\ntitle: T\nmediaType: application/json\n'
 
 
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
 def parse(workspace, root, name: str = 'api.raml'):
     return workspace.parse(root / name)
 

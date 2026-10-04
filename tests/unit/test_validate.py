@@ -23,11 +23,6 @@ from fastraml.types.values import ValueSet, is_subset, same_value, unique_items
 API = '#%RAML 1.0\ntitle: T\n'
 
 
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
 #: `12` in Arabic-Indic digits, which Python's `\d` matches and `int()` reads.
 _ARABIC_INDIC_12 = chr(0x0661) + chr(0x0662)
 

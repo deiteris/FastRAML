@@ -23,11 +23,6 @@ LIB = '#%RAML 1.0 Library\n'
 XSD = '<?xml version="1.0"?>\n<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"/>\n'
 
 
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
 def messages(error: RamlError) -> set[str]:
     return {trace.message for chain in error.chains() for trace in chain}
 

@@ -29,11 +29,6 @@ OAUTH2 = (
 )
 
 
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
 def parse(workspace, body: str, **options):
     root = workspace({'api.raml': API + body})
     return workspace.parse(root / 'api.raml', ParseOptions(**options) if options else None)

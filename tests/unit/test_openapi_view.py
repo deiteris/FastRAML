@@ -15,11 +15,6 @@ from fastraml.types.values import DATETIME_ONLY_PATTERN, RFC2616_PATTERN, TIME_O
 from fastraml.views.openapi import OAS3Schema
 
 
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
 def converted(workspace, body: str):
     root = workspace({'api.raml': '#%RAML 1.0\n' + body})
     raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))

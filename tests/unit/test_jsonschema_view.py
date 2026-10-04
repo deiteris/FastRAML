@@ -27,11 +27,6 @@ from fastraml.views.jsonschema import SCHEMA_VERSION, to_json_schema
 API = '#%RAML 1.0\ntitle: T\n'
 
 
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
 def converted(workspace, body: str, name: str = 'T'):
     """The named type's schema and what the conversion dropped."""
     root = workspace({'api.raml': API + 'types:\n' + body})

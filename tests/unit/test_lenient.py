@@ -20,11 +20,6 @@ LIB = '#%RAML 1.0 Library\n'
 BOTH = ParseOptions(unwrap=True, validate=True)
 
 
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
 def messages(error: RamlError) -> set[str]:
     return {trace.message for chain in error.chains() for trace in chain}
 

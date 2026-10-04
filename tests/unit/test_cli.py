@@ -41,8 +41,8 @@ def test_openapi_export_defaults_to_yaml(files, capsys):
     assert captured.err == ''
 
 
-def test_convert_jsonschema_exports_a_named_effective_type_with_o(workspace, tmp_path, capsys):
-    root = workspace(
+def test_convert_jsonschema_exports_a_named_effective_type_with_o(disk_workspace, tmp_path, capsys):
+    root = disk_workspace(
         {
             'api.raml': API
             + 'types:\n  Parent:\n    properties:\n      code: string\n'
@@ -60,8 +60,8 @@ def test_convert_jsonschema_exports_a_named_effective_type_with_o(workspace, tmp
     assert list(document['definitions']['Child']['properties']) == ['count', 'code']
 
 
-def test_convert_jsonschema_accepts_a_data_type_fragment(workspace, capsys):
-    root = workspace({'type.raml': '#%RAML 1.0 DataType\ntype: string\nminLength: 2\n'})
+def test_convert_jsonschema_accepts_a_data_type_fragment(disk_workspace, capsys):
+    root = disk_workspace({'type.raml': '#%RAML 1.0 DataType\ntype: string\nminLength: 2\n'})
     assert main(['convert', 'jsonschema', str(root / 'type.raml')]) == EXIT_OK
     captured = capsys.readouterr()
     document = json.loads(captured.out)
@@ -69,17 +69,17 @@ def test_convert_jsonschema_accepts_a_data_type_fragment(workspace, capsys):
     assert captured.err == ''
 
 
-def test_convert_jsonschema_accepts_a_named_library_type(workspace, capsys):
-    root = workspace({'library.raml': '#%RAML 1.0 Library\ntypes:\n  Code:\n    type: integer\n    minimum: 1\n'})
+def test_convert_jsonschema_accepts_a_named_library_type(disk_workspace, capsys):
+    root = disk_workspace({'library.raml': '#%RAML 1.0 Library\ntypes:\n  Code:\n    type: integer\n    minimum: 1\n'})
     assert main(['convert', 'jsonschema', str(root / 'library.raml'), 'Code']) == EXIT_OK
     document = json.loads(capsys.readouterr().out)
     assert document['definitions']['Code'] == {'type': 'integer', 'minimum': 1}
 
 
-def test_convert_jsonschema_bundles_refs_in_an_included_schema(workspace, capsys):
+def test_convert_jsonschema_bundles_refs_in_an_included_schema(disk_workspace, capsys):
     import jsonschema
 
-    root = workspace(
+    root = disk_workspace(
         {
             'api.raml': API + 'types:\n  User: !include user.json\n',
             'user.json': json.dumps({'type': 'object', 'properties': {'id': {'$ref': 'id.json'}}}),
@@ -93,8 +93,8 @@ def test_convert_jsonschema_bundles_refs_in_an_included_schema(workspace, capsys
         jsonschema.validate({'id': 0}, document)
 
 
-def test_convert_jsonschema_requires_an_existing_type(workspace, capsys):
-    root = workspace({'api.raml': GOOD})
+def test_convert_jsonschema_requires_an_existing_type(disk_workspace, capsys):
+    root = disk_workspace({'api.raml': GOOD})
     for name in ([], ['Missing']):
         assert main(['convert', 'jsonschema', str(root / 'api.raml'), *name]) == EXIT_INVALID
         captured = capsys.readouterr()
@@ -102,16 +102,18 @@ def test_convert_jsonschema_requires_an_existing_type(workspace, capsys):
         assert ('TYPE is required' if not name else 'no type') in captured.err
 
 
-def test_convert_jsonschema_rejects_a_name_on_a_data_type_fragment(workspace, capsys):
-    root = workspace({'type.raml': '#%RAML 1.0 DataType\ntype: string\n'})
+def test_convert_jsonschema_rejects_a_name_on_a_data_type_fragment(disk_workspace, capsys):
+    root = disk_workspace({'type.raml': '#%RAML 1.0 DataType\ntype: string\n'})
     assert main(['convert', 'jsonschema', str(root / 'type.raml'), 'Other']) == EXIT_INVALID
     captured = capsys.readouterr()
     assert captured.out == ''
     assert 'does not take TYPE' in captured.err
 
 
-def test_convert_jsonschema_reports_losses_on_stderr(workspace, capsys):
-    root = workspace({'api.raml': API + 'types:\n  Photo:\n    type: file\n    fileTypes: [image/png, image/jpeg]\n'})
+def test_convert_jsonschema_reports_losses_on_stderr(disk_workspace, capsys):
+    root = disk_workspace(
+        {'api.raml': API + 'types:\n  Photo:\n    type: file\n    fileTypes: [image/png, image/jpeg]\n'}
+    )
     assert main(['convert', 'jsonschema', str(root / 'api.raml'), 'Photo']) == EXIT_OK
     captured = capsys.readouterr()
     assert json.loads(captured.out)['definitions']['Photo']['contentMediaType'] == 'image/png'
@@ -126,8 +128,8 @@ def test_old_openapi_verb_is_replaced_by_convert(files, capsys):
     assert "invalid choice: 'openapi'" in capsys.readouterr().err
 
 
-def test_convert_exports_a_json_schema_and_supports_o(workspace, tmp_path, capsys):
-    root = workspace(
+def test_convert_exports_a_json_schema_and_supports_o(disk_workspace, tmp_path, capsys):
+    root = disk_workspace(
         {
             'schema.json': json.dumps(
                 {
@@ -147,16 +149,16 @@ def test_convert_exports_a_json_schema_and_supports_o(workspace, tmp_path, capsy
     assert types['schema']['properties']['code'] == {'type': 'Code', 'required': False}
 
 
-def test_convert_reports_missing_schemas(workspace, capsys):
-    root = workspace({})
+def test_convert_reports_missing_schemas(disk_workspace, capsys):
+    root = disk_workspace({})
     assert main(['convert', 'raml', str(root / 'missing.json')]) == EXIT_INVALID
     captured = capsys.readouterr()
     assert captured.out == ''
     assert 'load resource' in captured.err
 
 
-def test_convert_reports_an_unrepresentable_literal_property_without_a_traceback(workspace, capsys):
-    root = workspace({'schema.json': json.dumps({'type': 'object', 'properties': {'/^x/': {'type': 'string'}}})})
+def test_convert_reports_an_unrepresentable_literal_property_without_a_traceback(disk_workspace, capsys):
+    root = disk_workspace({'schema.json': json.dumps({'type': 'object', 'properties': {'/^x/': {'type': 'string'}}})})
     assert main(['convert', 'raml', str(root / 'schema.json')]) == EXIT_INVALID
     captured = capsys.readouterr()
     assert captured.out == ''
@@ -201,8 +203,8 @@ def test_openapi_export_o_reports_an_unwritable_file(files, tmp_path, capsys):
 
 
 @pytest.fixture
-def files(workspace):
-    root = workspace({'good.raml': GOOD, 'bad.raml': BAD})
+def files(disk_workspace):
+    root = disk_workspace({'good.raml': GOOD, 'bad.raml': BAD})
     return lambda name: str(root / name)
 
 
@@ -292,19 +294,19 @@ class TestInfo:
 
 
 class TestOptions:
-    def test_the_workspace_root_is_enforced(self, workspace, capsys):
+    def test_the_workspace_root_is_enforced(self, disk_workspace, capsys):
         """`-w` is the sandbox, so an escape has to be refused with it set."""
-        root = workspace({'secret.raml': API, 'ws/api.raml': API + 'uses:\n  up: ../secret.raml\n'})
+        root = disk_workspace({'secret.raml': API, 'ws/api.raml': API + 'uses:\n  up: ../secret.raml\n'})
         code = main(['validate', '-w', str(root / 'ws'), str(root / 'ws' / 'api.raml')])
         assert code == EXIT_INVALID
         assert 'workspace' in capsys.readouterr().err.lower()
 
-    def test_the_refusal_names_the_flag_and_the_root_that_would_work(self, workspace, capsys):
+    def test_the_refusal_names_the_flag_and_the_root_that_would_work(self, disk_workspace, capsys):
         """The root defaults to the entry file's directory, so this is the first
         thing anyone hits on an API whose libraries sit beside it rather than
         beneath it -- and the refusal alone does not say which flag widens it.
         """
-        root = workspace({'secret.raml': API, 'ws/api.raml': API + 'uses:\n  up: ../secret.raml\n'})
+        root = disk_workspace({'secret.raml': API, 'ws/api.raml': API + 'uses:\n  up: ../secret.raml\n'})
         assert main(['validate', str(root / 'ws' / 'api.raml')]) == EXIT_INVALID
         err = capsys.readouterr().err
         assert 'pass -w ' in err
@@ -315,8 +317,8 @@ class TestOptions:
         assert main(['validate', files('bad.raml')]) == EXIT_INVALID
         assert 'pass -w ' not in capsys.readouterr().err
 
-    def test_no_workspace_guard_allows_the_same_include(self, workspace):
-        root = workspace({'lib.raml': '#%RAML 1.0 Library\n', 'ws/api.raml': API + 'uses:\n  up: ../lib.raml\n'})
+    def test_no_workspace_guard_allows_the_same_include(self, disk_workspace):
+        root = disk_workspace({'lib.raml': '#%RAML 1.0 Library\n', 'ws/api.raml': API + 'uses:\n  up: ../lib.raml\n'})
         argv = ['validate', '--no-workspace-guard', '-w', str(root / 'ws'), str(root / 'ws' / 'api.raml')]
         assert main(argv) == EXIT_OK
 
@@ -338,7 +340,7 @@ class TestOptions:
         # reader to work out that the package declares one.
         assert 'fastraml[http]' in str(caught.value)
 
-    def test_remote_include_follows_redirect_with_the_cli_client(self, workspace, monkeypatch):
+    def test_remote_include_follows_redirect_with_the_cli_client(self, disk_workspace, monkeypatch):
         httpx = pytest.importorskip('httpx')
         client_type = httpx.Client
 
@@ -349,7 +351,7 @@ class TestOptions:
 
         transport = httpx.MockTransport(response)
         monkeypatch.setattr(httpx, 'Client', lambda **options: client_type(transport=transport, **options))
-        root = workspace({'api.raml': API + 'types:\n  Remote: !include https://example.test/old.raml\n'})
+        root = disk_workspace({'api.raml': API + 'types:\n  Remote: !include https://example.test/old.raml\n'})
         assert main(['validate', '-r', str(root / 'api.raml')]) == EXIT_OK
 
 
@@ -421,8 +423,8 @@ GRAPHED = (
 
 
 @pytest.fixture
-def graphed(workspace):
-    return str(workspace({'g.raml': GRAPHED}) / 'g.raml')
+def graphed(disk_workspace):
+    return str(disk_workspace({'g.raml': GRAPHED}) / 'g.raml')
 
 
 class TestGraphVerbs:
@@ -520,7 +522,7 @@ class TestGraphVerbs:
         assert main(['refs', '--sites', graphed, 'fastraml://id#/declarations/types/Entity/property/id']) == EXIT_OK
         assert capsys.readouterr().out.split()[1:] == ['definition']
 
-    def test_a_multi_parent_type_does_not_make_its_parents_ambiguous(self, workspace, capsys):
+    def test_a_multi_parent_type_does_not_make_its_parents_ambiguous(self, disk_workspace, capsys):
         """The end-to-end form of the defect `Graph.find` now rules out.
 
         `Admin: [User, Entity]` builds a synthetic parent per branch carrying
@@ -528,7 +530,7 @@ class TestGraphVerbs:
         nodes that are the same type. It exited 1 on a three-type document.
         """
         path = str(
-            workspace(
+            disk_workspace(
                 {
                     'api.raml': API + 'types:\n'
                     '  Entity:\n    type: object\n    properties:\n      id: string\n'
@@ -749,11 +751,11 @@ class TestQueryVerb:
         assert main(['query', graphed, '-q', f'PREFIX raml: <{RAML_NS}> ASK {{ ?o a raml:Operation }}']) == EXIT_OK
         assert capsys.readouterr().out.strip() == 'true'
 
-    def test_a_query_can_come_from_a_file(self, graphed, workspace, capsys):
+    def test_a_query_can_come_from_a_file(self, graphed, disk_workspace, capsys):
         pytest.importorskip('pyoxigraph', reason='SPARQL is an optional extra (docs/16 § 3.1)')
         from fastraml.views.graph import RAML_NS
 
-        path = workspace({'q.rq': f'PREFIX raml: <{RAML_NS}> ASK {{ ?o a raml:Api }}'}) / 'q.rq'
+        path = disk_workspace({'q.rq': f'PREFIX raml: <{RAML_NS}> ASK {{ ?o a raml:Api }}'}) / 'q.rq'
         assert main(['query', graphed, '-Q', str(path)]) == EXIT_OK
         assert capsys.readouterr().out.strip() == 'true'
 
@@ -872,8 +874,8 @@ V2 = V1.replace('      discount: number\n', '')
 
 
 @pytest.fixture
-def versions(workspace):
-    root = workspace({'v1.raml': V1, 'v2.raml': V2})
+def versions(disk_workspace):
+    root = disk_workspace({'v1.raml': V1, 'v2.raml': V2})
     return str(root / 'v1.raml'), str(root / 'v2.raml')
 
 
@@ -887,13 +889,13 @@ types:
 
 
 class TestCompat:
-    def test_types_compares_declarations_and_grades_them_both_ways(self, workspace, capsys):
+    def test_types_compares_declarations_and_grades_them_both_ways(self, disk_workspace, capsys):
         """The mode `compat` has no answer for otherwise. A library declares no
         operation, so the operation walk correctly finds nothing -- and reported
         "compatible" for a document whose whole contract had moved.
         """
         library = LIBRARY
-        root = workspace({'a.raml': library, 'b.raml': library.replace('minimum: 0', 'minimum: 1')})
+        root = disk_workspace({'a.raml': library, 'b.raml': library.replace('minimum: 0', 'minimum: 1')})
         args = [str(root / 'a.raml'), str(root / 'b.raml')]
 
         assert main(['compat', *args]) == EXIT_OK
@@ -905,9 +907,9 @@ class TestCompat:
         assert '### `Money`' in out
         assert '| `$.amount` | `minimum` | `0` -> `1` | Breaking | Compatible |' in out
 
-    def test_types_carries_json_and_the_two_records_share_a_coordinate(self, workspace, capsys):
+    def test_types_carries_json_and_the_two_records_share_a_coordinate(self, disk_workspace, capsys):
         library = LIBRARY
-        root = workspace({'a.raml': library, 'b.raml': library.replace('minimum: 0', 'minimum: 1')})
+        root = disk_workspace({'a.raml': library, 'b.raml': library.replace('minimum: 0', 'minimum: 1')})
 
         assert main(['compat', '--types', '--json', str(root / 'a.raml'), str(root / 'b.raml')]) == EXIT_INVALID
 
@@ -967,27 +969,27 @@ class TestCompat:
         assert captured.out == ''
         assert captured.err == ''
 
-    def test_a_safe_change_exits_zero(self, workspace, capsys):
+    def test_a_safe_change_exits_zero(self, disk_workspace, capsys):
         widened = V1.replace('      id: string', '      id: string\n      note?: string')
-        root = workspace({'a.raml': V1, 'b.raml': widened})
+        root = disk_workspace({'a.raml': V1, 'b.raml': widened})
         assert main(['compat', str(root / 'a.raml'), str(root / 'b.raml')]) == EXIT_OK
         assert '| `$.note` | optional `string` |' in capsys.readouterr().out
 
-    def test_breaking_only_still_exits_one_but_prints_less(self, workspace, capsys):
+    def test_breaking_only_still_exits_one_but_prints_less(self, disk_workspace, capsys):
         both = V2.replace('      id: string', '      id: string\n      note?: string')
-        root = workspace({'a.raml': V1, 'b.raml': both})
+        root = disk_workspace({'a.raml': V1, 'b.raml': both})
         assert main(['compat', str(root / 'a.raml'), str(root / 'b.raml'), '--breaking-only']) == EXIT_INVALID
         out = capsys.readouterr().out
         assert '| `$.discount` | required `number` |' in out
         assert '| `$.note` | optional `string` |' not in out
 
-    def test_severity_is_a_threshold_not_a_membership_test(self, workspace, capsys):
+    def test_severity_is_a_threshold_not_a_membership_test(self, disk_workspace, capsys):
         """docs/13 § 5: `--severity S` means S *and everything worse*, on every
         verb that has it. This took a repeatable exact set until `lint` arrived
         with a threshold and one flag name meant two things in one tool.
         """
         both = V2.replace('      id: string', '      id: string\n      note?: string')
-        root = workspace({'a.raml': V1, 'b.raml': both})
+        root = disk_workspace({'a.raml': V1, 'b.raml': both})
         args = ['compat', str(root / 'a.raml'), str(root / 'b.raml')]
 
         assert main([*args, '--severity', 'compatible']) == EXIT_INVALID
@@ -1001,11 +1003,11 @@ class TestCompat:
         assert '| `$.discount` | required `number` |' in narrowed
         assert '| `$.note` | optional `string` |' not in narrowed
 
-    def test_breaking_only_is_the_top_of_that_scale(self, workspace, capsys):
+    def test_breaking_only_is_the_top_of_that_scale(self, disk_workspace, capsys):
         """It is `--severity breaking` said shorter, and kept because it is what
         a CI gate reaches for."""
         both = V2.replace('      id: string', '      id: string\n      note?: string')
-        root = workspace({'a.raml': V1, 'b.raml': both})
+        root = disk_workspace({'a.raml': V1, 'b.raml': both})
         args = [str(root / 'a.raml'), str(root / 'b.raml')]
 
         assert main(['compat', *args, '--breaking-only']) == EXIT_INVALID
@@ -1022,7 +1024,7 @@ class TestCompat:
         assert removal['location'] == {'kind': 'ResponseBody', 'status': '200', 'media_type': 'application/json'}
         assert removal['path'] == [{'kind': 'PropertySegment', 'name': 'discount'}]
 
-    def test_json_carries_the_side_of_each_effective_use(self, workspace, capsys):
+    def test_json_carries_the_side_of_each_effective_use(self, disk_workspace, capsys):
         """The model walk reports request and response sites, not a synthetic
         declaration record whose direction had to be reconstructed from a graph.
         """
@@ -1042,7 +1044,7 @@ types:
         body:
           application/json: Thing
 """
-        root = workspace({'a.raml': both_ways, 'b.raml': both_ways.replace('      a: string', '      a?: string')})
+        root = disk_workspace({'a.raml': both_ways, 'b.raml': both_ways.replace('      a: string', '      a?: string')})
         main(['compat', str(root / 'a.raml'), str(root / 'b.raml'), '--json'])
         records = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
         required = [record for record in records if record['attribute'] == 'required']
@@ -1104,8 +1106,8 @@ types:
     )
 
     @pytest.fixture
-    def rich(self, workspace):
-        return str(workspace({'api.raml': self.RICH}) / 'api.raml')
+    def rich(self, disk_workspace):
+        return str(disk_workspace({'api.raml': self.RICH}) / 'api.raml')
 
     def test_an_operation_renders_under_its_resource(self, rich, capsys):
         """It has no `path` of its own; the owning endpoint does."""

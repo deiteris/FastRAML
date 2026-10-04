@@ -21,11 +21,6 @@ LIB = '#%RAML 1.0 Library\n'
 UNWRAP = ParseOptions(unwrap=True)
 
 
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
 def unwrapped(workspace, body: str, extra: dict[str, str] | None = None):
     """Parse a library with `unwrap=True` and return its declared types."""
     files = {'lib.raml': LIB + 'types:\n' + body}

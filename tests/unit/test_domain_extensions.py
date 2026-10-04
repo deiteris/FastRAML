@@ -20,11 +20,6 @@ LIB = '#%RAML 1.0 Library\n'
 DECLARE = 'annotationTypes:\n  ann: any\n'
 
 
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
 def parse(workspace, files: dict[str, str], entry: str = 'api.raml', **options):
     root = workspace(files)
     return workspace.parse(root / entry, ParseOptions(**options) if options else None)

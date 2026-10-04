@@ -66,11 +66,6 @@ TYPESCRIPT_RUNTIME = 'viewer/src/walk.ts'
 PYTHON_RUNTIME = 'contrib/raml-codegen/raml_codegen/walk.py'
 
 
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
 #: Generated records that carry shape fields but are not named `*Shape`.
 #: `Recursion` is one: P9 builds a `RecursiveShape` and `shape()` projects
 #: it down the generic path, so a marker is a shape (docs/16 § 6.1).

@@ -16,11 +16,6 @@ from fastraml import ParseOptions, RamlError
 API = '#%RAML 1.0\ntitle: T\n'
 
 
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
 def parse(workspace, body: str, **files: str):
     """Parse `types:\n<body>` and return the error, or `None` if it validated."""
     root = workspace({'api.raml': API + 'types:\n' + body, **files})

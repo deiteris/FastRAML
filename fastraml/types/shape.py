@@ -54,6 +54,7 @@ from fastraml.types.base import (
     Shape,
     TypeExprRef,
     declaration_facets,
+    owned,
 )
 from fastraml.types.complex_ import (
     ArrayShape,
@@ -396,6 +397,7 @@ def _decode(  # noqa: PLR0912 - one pass over the common-facet vocabulary (docs/
                     raise node_error('allowedTargets is only valid on annotation types', location, key)
                 base.allowed_targets = _decode_allowed_targets(raml, value, location)
             case name if is_annotation_key(name):
+                base.annotations = owned(base.annotations)
                 add_domain_extension(raml, base.annotations, location, key, value)
             case _:
                 facets.append(key)
@@ -475,6 +477,7 @@ def _decode_custom_facet_defs(raml: Raml, base: BaseShape, value_node: Node) -> 
             # Otherwise a facet name would be ambiguous with an annotation.
             raise node_error("facet name must not begin with '('", location, key, info={'facet': key.value})
         prop = make_property(raml, key, value, location)
+        base.custom_facet_defs = owned(base.custom_facet_defs)
         base.custom_facet_defs[prop.name] = prop
 
 
@@ -535,6 +538,7 @@ def _decode_type_node(
             # A built-in P7 never reads, which a caller wrote: the view finds
             # every other built-in written alone at its node (docs/16 § 9).
             location, at = site
+            base.type_expr_refs = owned(base.type_expr_refs)
             base.type_expr_refs.append(TypeExprRef(line=at.line, column=at.column, location=location, builtin=text))
     return text, None
 

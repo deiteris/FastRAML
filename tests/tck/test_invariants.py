@@ -75,40 +75,13 @@ class TestI4:
 
 
 def _reachable(raml):
-    """Every shape reachable from the model's roots, by explicit stack.
+    """Every shape reachable from the model's roots: its declaration indices."""
+    from tests.shapes import reachable
 
-    Recursion would not survive a self-referential type — `Node.next: Node` is
-    legal and produces a cycle in the object graph until P9 marks it.
-    """
-    from fastraml.types.complex_ import ArrayShape, ObjectShape, UnionShape
-
-    stack = [base for shapes in raml.fragment_typedefs.values() for base in shapes]
-    stack += [base for declared in raml.fragment_types.values() for base in declared.values()]
-    stack += [base for declared in raml.fragment_annotations.values() for base in declared.values()]
-
-    seen: dict[int, object] = {}
-    while stack:
-        base = stack.pop()
-        if id(base) in seen:
-            continue
-        seen[id(base)] = base
-
-        stack += base.inherits
-        stack += [prop.base for prop in base.custom_facet_defs.values()]
-        if base.alias is not None:
-            stack.append(base.alias)
-        if base.link is not None and base.link.shape is not None:
-            stack.append(base.link.shape)
-
-        shape = base.shape
-        if isinstance(shape, ArrayShape) and shape.items is not None:
-            stack.append(shape.items)
-        elif isinstance(shape, UnionShape) and shape.any_of is not None:
-            stack += shape.any_of
-        elif isinstance(shape, ObjectShape):
-            stack += [prop.base for prop in (shape.properties or {}).values()]
-            stack += [prop.base for prop in (shape.pattern_properties or {}).values()]
-    return seen
+    roots = [base for shapes in raml.fragment_typedefs.values() for base in shapes]
+    roots += [base for declared in raml.fragment_types.values() for base in declared.values()]
+    roots += [base for declared in raml.fragment_annotations.values() for base in declared.values()]
+    return reachable(roots)
 
 
 class TestI5:
@@ -337,6 +310,28 @@ class TestDomainExtensions:
                     offenders.append(f'{name}: ({extension.name}) bound to a shape unwrap replaced')
         assert not offenders, '\n'.join(offenders[:20])
         assert checked > 0, 'nothing was bound; the check would be vacuous'
+
+
+class TestSharedEmptyContainers:
+    """An empty `BaseShape` container is the shared one, before unwrap and after.
+
+    A site that writes without `owned` raises; one that allocates an empty
+    container instead, or copies one, shows up here (docs/12 § 2).
+    """
+
+    def test_before_unwrap(self, corpus: list):
+        from tests.shapes import unshared_empties
+
+        assert corpus, 'no fixture parsed; the check would be vacuous'
+        offenders = [f'{name}: {each}' for name, raml in corpus for each in unshared_empties(raml)]
+        assert not offenders, '\n'.join(offenders[:20])
+
+    def test_after_unwrap(self, unwrapped_corpus: list):
+        from tests.shapes import unshared_empties
+
+        assert unwrapped_corpus, 'no fixture parsed; the check would be vacuous'
+        offenders = [f'{name}: {each}' for name, raml in unwrapped_corpus for each in unshared_empties(raml)]
+        assert not offenders, '\n'.join(offenders[:20])
 
 
 class TestI1:

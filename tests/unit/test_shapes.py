@@ -14,6 +14,8 @@ import pytest
 from fastraml import RamlError
 from fastraml.registry import Raml
 from fastraml.types.base import (
+    EMPTY_DICT,
+    EMPTY_LIST,
     ONE_SHAPE,
     PROPERTIES,
     SHAPE_LIST,
@@ -22,6 +24,7 @@ from fastraml.types.base import (
     Property,
     TypeExprRef,
     declaration_facets,
+    owned,
 )
 from fastraml.types.xml import decode_xml_serialization
 from fastraml.yamlnode import Node, compose, pairs
@@ -51,6 +54,51 @@ class TestBaseShape:
         base = make_base()
         assert (base.inherits, base.custom_facets, base.custom_facet_defs) == ([], {}, {})
         assert (base.annotations, base.type_expr_refs) == ({}, [])
+
+    def test_every_container_starts_as_the_shared_empty_one(self):
+        # docs/12 § 2: five containers a shape, most never filled.
+        base = make_base()
+        assert all(each is EMPTY_LIST for each in (base.inherits, base.type_expr_refs))
+        assert all(each is EMPTY_DICT for each in (base.custom_facets, base.custom_facet_defs, base.annotations))
+
+    @pytest.mark.parametrize(
+        'edit',
+        [
+            lambda: EMPTY_LIST.append(1),
+            lambda: EMPTY_LIST.extend([1]),
+            lambda: EMPTY_LIST.insert(0, 1),
+            lambda: EMPTY_LIST.__iadd__([1]),
+            lambda: EMPTY_LIST.__setitem__(slice(0, 0), [1]),
+            lambda: EMPTY_DICT.__setitem__('k', 1),
+            lambda: EMPTY_DICT.setdefault('k', 1),
+            lambda: EMPTY_DICT.update(k=1),
+            lambda: EMPTY_DICT.__ior__({'k': 1}),
+            lambda: EMPTY_LIST.__init__([1]),
+            lambda: EMPTY_DICT.__init__(k=1),
+            lambda: type(EMPTY_LIST)([1]),
+            lambda: type(EMPTY_DICT)(k=1),
+        ],
+    )
+    def test_the_shared_empty_refuses_an_edit(self, edit):
+        # Filled in place, it would give every shape in the process the entry.
+        with pytest.raises(TypeError):
+            edit()
+        assert (EMPTY_LIST, EMPTY_DICT) == ([], {})
+
+    def test_owned_gives_a_new_container_for_a_shared_one_only(self):
+        assert type(owned(EMPTY_LIST)) is list
+        assert type(owned(EMPTY_DICT)) is dict
+        filled = [1]
+        assert owned(filled) is filled
+
+    @pytest.mark.parametrize('shared', [EMPTY_LIST, EMPTY_DICT])
+    def test_owned_treats_a_copy_of_a_shared_empty_as_shared(self, shared):
+        # A copy (`copy.copy`, pickling) is a fresh instance of the frozen class,
+        # made by `__new__` alone: by identity it would be returned, and refuse.
+        frozen = type(shared)
+        copied = frozen.__new__(frozen)
+        assert copied is not shared
+        assert type(owned(copied)) in (list, dict)
 
     def test_two_shapes_never_compare_equal_by_value(self):
         # A generated __eq__ on a recursive model is a correctness hazard, and

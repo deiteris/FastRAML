@@ -14,6 +14,7 @@ import pytest
 
 from bench import corpus
 from fastraml import ParseOptions, parse_from_path
+from tests.shapes import unshared_empties
 
 CONFIGURATIONS = [
     pytest.param(ParseOptions(), id='parse'),
@@ -646,6 +647,9 @@ def test_corpus_parses_cleanly(tmp_path, name, options):
     entry = WRITERS[name](tmp_path)
     raml = parse_from_path(entry, options)
     assert raml.entry_point is not None
+    # Each empty shape container is the shared one (docs/12 § 2): a site that
+    # allocates one undoes the saving on exactly the corpora that measure it.
+    assert not unshared_empties(raml)
 
 
 def test_generation_is_deterministic(tmp_path):

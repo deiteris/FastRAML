@@ -38,12 +38,12 @@ if TYPE_CHECKING:
 #: Keywords whose values are user data rather than subschemas. A `$ref` written
 #: inside a `default` is a value that happens to look like a reference, and
 #: resolving it would reject a document the spec allows.
-_DATA_KEYWORDS: Final = frozenset({'const', 'default', 'enum', 'example', 'examples'})
+DATA_KEYWORDS: Final = frozenset({'const', 'default', 'enum', 'example', 'examples'})
 
 
 #: Keywords whose value is a *mapping of* subschemas. The mapping itself is not
 #: a schema, so its keys must not be read as keywords.
-_SCHEMA_MAPS: Final = frozenset(
+SCHEMA_MAPS: Final = frozenset(
     {'$defs', 'definitions', 'dependencies', 'dependentSchemas', 'patternProperties', 'properties'}
 )
 
@@ -322,8 +322,8 @@ class SchemaRegistry:
         type nothing validates against would never be reported. The reference
         implementation compiles eagerly and the TCK expects that, so the walk is
         done here — best-effort by design: it skips the keywords whose values are
-        data (`_DATA_KEYWORDS`) and the ones whose values are maps of subschemas
-        (`_SCHEMA_MAPS`), which is enough to keep a user value that looks like a
+        data (`DATA_KEYWORDS`) and the ones whose values are maps of subschemas
+        (`SCHEMA_MAPS`), which is enough to keep a user value that looks like a
         reference from being resolved as one.
 
         `depth` counts levels of this recursion and `seen` counts documents; they
@@ -355,9 +355,9 @@ class SchemaRegistry:
                 self._prefetch(resolved.contents, resolved.resolver, specification, location, position, seen, depth + 1)
 
         for key, value in node.items():
-            if key == '$ref' or key in _DATA_KEYWORDS:
+            if key == '$ref' or key in DATA_KEYWORDS:
                 continue
-            if key in _SCHEMA_MAPS and isinstance(value, dict):
+            if key in SCHEMA_MAPS and isinstance(value, dict):
                 for member in value.values():
                     self._prefetch(member, resolver, specification, location, position, seen, depth + 1)
             else:

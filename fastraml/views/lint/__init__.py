@@ -22,8 +22,6 @@ from fastraml.views.lint.engine import (
     at_least,
     limit_findings,
     parse_severity,
-    sorted_by_rule,
-    worst,
 )
 from fastraml.views.lint.format import render_findings, render_metrics
 from fastraml.views.lint.plugins import discover_plugins
@@ -58,6 +56,4 @@ __all__ = [
     'parse_severity',
     'render_findings',
     'render_metrics',
-    'sorted_by_rule',
-    'worst',
 ]

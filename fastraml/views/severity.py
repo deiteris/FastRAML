@@ -20,7 +20,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Sequence
 
 __all__ = ['Ranking']
 
@@ -51,17 +51,6 @@ class Ranking[S: str]:
     def rank(self, severity: S) -> int:
         """Position in the order, 0 being worst. Raises on an unknown value."""
         return self._rank[severity]
-
-    def worst(self, severities: Iterable[S]) -> S | None:
-        """The most severe of `severities`, or `None` for none at all.
-
-        Used where one thing is graded by several judgements and the kindest
-        would mislead: a change reaching both sides of the wire is reported at
-        the severity of the worse side, and a rule's findings are grouped under
-        the worst of them.
-        """
-        found = list(severities)
-        return min(found, key=self._rank.__getitem__) if found else None
 
     def at_least(self, severity: S) -> frozenset[S]:
         """`severity` and everything worse — what a `--severity` flag selects.

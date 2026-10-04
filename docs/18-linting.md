@@ -81,6 +81,20 @@ Both receive a `Context` containing the parsed `Raml`, its `Graph`, and the
 rule's configured options. A finding includes its rule ID, severity, message,
 location, position, optional IRI, and structured `info` values.
 
+A finding about a type names it in `info['type']` through
+`views/lint/labels.py`. A type with a name is labelled by it. An anonymous
+member of a union is labelled by what holds the union that declares it: a
+declaration (`Input` for `string` in `Input: string | integer`), a property
+(`p` for `p: string | integer`), or a body (its media type, for a union written
+inline under `application/json:`). The declaring union is found by climbing
+from the union in hand through aliases and supertypes that hold the same member
+objects, so a body typed by an alias of `Input` or by `Sub: {type: Input}`
+still says `Input`. A union nested in another anonymous union takes the outer
+one's label. Anything else is `anonymous`. Graph rules call `type_label`, which
+reads the union off the `anyOf` edge; the I-JSON rules walk body shapes
+themselves and call `label_in` with the union they passed through and its
+label.
+
 `Finding` is not a `RamlError`: findings do not raise, do not carry parser trace
 chains, and may have warning or info severity.
 

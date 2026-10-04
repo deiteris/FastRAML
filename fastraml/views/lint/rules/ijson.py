@@ -20,6 +20,7 @@ from fastraml.types.complex_ import ArrayShape, ObjectShape, UnionShape
 from fastraml.types.jsonschema_ import JsonShape
 from fastraml.types.scalars import AnyShape, DateTimeOnlyShape, DateTimeShape, FileShape, IntegerShape, NilShape
 from fastraml.views.lint.engine import Category, Finding, RuleMeta, Severity
+from fastraml.views.lint.labels import label_in
 from fastraml.views.lint.mediatypes import is_json
 
 if TYPE_CHECKING:
@@ -42,41 +43,44 @@ def _json_bodies(ctx: Context) -> Iterator[tuple[str, Body]]:
             yield iri, node.entity
 
 
-def _children(base: BaseShape) -> Iterator[BaseShape]:
+def _children(base: BaseShape) -> Iterator[tuple[str | int, BaseShape]]:
+    """Each child shape, with the segment that tells it from its siblings."""
     shape = base.shape
     if isinstance(shape, ObjectShape):
-        yield from (prop.base for prop in (shape.properties or {}).values())
-        yield from (prop.base for prop in (shape.pattern_properties or {}).values())
+        yield from ((name, prop.base) for name, prop in (shape.properties or {}).items())
+        yield from ((name, prop.base) for name, prop in (shape.pattern_properties or {}).items())
     elif isinstance(shape, ArrayShape) and shape.items is not None:
-        yield shape.items
+        yield 'items', shape.items
     elif isinstance(shape, UnionShape):
-        yield from shape.any_of or ()
+        yield from enumerate(shape.any_of or ())
 
 
-def _json_shapes(ctx: Context) -> Iterator[tuple[str, BaseShape]]:
-    """Every RAML-typed shape inside a JSON body, once per place it was written.
+def _json_shapes(ctx: Context) -> Iterator[tuple[str, BaseShape, str]]:
+    """Every RAML-typed shape inside a JSON body, once per place it was written, and its label.
 
     Keyed by source position rather than by object: unwrap may give one
     declaration a copy per use, and those copies are one thing to its author.
+    An anonymous shape can share its parent's position -- the members of
+    `a | b`, the items of `X[]` -- so each also carries its path from the
+    nearest named ancestor: a member index, `items`, a property name. A named
+    shape has a position of its own and starts the path again.
     """
-    seen: set[tuple[str, str]] = set()
+    seen: set[tuple[str, str, tuple[str | int, ...]]] = set()
     for iri, body in _json_bodies(ctx):
         assert body.shape is not None  # noqa: S101 - `_json_bodies` yields only typed bodies
-        stack = [body.shape]
+        stack: list[tuple[BaseShape, BaseShape | None, str, tuple[str | int, ...]]] = [(body.shape, None, '', ())]
         while stack:
-            base = stack.pop()
+            base, union, union_label, path = stack.pop()
             if isinstance(base.shape, JsonShape):
                 continue
-            key = (base.location, str(base.key_pos))
+            key = (base.location, str(base.key_pos), path)
             if key in seen:
                 continue
             seen.add(key)
-            yield iri, base
-            stack.extend(_children(base))
-
-
-def _name(base: BaseShape) -> str:
-    return base.name or 'anonymous'
+            label = label_in(base, union, union_label)
+            yield iri, base, label
+            holder = (base, label) if isinstance(base.shape, UnionShape) else (None, '')
+            stack.extend((child, *holder, () if child.name else (*path, segment)) for segment, child in _children(base))
 
 
 class IJsonTopLevel:
@@ -147,7 +151,7 @@ class IJsonIntegerRange:
     )
 
     def run(self, ctx: Context) -> Iterable[Finding]:
-        for iri, base in _json_shapes(ctx):
+        for iri, base, label in _json_shapes(ctx):
             shape = base.shape
             if not isinstance(shape, IntegerShape):
                 continue
@@ -159,7 +163,7 @@ class IJsonIntegerRange:
                     'JSON integer may exceed the exact double range',
                     base,
                     iri=iri,
-                    type=_name(base),
+                    type=label,
                     format=shape.format.value if shape.format is not None else 'none',
                 )
 
@@ -187,7 +191,7 @@ class IJsonDateTime:
     )
 
     def run(self, ctx: Context) -> Iterable[Finding]:
-        for iri, base in _json_shapes(ctx):
+        for iri, base, label in _json_shapes(ctx):
             shape = base.shape
             if isinstance(shape, DateTimeOnlyShape):
                 reason = 'no UTC offset'
@@ -200,7 +204,7 @@ class IJsonDateTime:
                 'JSON timestamp is not an RFC 3339 date-time with an offset',
                 base,
                 iri=iri,
-                type=_name(base),
+                type=label,
                 reason=reason,
             )
 
@@ -228,6 +232,6 @@ class IJsonBinary:
     )
 
     def run(self, ctx: Context) -> Iterable[Finding]:
-        for iri, base in _json_shapes(ctx):
+        for iri, base, label in _json_shapes(ctx):
             if isinstance(base.shape, FileShape):
-                yield ctx.on(self.meta, 'JSON body carries a base64 file value', base, iri=iri, type=_name(base))
+                yield ctx.on(self.meta, 'JSON body carries a base64 file value', base, iri=iri, type=label)

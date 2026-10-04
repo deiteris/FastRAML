@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from typing import TYPE_CHECKING, ClassVar, Final
 
 from fastraml.parser.fragments import APIFragment
@@ -11,6 +10,8 @@ from fastraml.parser.uritemplates import extract_uri_template_params
 from fastraml.types.complex_ import ArrayShape, ObjectShape
 from fastraml.types.scalars import AnyShape, DateTimeShape, FileShape, IntegerShape, NumberShape, StringShape
 from fastraml.views.lint.engine import Category, Finding, RuleMeta, Severity
+from fastraml.views.lint.labels import type_label
+from fastraml.views.lint.regex import REGEX_TOKEN, fully_anchored
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -102,58 +103,14 @@ def _is_input(ctx: Context, iri: str, base: BaseShape) -> bool:
 
 # -- reading a RAML regular expression -------------------------------------------
 #
-# Both pattern rules need the expression's structure, not its behaviour: where
-# its anchors sit, and whether a quantified group holds another unbounded
-# quantifier. One tokenizer serves both. A run of literals is one token, so the
-# loops below step over structure rather than over characters (docs/12 § 2).
+# Through the shared tokenizer in `views/lint/regex.py`.
 
-_REGEX_TOKEN: Final = re.compile(
-    r'\\.'  # an escape
-    r'|\[\^?\]?(?:\\.|[^\]\\])*\]'  # a character class
-    r'|\{\d+(?:,\d*)?\}'  # a counted quantifier
-    r'|\((?:\?(?:[:=!>]|<[=!]|P?<\w+>|[aiLmsux-]*:))?'  # a group opener, prefix included
-    r'|[)|^$*+?]'  # structure
-    r'|(?:[^\\\[()|^$*+?{](?![*+?{]))+'  # a run of literals no quantifier applies to
-    r'|.',  # one literal, which a quantifier may follow
-    re.DOTALL,
-)
 _QUANTIFIERS: Final = frozenset({'*', '+', '?'})
-#: Global inline flags at the very start. `m` makes `^` and `$` match at every
-#: line, so an expression carrying it is not anchored to the whole value.
-_LEADING_FLAGS: Final = re.compile(r'\(\?([aiLmsux]+)\)')
-_START_ANCHORS: Final = frozenset({'^', r'\A'})
-_END_ANCHORS: Final = frozenset({'$', r'\Z', r'\z'})
 
 
 def _pattern_source(shape: StringShape) -> str:
     """The expression as written. `re` and `re2` both expose `.pattern`."""
     return '' if shape.pattern is None else str(getattr(shape.pattern.value, 'pattern', ''))
-
-
-def _fully_anchored(pattern: str) -> bool:
-    """Every top-level alternative starts at a start anchor and ends at an end anchor.
-
-    `^a|b$` anchors each branch at one end only, and `(?m)^a$` anchors to a
-    line; both are unanchored here. A group wrapping the anchors, `(^a$)`, is
-    also reported: rare, and cheap to rewrite as `^(a)$`.
-    """
-    flags = _LEADING_FLAGS.match(pattern)
-    if flags is not None:
-        if 'm' in flags.group(1):
-            return False
-        pattern = pattern[flags.end() :]
-    branches: list[list[str]] = [[]]
-    depth = 0
-    for piece in _REGEX_TOKEN.findall(pattern):
-        if piece.startswith('('):
-            depth += 1
-        elif piece == ')':
-            depth -= 1
-        elif piece == '|' and depth == 0:
-            branches.append([])
-            continue
-        branches[-1].append(piece)
-    return all(branch and branch[0] in _START_ANCHORS and branch[-1] in _END_ANCHORS for branch in branches)
 
 
 def _is_quantifier(piece: str) -> bool:
@@ -194,7 +151,7 @@ def _nested_quantifier(pattern: str) -> bool:
     stack = [_Group()]
     pending = False  # an atom is waiting to learn whether a quantifier follows
     atom: _Group | None = None  # that atom, when it is a group
-    for piece in _REGEX_TOKEN.findall(pattern):
+    for piece in REGEX_TOKEN.findall(pattern):
         frame = stack[-1]
         if _is_quantifier(piece):
             if pending and _unbounded(piece):
@@ -530,7 +487,7 @@ class BoundedArray:
     def type_(self, ctx: Context, iri: str, base: BaseShape, shape_kind: str) -> Iterable[Finding]:  # noqa: ARG002
         if not isinstance(base.shape, ArrayShape) or base.shape.max_items is not None or not _is_input(ctx, iri, base):
             return ()
-        return (ctx.on(self.meta, 'array has no maximum item count', base, iri=iri, type=base.name or 'anonymous'),)
+        return (ctx.on(self.meta, 'array has no maximum item count', base, iri=iri, type=type_label(ctx, iri, base)),)
 
 
 class RestrictedString:
@@ -557,7 +514,7 @@ class RestrictedString:
             or not _is_input(ctx, iri, base)
         ):
             return ()
-        return (ctx.on(self.meta, 'string has no pattern or enum', base, iri=iri, type=base.name or 'anonymous'),)
+        return (ctx.on(self.meta, 'string has no pattern or enum', base, iri=iri, type=type_label(ctx, iri, base)),)
 
 
 class UnboundedString:
@@ -593,12 +550,7 @@ class UnboundedString:
             or not _is_input(ctx, iri, base)
         ):
             return ()
-        name = base.name
-        if not name:
-            parent = next(iter(ctx.graph.into(iri, ('anyOf',))), None)
-            if parent is not None:
-                name = ctx.graph.nodes[parent.subject].name
-        return (ctx.on(self.meta, 'string type is unbounded', base, iri=iri, type=name or 'anonymous'),)
+        return (ctx.on(self.meta, 'string type is unbounded', base, iri=iri, type=type_label(ctx, iri, base)),)
 
 
 class IntegerFormat:
@@ -620,7 +572,7 @@ class IntegerFormat:
     def type_(self, ctx: Context, iri: str, base: BaseShape, shape_kind: str) -> Iterable[Finding]:  # noqa: ARG002
         if not isinstance(base.shape, IntegerShape) or base.shape.format is not None or not _is_input(ctx, iri, base):
             return ()
-        return (ctx.on(self.meta, 'integer has no format', base, iri=iri, type=base.name or 'anonymous'),)
+        return (ctx.on(self.meta, 'integer has no format', base, iri=iri, type=type_label(ctx, iri, base)),)
 
 
 class BoundedInteger:
@@ -648,7 +600,13 @@ class BoundedInteger:
         ):
             return ()
         return (
-            ctx.on(self.meta, 'integer lacks a lower or upper bound', base, iri=iri, type=base.name or 'anonymous'),
+            ctx.on(
+                self.meta,
+                'integer lacks a lower or upper bound',
+                base,
+                iri=iri,
+                type=type_label(ctx, iri, base),
+            ),
         )
 
 
@@ -684,7 +642,7 @@ class NoAdditionalProperties:
                 'object explicitly permits additional properties',
                 facet,
                 iri=iri,
-                type=base.name or 'anonymous',
+                type=type_label(ctx, iri, base),
             ),
         )
 
@@ -716,7 +674,11 @@ class BoundedAdditionalProperties:
             return ()
         return (
             ctx.on(
-                self.meta, 'open object has no maximum property count', base, iri=iri, type=base.name or 'anonymous'
+                self.meta,
+                'open object has no maximum property count',
+                base,
+                iri=iri,
+                type=type_label(ctx, iri, base),
             ),
         )
 
@@ -752,7 +714,15 @@ class BoundedNumber:
             or not _is_input(ctx, iri, base)
         ):
             return ()
-        return (ctx.on(self.meta, 'number lacks a lower or upper bound', base, iri=iri, type=base.name or 'anonymous'),)
+        return (
+            ctx.on(
+                self.meta,
+                'number lacks a lower or upper bound',
+                base,
+                iri=iri,
+                type=type_label(ctx, iri, base),
+            ),
+        )
 
 
 class BoundedFile:
@@ -773,7 +743,7 @@ class BoundedFile:
     def type_(self, ctx: Context, iri: str, base: BaseShape, shape_kind: str) -> Iterable[Finding]:  # noqa: ARG002
         if not isinstance(base.shape, FileShape) or base.shape.max_length is not None or not _is_input(ctx, iri, base):
             return ()
-        return (ctx.on(self.meta, 'file has no maximum length', base, iri=iri, type=base.name or 'anonymous'),)
+        return (ctx.on(self.meta, 'file has no maximum length', base, iri=iri, type=type_label(ctx, iri, base)),)
 
 
 class RestrictedFileTypes:
@@ -806,7 +776,7 @@ class RestrictedFileTypes:
                 'file accepts every media type',
                 base,
                 iri=iri,
-                type=base.name or 'anonymous',
+                type=type_label(ctx, iri, base),
                 fileTypes=','.join(declared) or 'unspecified',
             ),
         )
@@ -835,7 +805,7 @@ class UnanchoredStringPattern:
         if not isinstance(shape, StringShape) or shape.pattern is None or not _is_input(ctx, iri, base):
             return ()
         pattern = _pattern_source(shape)
-        if _fully_anchored(pattern):
+        if fully_anchored(pattern):
             return ()
         return (
             ctx.on(
@@ -843,7 +813,7 @@ class UnanchoredStringPattern:
                 'string pattern is not fully anchored',
                 base,
                 iri=iri,
-                type=base.name or 'anonymous',
+                type=type_label(ctx, iri, base),
                 pattern=pattern,
             ),
         )
@@ -885,7 +855,7 @@ class NestedQuantifierPattern:
                 'string pattern nests unbounded quantifiers',
                 base,
                 iri=iri,
-                type=base.name or 'anonymous',
+                type=type_label(ctx, iri, base),
                 pattern=pattern,
             ),
         )

@@ -47,7 +47,7 @@ from fastraml.views.lint.source import SuppressionIndex
 from fastraml.views.severity import Ranking
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator, Mapping, Sequence
+    from collections.abc import Iterable, Mapping, Sequence
 
     from fastraml.registry import Raml
     from fastraml.views.graph import Graph
@@ -1112,24 +1112,6 @@ class Linter:
         return self.severity_of(rule.meta)
 
 
-def worst(findings: Iterable[Finding]) -> Severity | None:
-    """The most severe finding's severity, or `None` for none at all."""
-    return _RANK.worst(finding.severity for finding in findings)
-
-
 def at_least(severity: Severity) -> frozenset[Severity]:
     """`severity` and everything worse — what `--severity` selects."""
     return _RANK.at_least(severity)
-
-
-def sorted_by_rule(findings: Iterable[Finding]) -> Iterator[tuple[str, list[Finding]]]:
-    """Findings grouped by rule, worst rule first, for the summary renderer."""
-    grouped: dict[str, list[Finding]] = {}
-    for finding in findings:
-        grouped.setdefault(finding.rule, []).append(finding)
-    order = sorted(
-        grouped,
-        key=lambda rule: (min(_RANK.rank(finding.severity) for finding in grouped[rule]), -len(grouped[rule]), rule),
-    )
-    for rule in order:
-        yield rule, grouped[rule]

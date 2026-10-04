@@ -232,7 +232,7 @@ multiline-quotes = "double"
 # Both of these *are* command-line programs; stdout is their output channel.
 "bench/__main__.py" = ["T201"]
 "bench/ab.py" = ["T201"]
-"fastraml/cli.py" = ["T201"]
+"fastraml/cli/*.py" = ["T201"]
 # Tests import lazily to keep a module optional, and assert on private state.
 "tests/*.py" = [
     "S101", "ARG", "FBT", "PLR2004", "S311", "ANN", "T201", "SLF001", "BLE001",

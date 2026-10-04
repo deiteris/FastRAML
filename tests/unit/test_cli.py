@@ -1,6 +1,6 @@
 """The `fastraml` console script — docs/13-public-api.md § 5.
 
-Exit codes and output shape, not parsing. Nothing in `cli.py` decides what is
+Exit codes and output shape, not parsing. Nothing in `fastraml.cli` decides what is
 valid, so the assertions here are about the contract a shell script or a CI job
 depends on: what the exit code means, which stream each thing goes to, and the
 shape of each `--json` record.
@@ -361,6 +361,30 @@ class TestUsage:
             'assert not unexpected, unexpected'
         )
         subprocess.run([sys.executable, '-c', code], check=True)  # noqa: S603 - this interpreter, fixed code
+
+    def test_help_imports_no_verb_module(self):
+        code = (
+            'import sys; from fastraml.cli import main\n'
+            'try:\n    main(["--help"])\nexcept SystemExit:\n    pass\n'
+            "loaded = {m for m in sys.modules if m.startswith('fastraml.cli.')}\n"
+            "assert loaded == {'fastraml.cli.arguments', 'fastraml.cli.common'}, loaded"
+        )
+        subprocess.run([sys.executable, '-c', code], check=True, capture_output=True)  # noqa: S603 - this interpreter, fixed code
+
+    def test_every_verb_names_a_handler_that_exists(self):
+        """`COMMANDS` names handlers as text so `--help` imports no verb
+        module; nothing else checks that text against the code.
+        """
+        import argparse
+        import importlib
+
+        from fastraml.cli.arguments import COMMANDS, build_parser
+
+        (verbs,) = [action for action in build_parser()._actions if isinstance(action, argparse._SubParsersAction)]
+        assert set(verbs.choices) == set(COMMANDS)
+        for target in COMMANDS.values():
+            module, _, function = target.partition(':')
+            assert callable(getattr(importlib.import_module(f'fastraml.cli.{module}'), function)), target
 
     def test_a_missing_subcommand_is_a_usage_error(self, capsys):
         with pytest.raises(SystemExit) as caught:
@@ -1128,19 +1152,19 @@ class TestDepsWorksOnMoreThanTypes:
 
 class TestResultsAreBounded:
     def test_refs_stops_at_a_default_and_says_so(self, graphed, capsys, monkeypatch):
-        monkeypatch.setattr('fastraml.cli._DEFAULT_LIMIT', 1)
+        monkeypatch.setattr('fastraml.cli.arguments._DEFAULT_LIMIT', 1)
         assert main(['refs', graphed, 'User']) == EXIT_OK
         out, err = capsys.readouterr()
         assert len(out.splitlines()) == 1
         assert 'more' in err, 'the remainder must be reported'
 
     def test_the_note_goes_to_stderr_so_a_pipe_is_clean(self, graphed, capsys, monkeypatch):
-        monkeypatch.setattr('fastraml.cli._DEFAULT_LIMIT', 1)
+        monkeypatch.setattr('fastraml.cli.arguments._DEFAULT_LIMIT', 1)
         main(['refs', graphed, 'User'])
         assert 'more' not in capsys.readouterr().out
 
     def test_zero_still_means_all(self, graphed, capsys, monkeypatch):
-        monkeypatch.setattr('fastraml.cli._DEFAULT_LIMIT', 1)
+        monkeypatch.setattr('fastraml.cli.arguments._DEFAULT_LIMIT', 1)
         main(['refs', graphed, 'User', '--limit', '0'])
         assert len(capsys.readouterr().out.splitlines()) > 1
 
@@ -1158,7 +1182,7 @@ class TestSkillsVerb:
         """Not beside the repository. A wheel with no `skilldata/` serves an
         empty listing, and the stub it backs then points at nothing.
         """
-        from fastraml.cli import _skill_root
+        from fastraml.cli.skills import _skill_root
 
         root = _skill_root()
         assert root.is_dir(), f'{root} is missing from the installed package'
@@ -1313,7 +1337,7 @@ class TestSkillsVerb:
         `skilldata/` without a `SKILL.md` is the broken install `_guides` walks
         straight past, and this is the only thing that would notice.
         """
-        from fastraml.cli import _skill_root
+        from fastraml.cli.skills import _skill_root
 
         for folder in sorted(_skill_root().iterdir()):
             skill = folder / 'SKILL.md'
@@ -1423,7 +1447,7 @@ class TestSkillsInstall:
         byte-identical: the stub carries no serving-only frontmatter, because
         what `install` writes is what a client reads.
         """
-        from fastraml.cli import _skill_root
+        from fastraml.cli.skills import _skill_root
 
         served = (_skill_root() / 'fastraml' / 'SKILL.md').read_text(encoding='utf-8')
         committed = Path('skills/fastraml/SKILL.md').read_text(encoding='utf-8')

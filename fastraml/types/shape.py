@@ -122,9 +122,9 @@ KIND_TO_CLASS: Final[dict[str, type[KindBase]]] = {
     'json': JsonShape,
 }
 
-#: Built-in facets every kind has. A `facets:` declaration may not shadow one
-#: (docs/05 § 5). `strict` and `value` are example-level keys, not type
-#: facets, and are deliberately absent.
+#: Built-in facets every kind has: exactly the keys `_decode` consumes. A
+#: `facets:` declaration may not shadow one (docs/05 § 5). `strict` and
+#: `value` are example-level keys, not type facets, and are deliberately absent.
 COMMON_FACETS: Final = frozenset(
     {
         fn.FACET_TYPE,
@@ -137,12 +137,18 @@ COMMON_FACETS: Final = frozenset(
         fn.FACET_DISPLAY_NAME,
         fn.FACET_REQUIRED,
         fn.FACET_ENUM,
+        fn.FACET_XML,
         fn.FACET_ALLOWED_TARGETS,
     }
 )
 
-#: Built-in facets of one kind, which a `facets:` declaration on that kind may
-#: not shadow either.
+_LENGTHS: Final = frozenset({fn.FACET_MIN_LENGTH, fn.FACET_MAX_LENGTH})
+_NUMERIC: Final = frozenset({fn.FACET_MINIMUM, fn.FACET_MAXIMUM, fn.FACET_MULTIPLE_OF, fn.FACET_FORMAT})
+
+#: Built-in facets of one kind: exactly the keys its declaration table and its
+#: `decode_facets` consume, so a `facets:` declaration on that kind may not
+#: shadow them either. `test_shape_decode.py` derives this from the decoders
+#: and fails on drift.
 TYPE_SPECIFIC_FACETS: Final[dict[str, frozenset[str]]] = {
     'object': frozenset(
         {
@@ -155,10 +161,12 @@ TYPE_SPECIFIC_FACETS: Final[dict[str, frozenset[str]]] = {
         }
     ),
     'array': frozenset({fn.FACET_ITEMS, fn.FACET_MIN_ITEMS, fn.FACET_MAX_ITEMS, fn.FACET_UNIQUE_ITEMS}),
-    'string': frozenset({fn.FACET_PATTERN, fn.FACET_MIN_LENGTH, fn.FACET_MAX_LENGTH}),
-    'integer': frozenset({fn.FACET_MINIMUM, fn.FACET_MAXIMUM, fn.FACET_MULTIPLE_OF}),
-    'number': frozenset({fn.FACET_MINIMUM, fn.FACET_MAXIMUM, fn.FACET_MULTIPLE_OF}),
-    'file': frozenset({fn.FACET_FILE_TYPES}),
+    'union': frozenset({fn.FACET_ANY_OF}),
+    'string': _LENGTHS | {fn.FACET_PATTERN},
+    'integer': _NUMERIC,
+    'number': _NUMERIC,
+    'datetime': frozenset({fn.FACET_FORMAT}),
+    'file': _LENGTHS | {fn.FACET_FILE_TYPES},
 }
 
 

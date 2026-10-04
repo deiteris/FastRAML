@@ -136,10 +136,13 @@ then each entry of `examples`, as declared. Each caller decides whether to skip
 an example marked `strict: false` or one without data.
 
 `facets:` declares properties required or allowed on subtypes. A declared name
-cannot start with `(`. The decoder rejects names known to be built-in common or
-kind-specific facets; this guard currently follows `COMMON_FACETS` and
-`TYPE_SPECIFIC_FACETS` in `types/shape.py`, whose coverage is narrower than all
-facets the decoders accept. Validation semantics are in
+cannot start with `(`. The decoder rejects a name that is a built-in common or
+kind-specific facet: `COMMON_FACETS` and `TYPE_SPECIFIC_FACETS` in
+`types/shape.py` are exactly the keys each kind's decoders consume, so `format`
+on `datetime`, `number` and `integer`, `minLength`/`maxLength` on `file`, `xml`
+on every kind and `anyOf` on a union are refused. `test_shape_decode.py`
+derives the sets by feeding every facet spelling to each kind's decoder and
+fails on drift. Validation semantics are in
 [10](10-validation.md#4-custom-facets).
 
 `xml:` decodes `attribute`, `wrapped`, `name`, `namespace`, and `prefix` into

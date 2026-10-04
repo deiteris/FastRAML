@@ -377,9 +377,9 @@ class TestFeatureCorporaReachTheirCode:
         original_compose = includes_module._compose_include
         original_tabs = includes_module._json_tabs_as_spaces
 
-        def counting_compose(raml, node, data, target):
+        def counting_compose(raml, node, data, target, location):
             composed.append(target.rsplit('/', 1)[-1])
-            return original_compose(raml, node, data, target)
+            return original_compose(raml, node, data, target, location)
 
         def counting_tabs(text):
             result = original_tabs(text)

@@ -41,6 +41,7 @@ __all__ = [
     'content_anchor',
     'content_include',
     'inline_include',
+    'load_include',
     'note_include_ref',
     'resolve_include',
     'resolve_include_uri',
@@ -182,10 +183,10 @@ def resolve_include(raml: Raml, node: Node, location: str) -> tuple[str, Node]:
         data = raml.include_data.pop(target, None)
         if data is None:
             data = _load(raml, node, target, location)
-        try:
-            cached = raml.include_nodes[target] = _compose_include(raml, node, data, target)
-        except UnicodeDecodeError as err:
-            raise node_error('include is not UTF-8', location, node, info={'path': target}) from err
+        cached, header = _compose_include(raml, node, data, target, location)
+        if header:
+            raml.include_heads[target] = header
+        raml.include_nodes[target] = cached
     head = raml.include_heads.get(target)
     if head is not None:
         # A typed fragment is a declaration of its kind, which has a place of
@@ -241,12 +242,11 @@ def _has_raml_header(raml: Raml, target: str) -> bool | None:
     """
     if target in raml.include_nodes:
         return target in raml.include_heads
-    limit = raml.max_include_size
     try:
-        data = raml.loader.load(target, max_bytes=limit if limit > 0 else None)
+        data, oversized = raml.load_bounded(target)
     except OSError:
         return None
-    if not 0 < limit < len(data):
+    if not oversized:
         raml.include_data[target] = data
     return data.removeprefix(_UTF8_BOM).startswith(_RAML_HEADER_BYTES)
 
@@ -256,31 +256,43 @@ def _composes_as_yaml(ref: str) -> bool:
 
 
 def _load(raml: Raml, node: Node, target: str, location: str) -> bytes:
-    limit = raml.max_include_size
     try:
-        data = raml.loader.load(target, max_bytes=limit if limit > 0 else None)
+        data, oversized = raml.load_bounded(target)
     except OSError as err:
         raise RamlError.wrap(
             'include', err, location, node.full_position, kind=ErrorKind.LOADING, info={'path': target}
         ) from err
-    # The loader was asked for limit + 1 bytes, so an oversized file is detected
-    # without ever being read whole.
-    if 0 < limit < len(data):
+    if oversized:
+        limit = raml.max_include_size
         raise node_error('include file exceeds size limit', location, node, info={'path': target, 'limit': limit})
     return data
 
 
-def _compose_include(raml: Raml, node: Node, data: bytes, target: str) -> Node:
-    text = decode_source(data)
-    if _composes_as_yaml(node.value):
-        head = read_head(text)
-        if head.startswith(RAML_HEADER_PREFIX):
-            raml.include_heads[target] = head
-        if strip_uri_suffix(node.value).lower().endswith('.json'):
-            text = _json_tabs_as_spaces(text)
-        return compose(text, uri=target, max_depth=raml.max_depth, key_pool=raml.mapping_keys)
-    # Spec section Resolving Includes: any other file is included as a scalar.
-    return Node(NodeKind.SCALAR, TAG_STR, text)
+def load_include(raml: Raml, node: Node, target: str, location: str) -> Node:
+    """Read and compose the include `node`, written in `location`, of `target`.
+
+    What `resolve_include` reads, under the same size limit and decoding, but
+    through no cache and recording nothing: for a reader outside the parse, such
+    as `join` comparing a target no applied template reached (docs/20 § 2).
+    """
+    return _compose_include(raml, node, _load(raml, node, target, location), target, location)[0]
+
+
+def _compose_include(raml: Raml, node: Node, data: bytes, target: str, location: str) -> tuple[Node, str]:
+    """The include's content, and its RAML header line, `''` when it has none."""
+    try:
+        text = decode_source(data)
+    except UnicodeDecodeError as err:
+        raise node_error('include is not UTF-8', location, node, info={'path': target}) from err
+    ref = node.value
+    if not _composes_as_yaml(ref):
+        # Spec section Resolving Includes: any other file is included as a scalar.
+        return Node(NodeKind.SCALAR, TAG_STR, text), ''
+    head = read_head(text)
+    if strip_uri_suffix(ref).lower().endswith('.json'):
+        text = _json_tabs_as_spaces(text)
+    content = compose(text, uri=target, max_depth=raml.max_depth, key_pool=raml.mapping_keys)
+    return content, head if head.startswith(RAML_HEADER_PREFIX) else ''
 
 
 def _json_tabs_as_spaces(text: str) -> str:

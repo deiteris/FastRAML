@@ -135,13 +135,24 @@ An inline JSON document or included `.json` schema produces `JsonShape`. It is
 compiled during decoding, not lazily under P10. Compilation validates the
 schema's declared draft (draft 7 if absent), applies the parser depth limit,
 eagerly resolves `$ref` through the parse's `ResourceLoader`, and caches fetched
-resources in one `SchemaRegistry` per parse. Schema instance validation delegates
+resources in one `SchemaRegistry` per parse. Each fetched document is checked
+against its own declared draft before anything crawls it, or, if it declares
+none, against the draft of the schema being compiled, as the validator reads it; a
+document that fails is `invalid JSON schema`, the cause of an
+`unresolvable JSON schema reference` at the referring schema. Schema instance validation delegates
 to the compiled validator with `jsonschema.FormatChecker()` enabled. Recognized
 `format` values are validated regardless of the schema's draft, including `uuid`
 in a schema without a declared draft, through `$ref`, and inside `oneOf`.
 Unknown formats remain annotations and do not reject values. The
 `jsonschema[format-nongpl]` dependency supplies the optional format-checking
 libraries without GPL-licensed dependencies.
+
+`multipleOf`, and Draft 3's `divisibleBy`, are exact, as a RAML `multipleOf` is
+(§ 5): the validator replaces `jsonschema`'s float division with a check on
+both numbers read as exact fractions of their decimal text, so `multipleOf: 0.1`
+accepts `0.7`. This holds in every draft a schema reaches, including a `$ref`
+target that declares another `$schema`. A non-number is left to `type`; a
+failure keeps the keyword as its `schema_path`.
 
 A schema file is one document per parse: the one it compiles from and the one
 a `$ref` into it retrieves are the same resource, so every walk recognises a

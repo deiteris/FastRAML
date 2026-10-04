@@ -7,21 +7,16 @@ say where the entries part.
 
 from __future__ import annotations
 
-import posixpath
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING
 
-from fastraml.errors import ErrorKind, RamlError
-from fastraml.parser.includes import resolve_ref_uri, strip_uri_suffix
-from fastraml.yamlnode import TAG_INCLUDE, TAG_STR, Node, NodeKind, compose, decode_source
+from fastraml.parser.includes import load_include, resolve_ref_uri, strip_uri_suffix
+from fastraml.yamlnode import TAG_INCLUDE, Node, NodeKind
 
 if TYPE_CHECKING:
     from fastraml.registry import Raml
 
 __all__ = ['Difference', 'IncludeReader', 'Side', 'first_difference']
-
-#: Include targets composed as YAML, as in `parser/includes.py`.
-_YAML_EXTENSIONS: Final = frozenset({'.raml', '.yaml', '.yml', '.json'})
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,7 +33,8 @@ class IncludeReader:
 
     A target the parse already read comes from its caches. One it never read,
     such as an include inside a trait no method applies, is loaded through the
-    same sandboxed loader and composed once.
+    same loader, size limit and decoding as the parse's own includes, and
+    composed once, without touching the parse's caches.
     """
 
     __slots__ = ('_loaded', 'raml')
@@ -51,25 +47,13 @@ class IncludeReader:
         """The absolute URI an include argument names, with any `#` or `?` suffix."""
         return resolve_ref_uri(self.raml, node.value, file_uri, node.position)
 
-    def content(self, target: str) -> Node:
-        """The composed content of `target`, or its text as a string scalar."""
+    def content(self, node: Node, file_uri: str, target: str) -> Node:
+        """The content of `target`, which the include `node` in `file_uri` names."""
         raml = self.raml
         cached = raml.include_nodes.get(target) or raml.source_nodes.get(target) or self._loaded.get(target)
-        if cached is not None:
-            return cached
-        bare = strip_uri_suffix(target)
-        limit = raml.max_include_size
-        try:
-            data = raml.loader.load(bare, max_bytes=limit if limit > 0 else None)
-        except OSError as err:
-            raise RamlError.wrap('include', err, bare, kind=ErrorKind.LOADING, info={'path': bare}) from err
-        text = decode_source(data)
-        if posixpath.splitext(bare)[1].lower() in _YAML_EXTENSIONS:
-            loaded = compose(text, uri=bare, max_depth=raml.max_depth, key_pool=raml.mapping_keys)
-        else:
-            loaded = Node(NodeKind.SCALAR, TAG_STR, text)
-        self._loaded[target] = loaded
-        return loaded
+        if cached is None:
+            cached = self._loaded[target] = load_include(raml, node, target, file_uri)
+        return cached
 
 
 def _suffix(uri: str) -> str:
@@ -100,9 +84,9 @@ def _through_includes(pair: _Pair, left: IncludeReader, right: IncludeReader) ->
     if _suffix(one_target) != _suffix(other_target):
         return Difference(one, other, path)
     if one_target:
-        one, one_file = left.content(one_target), strip_uri_suffix(one_target)
+        one, one_file = left.content(one, one_file, one_target), strip_uri_suffix(one_target)
     if other_target:
-        other, other_file = right.content(other_target), strip_uri_suffix(other_target)
+        other, other_file = right.content(other, other_file, other_target), strip_uri_suffix(other_target)
     return one, one_file, other, other_file, path
 
 

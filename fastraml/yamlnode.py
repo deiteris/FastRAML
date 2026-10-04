@@ -33,6 +33,7 @@ __all__ = [
     'Node',
     'NodeKind',
     'backend_name',
+    'bool_text',
     'compose',
     'decode_source',
     'end_column',
@@ -58,6 +59,9 @@ except ImportError:  # pragma: no cover
     _BACKEND = 'python'
 
 
+#: The YAML 1.2 core-schema booleans; `bool_text` reads explicit `!!bool` by it.
+_BOOL_PATTERN: Final = re.compile(r'^(?:true|True|TRUE|false|False|FALSE)$')
+
 #: The YAML 1.2 core schema, as the resolver table PyYAML's scanner consults.
 #:
 #: RAML 1.0 is defined over YAML 1.2; PyYAML implements YAML 1.1. Left alone it
@@ -74,11 +78,7 @@ except ImportError:  # pragma: no cover
 #: oracle shows they already agree. Timestamps stay implicit, as in go-yaml, and
 #: `datanode` keeps their text rather than converting.
 _YAML_1_2_RESOLVERS: Final = (
-    (
-        'tag:yaml.org,2002:bool',
-        re.compile(r'^(?:true|True|TRUE|false|False|FALSE)$'),
-        'tTfF',
-    ),
+    ('tag:yaml.org,2002:bool', _BOOL_PATTERN, 'tTfF'),
     (
         'tag:yaml.org,2002:int',
         re.compile(
@@ -158,6 +158,17 @@ def _assert_resolver_shape() -> None:
 
 
 _assert_resolver_shape()
+
+
+def bool_text(text: str) -> bool | None:
+    """A `!!bool` scalar's truth value under the YAML 1.2 core schema.
+
+    `None` when `text` is not a core-schema boolean: an explicit `!!bool yes` is
+    tagged but has no reading, as `!!int abc` has none (docs/03 § 2.1).
+    """
+    if _BOOL_PATTERN.fullmatch(text) is None:
+        return None
+    return text[0] in 'tT'
 
 
 def plain_tag(value: str) -> str:

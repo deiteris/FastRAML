@@ -20,6 +20,7 @@ needs to build object, array and union shapes, so this module sits above
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import cache
 from typing import TYPE_CHECKING, Any, Final
 from urllib.parse import urldefrag, urljoin
 
@@ -42,7 +43,7 @@ from fastraml.types.base import (
 from fastraml.types.complex_ import ArrayShape, ComplexKind, ObjectShape, RecursiveShape, UnionShape
 from fastraml.types.examples import Example, Examples
 from fastraml.types.scalars import AnyShape
-from fastraml.types.values import EnumValues, index_path, key_path, rejected
+from fastraml.types.values import EnumValues, as_fraction, index_path, is_multiple_of, key_path, rejected
 from fastraml.uris import uri_stem
 from fastraml.yamlnode import node_error
 
@@ -50,6 +51,7 @@ if TYPE_CHECKING:
     # Annotations only: every pattern is compiled through `regex_engine`, so
     # the parse's engine applies to projected patterns too (docs/01 § 4.2).
     import re
+    from collections.abc import Iterator
 
     from referencing import Registry, Resource
     from referencing._core import Resolver
@@ -121,13 +123,16 @@ class SchemaRegistry:
     them, so the memo has to live here.
     """
 
-    __slots__ = ('_projections', '_raml', '_reached', '_resources')
+    __slots__ = ('_draft', '_projections', '_raml', '_reached', '_resources')
 
     def __init__(self, raml: Raml) -> None:
         self._raml = raml
         self._resources: dict[str, Resource[Any]] = {}
         #: The documents the schema being compiled reached, by URI.
         self._reached: set[str] = set()
+        #: The validator class of the schema being compiled: the draft a
+        #: document it reaches is held to when that document names none.
+        self._draft: Any = None
         #: Projections by the subschema's canonical URI, with the named
         #: definitions a walk of the whole document collected.
         #:
@@ -154,24 +159,15 @@ class SchemaRegistry:
         # JSON Schema is uncommon in ordinary RAML documents. Keep its sizeable
         # dependency tree off the startup path until a schema is actually used.
         from jsonschema import FormatChecker  # noqa: PLC0415 - deferred for startup cost
-        from jsonschema.exceptions import SchemaError  # noqa: PLC0415 - deferred for startup cost
         from jsonschema.validators import Draft7Validator, validator_for  # noqa: PLC0415
         from referencing import Registry, Resource  # noqa: PLC0415
 
         document_uri, _, pointer = location.partition('#')
         contents = self._decode(raw, location, position)
         specification = _specification_of(contents)
-        validator_class = validator_for(contents, default=Draft7Validator)
-        try:
-            validator_class.check_schema(contents)
-        except SchemaError as err:
-            raise RamlError.new(
-                'invalid JSON schema',
-                location,
-                position,
-                kind=ErrorKind.PARSING,
-                info={'keyword': str(err.validator), 'path': '/'.join(str(part) for part in err.absolute_path)},
-            ) from err
+        self._draft = validator_for(contents, default=Draft7Validator)
+        validator_class = _exact_validator(self._draft)
+        _check_schema(validator_class, contents, location, position)
 
         entry = Resource.from_contents(contents, default_specification=specification)
         if _is_one_schema(self._raml, document_uri):
@@ -271,28 +267,32 @@ class SchemaRegistry:
         return resource
 
     def _load(self, uri: str) -> Resource[Any]:
-        from referencing import Resource  # noqa: PLC0415 - deferred for startup cost
+        from jsonschema.validators import Draft7Validator, validator_for  # noqa: PLC0415 - deferred for startup cost
+        from referencing import Resource  # noqa: PLC0415
         from referencing.jsonschema import DRAFT7  # noqa: PLC0415
 
         raml = self._raml
-        limit = raml.max_include_size
         try:
-            data = raml.loader.load(uri, max_bytes=limit if limit > 0 else None)
+            data, oversized = raml.load_bounded(uri)
         except OSError as err:
             raise _LoadFailure(
                 RamlError.wrap('load JSON schema', err, uri, kind=ErrorKind.LOADING, info={'path': uri})
             ) from err
-        if 0 < limit < len(data):
-            raise _LoadFailure(
-                RamlError.new(
-                    'JSON schema exceeds size limit', uri, kind=ErrorKind.LOADING, info={'path': uri, 'limit': limit}
-                )
-            )
+        if oversized:
+            info = {'path': uri, 'limit': raml.max_include_size}
+            raise _LoadFailure(RamlError.new('JSON schema exceeds size limit', uri, kind=ErrorKind.LOADING, info=info))
         try:
             # The same decode as the entry schema's, so a `$ref` target is held
             # to the nesting ceiling too: without that, a shallow schema could
             # point at a 500-level one and reach the stack anyway.
             contents = self._decode(data, uri)
+            # Checked against its draft as the entry schema is: `referencing`
+            # crawls it next, and a malformed subschema (`"properties": {"a": 7}`)
+            # would fail inside that crawl as a bare `TypeError`. A document
+            # naming no `$schema` is read in the compiling schema's draft, as
+            # the validator reads it.
+            draft = validator_for(contents, default=self._draft or Draft7Validator)
+            _check_schema(draft, contents, uri, None)
         except RamlError as err:
             raise _LoadFailure(err) from err
         resource = Resource.from_contents(contents, default_specification=DRAFT7)
@@ -396,6 +396,22 @@ class SchemaRegistry:
                 self._prefetch(value, resolver, specification, location, position, seen, depth + 1)
 
 
+def _check_schema(validator_class: Any, contents: Any, location: str, position: Position | None) -> None:
+    """Refuse a schema document its draft's meta-schema rejects: `invalid JSON schema`."""
+    from jsonschema.exceptions import SchemaError  # noqa: PLC0415 - deferred for startup cost
+
+    try:
+        validator_class.check_schema(contents)
+    except SchemaError as err:
+        raise RamlError.new(
+            'invalid JSON schema',
+            location,
+            position,
+            kind=ErrorKind.PARSING,
+            info={'keyword': str(err.validator), 'path': '/'.join(str(part) for part in err.absolute_path)},
+        ) from err
+
+
 def _specification_of(contents: Any) -> Any:
     """The draft a schema declares, or 7 — what go-raml assumes."""
     from referencing.jsonschema import DRAFT7, specification_with  # noqa: PLC0415 - deferred for startup cost
@@ -407,6 +423,62 @@ def _specification_of(contents: Any) -> Any:
         return specification_with(declared)
     except Exception:  # noqa: BLE001 - an unknown draft is not fatal; the meta-schema check reports it
         return DRAFT7
+
+
+#: The keywords `jsonschema` checks by float division: `multipleOf`, and Draft
+#: 3's `divisibleBy`.
+_MULTIPLE_KEYWORDS: Final = ('multipleOf', 'divisibleBy')
+
+
+@cache
+def _exact_validator(validator_class: Any) -> Any:
+    """`validator_class` with `multipleOf`/`divisibleBy` checked exactly (docs/10 § 7).
+
+    `jsonschema` divides floats, so `multipleOf: 0.1` rejects `0.7`. Only the
+    keyword the draft already has is replaced; one class per draft.
+
+    `evolve`, which every descent into a subschema calls, picks the class anew
+    from the subschema's own `$schema`, so a `$ref` into a document of another
+    draft would get the stock class back. The class's `evolve` hands that
+    draft's exact class on instead.
+    """
+    from jsonschema.validators import extend  # noqa: PLC0415 - deferred for startup cost
+
+    keywords = {keyword: _exact_multiple_of for keyword in _MULTIPLE_KEYWORDS if keyword in validator_class.VALIDATORS}
+    exact = extend(validator_class, keywords)
+    stock_evolve = exact.evolve
+
+    def evolve(self: Any, **changes: Any) -> Any:
+        evolved = stock_evolve(self, **changes)
+        picked: Any = type(evolved)
+        if any(picked.VALIDATORS.get(keyword) is _exact_multiple_of for keyword in _MULTIPLE_KEYWORDS):
+            return evolved
+        # The same rebuild as jsonschema's own `evolve`, which reads the fields
+        # through `attrs.fields`. That returns `__attrs_attrs__`; read here
+        # directly because `attrs` is jsonschema's dependency, not a declared
+        # one of fastraml's.
+        return _exact_validator(picked)(
+            **{field.alias: getattr(evolved, field.name) for field in picked.__attrs_attrs__ if field.init}
+        )
+
+    exact.evolve = evolve
+    return exact
+
+
+def _exact_multiple_of(validator: Any, divisor: Any, instance: Any, _schema: Any) -> Iterator[Any]:
+    """`jsonschema`'s `multipleOf`, with both numbers read as `as_fraction` reads them.
+
+    Never through `float`: `0.7` and `0.1` are the fractions their text names,
+    as for a RAML `multipleOf` (docs/10 § 5), and through the same check. An
+    infinite instance is a multiple of nothing.
+    """
+    from jsonschema.exceptions import ValidationError  # noqa: PLC0415 - deferred for startup cost
+
+    if not validator.is_type(instance, 'number'):
+        return
+    value, step = as_fraction(instance), as_fraction(divisor)
+    if value is None or step is None or not is_multiple_of(value, step):
+        yield ValidationError(f'{instance!r} is not a multiple of {divisor}')
 
 
 def schema_registry(raml: Raml) -> SchemaRegistry:

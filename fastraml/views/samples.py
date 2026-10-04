@@ -50,7 +50,7 @@ from fastraml.types.values import ValueSet, decimal_digits
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from fastraml.types.base import BaseShape
+    from fastraml.types.base import BaseShape, PatternProperty
 
 __all__ = ['SampleError', 'SampleOptions', 'declared_values', 'named_example', 'sample']
 
@@ -62,6 +62,8 @@ _RFC2616 = 'Sat, 01 Jan 2000 00:00:00 GMT'
 _MISSING = object()
 _LITERAL_PREFIX = re.compile(r'^\^?([A-Za-z0-9_-]+)')
 _MAX_STALLED_ATTEMPTS = 64
+#: Names `_unused_name` tries beyond the ones a value already holds.
+_SPARE_NAMES = 64
 _FIXED_SCALARS: dict[type[object], object] = {
     AnyShape: None,
     NilShape: None,
@@ -368,12 +370,13 @@ class _Run:
             if generated is not None:
                 name, item = generated
                 value[name] = item
-            elif not shape.pattern_properties and (
-                shape.additional_properties is None or shape.additional_properties.value
-            ):
-                value[_unused_name(value)] = 'string'
-            else:
+                continue
+            free = None
+            if shape.additional_properties is None or shape.additional_properties.value:
+                free = _unused_name(value, shape.pattern_properties or {})
+            if free is None:
                 break
+            value[free] = 'string'
 
     def _pattern_value(
         self, shape: ObjectShape, used: set[str], active: frozenset[int], variant: int
@@ -403,18 +406,24 @@ def _own_examples(base: BaseShape) -> list[object]:
     ]
 
 
-def _unused_name(value: dict[str, object]) -> str:
-    """A synthesized property name that is not already taken.
+def _unused_name(value: dict[str, object], patterns: Mapping[str, PatternProperty]) -> str | None:
+    """A synthesized property name that is not already taken, and that no pattern matches.
 
     `property{len(value) + 1}` on its own is not enough: a *declared* property
     may already carry that name, and overwriting it leaves the count unchanged,
     so the `minProperties` loop never terminates. `minProperties: 3` over a
     property literally named `property2` is enough to reach it.
+
+    A name a pattern matches would owe that pattern's type, and a string may
+    not be one (docs/05 § 4). A pattern that matches every candidate, `//` or
+    `property`, leaves none, so the search is bounded.
     """
-    index = len(value) + 1
-    while f'property{index}' in value:
-        index += 1
-    return f'property{index}'
+    first = len(value) + 1
+    for index in range(first, first + len(value) + _SPARE_NAMES):
+        name = f'property{index}'
+        if name not in value and not any(pattern.pattern.search(name) for pattern in patterns.values()):
+            return name
+    return None
 
 
 # -- scalars ------------------------------------------------------------------

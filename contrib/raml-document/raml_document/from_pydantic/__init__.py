@@ -7,7 +7,8 @@ different target, and it drops things RAML can carry:
   `anyOf: [number, string with a 60-character regex]`; RAML wants
   `multipleOf: 0.01`, which is right there in `FieldInfo.metadata`.
 - `dict[int, str]` becomes a bare `additionalProperties`, losing the key type;
-  RAML can say `/^[-+]?\\d+$/: string`.
+  RAML can say `/^[-+]?\\d+$/: string`, which types the values of integer
+  keys, though it does not refuse other keys.
 - A discriminated union's `mapping` keys are stringified, so an integer tag
   arrives as `'1'` and the RAML no longer parses against an `integer` property.
 

@@ -27,7 +27,9 @@ P10 checks:
 - number and integer bounds are ordered, `multipleOf` is nonzero, and `format`
   belongs to the kind's format set;
 - arrays, objects, and unions recursively check their child declarations;
-- pattern properties cannot coexist with `additionalProperties: false`;
+- pattern properties cannot coexist with `additionalProperties: false`, judged
+  on the effective type, so either may be inherited (*spec section Property
+  Declarations*: "explicitly or by inheritance");
 - file media-type strings are well formed `type/subtype`, or a media range,
   `type/*` or `*/*`. The spec names only `*/*`; `text/*` is as meaningful;
 - every enum member validates against the shape's non-enum constraints;
@@ -68,9 +70,17 @@ declaration, and duplicate declarations.
 A duplicate is one facet name declared by two different ancestors. An alias
 shares its referent's declarations ([07](07-resolution-and-inheritance.md)
 § 3), so reaching both is not a duplicate. The spec forbids a facet name that
-matches an ancestor's. It says nothing about two unrelated parents declaring
-the same name; that is reported as a duplicate too. go-raml follows only the
-first parent at each step.
+matches an ancestor's (*spec section User-defined Facets*). That is reported
+as `duplicate custom facet` at the type that declares the name again, with the
+ancestor's declaration as its origin, whether or not anything inherits from
+it. Its subtypes do not report it again, whichever of the two declarations
+their walk reaches first and by whatever path (`[A, B]`, `[B, A]`, or through
+a further subtype of the redeclaring type), and an alias of it does not report
+it at all. Ancestry is followed through alias edges, because each parent in
+`type: [A, B]` is an alias of the type it names. The spec says nothing about two unrelated parents declaring the same
+name; that is reported as a duplicate too, at each subtype that reaches both.
+go-raml follows only the first parent at each step, and reports at the
+ancestor's declaration.
 
 Recursion markers are traversal stops for these checks: the corresponding head
 is checked where it is declared.
@@ -94,8 +104,12 @@ is checked where it is declared.
 
 Objects report all missing required properties first, validate declared properties
 in declaration order, then validate extras against the first matching pattern in
-declaration order. With patterns present, an unmatched extra fails; without
-patterns, `additionalProperties: false` rejects extras.
+effective order, inherited patterns first
+([07](07-resolution-and-inheritance.md) § 4). An extra that no pattern matches is an ordinary additional
+property: only `additionalProperties: false` rejects it. Patterns restrict the
+keys they match and do not close the key set; the spec's own example accepts
+`note: 123` beside `/^note\d+$/: string` "as it does not match the pattern"
+(*spec section Property Declarations*).
 
 `uniqueItems` and enum matching use semantic equality: numeric spellings such as
 `1` and `1.0` are equal, but booleans do not equal integers. Enum narrowing
@@ -176,8 +190,23 @@ accepted, including `displayName`, `description`, `default`, `required`,
 current parser behavior; it is broader than the intended wrapper-facet subset
 expressed by the RAML restriction.
 
-JSON Schema types are accepted in type expressions, properties, and parameter
-declarations. A JSON Schema type may be aliased, but RAML inheritance can only
+JSON Schema types are accepted in type expressions and properties. Where JSON
+is not allowed they are rejected (*spec section Using XML and JSON Schema*),
+after unwrap, a union with a JSON Schema member counting as one:
+
+- in a header, query parameter, URI or base URI parameter: `JSON schema in a
+  parameter`, with the parameter's name and binding; in a query string: `JSON
+  schema in a query string`;
+- in a body whose media type does not allow JSON: `JSON schema for a media type
+  that is not JSON`, with the media type. JSON is allowed by `application/json`,
+  any `+json` suffix, `application/*` and `*/*`, compared without parameters
+  and case-insensitively. A body written without a media type was instantiated
+  once per default media type (docs/08 § 6.3), and each instance is judged by
+  its own: with `mediaType: [application/json, application/xml]`, the XML one
+  fails.
+
+This runs in P10, over the effective model, so a trait or resource type that
+carries one is reported where it is applied. A JSON Schema type may be aliased, but RAML inheritance can only
 merge an identical schema; attempts to specialize it with RAML constraints fail.
 
 `JsonShape.as_schema()` returns a cached self-contained schema view with external

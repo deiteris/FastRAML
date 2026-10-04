@@ -246,6 +246,21 @@ def test_synthesized_pattern_properties_are_typed(size):
     assert base.validate(sample(base, options=SampleOptions(seed='object'), key='object')) is None
 
 
+@pytest.mark.parametrize('pattern', [r'/^\d+$/', '/^property[13579]$/'])
+def test_patterns_leave_the_key_set_open_to_names_they_do_not_match(pattern):
+    """Spec § Property Declarations (raml-10.md L712): a key no pattern matches is
+    an ordinary additional property, so the filler may use one, but never a name
+    a pattern would claim for its own type (docs/05 § 4).
+    """
+    base = body(
+        '            type: object\n            minProperties: 3\n'
+        f'            properties:\n              {pattern}:\n                type: integer\n                enum: [1]\n'
+    )
+    value = sample(base, options=SampleOptions(seed='open'), key='object')
+    assert len(value) >= 3
+    assert base.validate(value) is None
+
+
 @settings(max_examples=20, deadline=None)
 @given(size=st.integers(1, 8), collide=st.integers(1, 8))
 def test_min_properties_terminates_when_a_declared_name_collides(size, collide):

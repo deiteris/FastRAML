@@ -93,10 +93,14 @@ binding of `header`, `query`, or `uri`, source positions, and an ID.
 
 A `/regex/` key in `properties:` is a pattern property. It is always optional;
 `required:` and a trailing `?` are errors. Explicit names win, then the first
-matching pattern in declaration order wins. Patterns use unanchored search. If
-any pattern properties exist, an undeclared key must match one regardless of
-`additionalProperties`; `additionalProperties: false` cannot be combined with
-pattern properties.
+matching pattern in declaration order wins. Patterns use unanchored search. A
+pattern restricts the keys it matches; an undeclared key that matches no pattern
+is an ordinary additional property, allowed unless `additionalProperties` is
+`false` (*spec section Property Declarations*: `note: 123` is "valid as it does
+not match the pattern"). `additionalProperties: false`, written or inherited,
+cannot be combined with pattern properties, written or inherited. A subtype's
+effective order lists inherited patterns before its own
+([07](07-resolution-and-inheritance.md) § 4).
 
 ## 5. Examples, custom facets, and XML
 

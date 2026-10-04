@@ -23,6 +23,19 @@ XML Schema external types are unsupported ([01](01-scope-and-coverage.md) § 3).
 Extensions and Libraries as inputs, and renaming to resolve a conflict, are not
 covered (docs/20 § 11).
 
+**Unwrap results depend on declaration order within a type cycle (known
+bug).** P9 walks types depth-first, so inside a cycle it can reach a type
+whose merge has not finished, and an alias, subtype or union member reached
+then takes that type's fields as they stand. With `Base {maxProperties: 2,
+b}`, `Parent {type: Base, child?: Child}` and `Child {type: Parent}`, whether
+`Child` gets `b` and `maxProperties` depends on which is declared first. It is
+present since P9 was written, and predates the union-variant fold. Pinned by
+the strict xfail `test_a_type_cycle_unwraps_alike_in_every_declaration_order`
+in `tests/unit/test_unwrap.py`. To be redesigned: merge in topological order
+of inheritance and alias edges, with property, item and member types handled
+as references rather than walked into, so a type is merged only after
+everything it inherits from (docs/07 § 6).
+
 ## 3. Potential future work
 
 Potential tooling includes more editor recovery in `parse_lenient` and

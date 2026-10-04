@@ -7,6 +7,8 @@ decides what gets merged into what, and what the model looks like afterwards.
 
 from __future__ import annotations
 
+import itertools
+
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
@@ -283,6 +285,208 @@ class TestMultipleInheritance:
         assert isinstance(both, ArrayShape)
         assert (both.min_items.value, both.max_items.value) == (1, 9)
         assert both.items.type == 'string'
+
+
+class TestTwoParentsPatterns:
+    """Spec § Multiple Inheritance (raml-10.md L1543): inheriting a `pattern`
+    facet when another parent already declares one is an invalid type
+    declaration (docs/07 § 4).
+    """
+
+    PROPERTY = '  {name}:\n    properties:\n      p:\n        type: string\n{facets}'
+
+    @staticmethod
+    def conflicts(workspace, body: str) -> list[dict]:
+        with pytest.raises(RamlError) as caught:
+            unwrapped(workspace, body)
+        return [
+            frame.info
+            for chain in caught.value.chains()
+            for frame in chain
+            if frame.message == 'conflicting pattern from multiple parents'
+        ]
+
+    def test_two_parents_patterns_on_one_property_conflict(self, workspace):
+        body = (
+            self.PROPERTY.format(name='A', facets='        pattern: ^a\n')
+            + self.PROPERTY.format(name='B', facets='        pattern: ^b\n')
+            + '  T:\n    type: [A, B]\n'
+        )
+        assert self.conflicts(workspace, body) == [{'source': '^b', 'target': '^a'}]
+
+    def test_two_parents_patterns_on_the_type_itself_conflict(self, workspace):
+        body = (
+            '  A:\n    type: string\n    pattern: ^a\n  B:\n    type: string\n    pattern: ^b\n  T:\n    type: [A, B]\n'
+        )
+        assert self.conflicts(workspace, body) == [{'source': '^b', 'target': '^a'}]
+
+    def test_identical_pattern_text_is_no_conflict(self, workspace):
+        body = (
+            self.PROPERTY.format(name='A', facets='        pattern: ^a\n')
+            + self.PROPERTY.format(name='B', facets='        pattern: ^a\n        minLength: 2\n')
+            + '  T:\n    type: [A, B]\n'
+        )
+        _raml, types = unwrapped(workspace, body)
+        assert types['T'].shape.properties['p'].base.shape.pattern.value.pattern == '^a'
+
+    def test_one_pattern_reached_through_a_shared_ancestor_is_no_conflict(self, workspace):
+        body = (
+            self.PROPERTY.format(name='R', facets='        pattern: ^r\n')
+            + '  A:\n    type: R\n    minProperties: 1\n  B:\n    type: R\n    maxProperties: 9\n'
+            + '  T:\n    type: [A, B]\n'
+        )
+        _raml, types = unwrapped(workspace, body)
+        assert types['T'].shape.properties['p'].base.shape.pattern.value.pattern == '^r'
+
+    UNION_PARENTS = (
+        '  S1:\n    type: string\n    pattern: ^x\n  Q:\n    type: string\n    minLength: 2\n'
+        '  P:\n    type: string\n    pattern: ^a\n'
+    )
+
+    def test_a_union_first_among_the_parents_needs_every_member_to_merge(self, workspace):
+        # docs/07 § 4: in `[A | B, C]` one conflicting member invalidates it.
+        body = self.UNION_PARENTS + '  T:\n    type: [S1 | Q, P]\n'
+        assert self.conflicts(workspace, body) == [{'source': '^a', 'target': '^x'}]
+
+    def test_a_union_later_among_the_parents_drops_a_conflicting_member(self, workspace):
+        # docs/07 § 4: in `[C, A | B]` the conflicting member is dropped.
+        _raml, types = unwrapped(workspace, self.UNION_PARENTS + '  T:\n    type: [P, S1 | Q]\n')
+        survivor = types['T'].shape
+        assert (survivor.pattern.value.pattern, survivor.min_length.value) == ('^a', 2)
+
+    def test_a_child_pattern_still_replaces_its_one_parents(self, workspace):
+        # Single inheritance narrows: the child's pattern wins (docs/07 § 4).
+        body = '  A:\n    type: string\n    pattern: ^a\n  T:\n    type: A\n    pattern: ^b\n'
+        _raml, types = unwrapped(workspace, body)
+        assert types['T'].shape.pattern.value.pattern == '^b'
+
+    def test_a_union_member_narrowing_its_parent_is_no_conflict(self, workspace):
+        # docs/07 § 5: each member of the child's union is folded with the
+        # parent's declaration, and that fold is the child narrowing.
+        body = (
+            '  S1:\n    type: string\n    pattern: ^x\n  S2:\n    type: string\n    pattern: ^y\n'
+            + self.PROPERTY.format(name='P', facets='        pattern: ^a\n')
+            + '  T:\n    type: P\n    properties:\n      p: S1 | S2\n'
+        )
+        _raml, types = unwrapped(workspace, body)
+        members = types['T'].shape.properties['p'].base.shape.any_of
+        assert [member.shape.pattern.value.pattern for member in members] == ['^x', '^y']
+
+
+class TestANarrowedDeclarationKeepsTheSurvivingMember:
+    """docs/07 § 5: a declaration narrowing a union collapses to the member that
+    survived, a new shape, and the merge must keep that shape rather than the
+    unnarrowed declaration.
+    """
+
+    S = '  S:\n    type: string\n    maxLength: 3\n'
+    CHILD_STRING = '        type: string\n        minLength: 1\n'
+
+    @pytest.mark.parametrize(
+        ('body', 'value'),
+        [
+            (
+                '  P:\n    properties:\n      n1: S | number\n  C:\n    type: P\n    properties:\n      n1:\n'
+                + CHILD_STRING,
+                {'n1': 'abcdef'},
+            ),
+            (
+                '  P:\n    properties:\n      /^n/: S | number\n  C:\n    type: P\n    properties:\n      /^n/:\n'
+                + CHILD_STRING,
+                {'n1': 'abcdef'},
+            ),
+            (
+                (
+                    '  P:\n    type: array\n    items: S | number\n  C:\n    type: P\n    items:\n'
+                    '      type: string\n      minLength: 1\n'
+                ),
+                ['abcdef'],
+            ),
+        ],
+        ids=['property', 'pattern-property', 'items'],
+    )
+    def test_the_union_members_constraints_reach_the_subtype(self, workspace, body, value):
+        _raml, types = unwrapped(workspace, self.S + body)
+        assert types['C'].validate(value) is not None, "S's maxLength applies"
+
+    def test_the_effective_pattern_property_is_the_survivor(self, workspace):
+        body = (
+            '  P:\n    properties:\n      /^n/: S | number\n  C:\n    type: P\n    properties:\n      /^n/:\n'
+            + self.CHILD_STRING
+        )
+        _raml, types = unwrapped(workspace, self.S + body)
+        [declared] = types['C'].shape.pattern_properties.values()
+        assert (declared.base.shape.min_length.value, declared.base.shape.max_length.value) == (1, 3)
+
+
+class TestNarrowingThroughAnAliasLeavesTheReferentAlone:
+    """docs/07 § 3, § 4: `n1: Bar` is an alias sharing `Bar`'s containers, so a
+    subtype narrowing a parent's `n1: Foo` with it must fold, never write
+    `Foo`'s properties and patterns into the declared `Bar`.
+    """
+
+    TYPES = (
+        '  Bar:\n    properties:\n      p: string\n      /^b/: string\n'
+        '  Foo:\n    properties:\n      q: string\n      /^a/: string\n'
+    )
+
+    @pytest.mark.parametrize(
+        ('parent', 'child', 'value', 'missing'),
+        [
+            ('n1: Foo', 'n1: Bar', {'n1': {'p': 'x', 'q': 'y'}}, {'n1': {'p': 'x'}}),
+            ('/^n/: Foo', '/^n/: Bar', {'n1': {'p': 'x', 'q': 'y'}}, {'n1': {'p': 'x'}}),
+            ('l: Foo[]', 'l: Bar[]', {'l': [{'p': 'x', 'q': 'y'}]}, {'l': [{'p': 'x'}]}),
+            ('n1: Foo | Bar', 'n1: Bar', {'n1': {'p': 'x'}}, None),
+            ('n1: Foo', 'n1: Bar | Foo', {'n1': {'p': 'x', 'q': 'y'}}, {'n1': {'p': 'x'}}),
+        ],
+        ids=['property', 'pattern-property', 'items', 'union-parent', 'union-child'],
+    )
+    def test_the_declared_referent_is_unchanged(self, workspace, parent, child, value, missing):
+        body = (
+            self.TYPES
+            + f'  P:\n    properties:\n      {parent}\n'
+            + f'  C:\n    type: P\n    properties:\n      {child}\n'
+        )
+        _raml, types = unwrapped(workspace, body)
+        bar = types['Bar'].shape
+        assert (list(bar.properties), list(bar.pattern_properties)) == (['p'], ['^b'])
+        assert types['Bar'].validate({'p': 'x'}) is None, 'Bar validates as declared'
+        assert types['C'].validate(value) is None
+        if missing is not None:
+            assert types['C'].validate(missing) is not None, "the child carries Foo's required `q` too"
+
+    def test_a_merge_does_not_add_custom_facet_values_to_the_referent(self, workspace):
+        body = (
+            '  F:\n    type: string\n    facets:\n      f: string\n    f: x\n'
+            '  H: string\n'
+            '  P:\n    properties:\n      s: F\n'
+            '  C:\n    type: P\n    properties:\n      s: H\n'
+        )
+        _raml, types = unwrapped(workspace, body)
+        assert types['H'].custom_facets == {}
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason='known bug, docs/15 § 2: within a type cycle, unwrap results depend on declaration order',
+)
+def test_a_type_cycle_unwraps_alike_in_every_declaration_order(workspace):
+    """docs/15 § 2: `Child` reaches `Parent` while `Parent` is still merging
+    `Base`, and takes its fields as they stand, so whether `Child` gets `b`
+    and `maxProperties` depends on which is declared first. Present since P9
+    was written; fixed by merging in topological order of inheritance edges.
+    """
+    declarations = {
+        'Base': '  Base:\n    maxProperties: 2\n    properties:\n      b: string\n',
+        'Parent': '  Parent:\n    type: Base\n    properties:\n      child?: Child\n',
+        'Child': '  Child:\n    type: Parent\n    properties:\n      c?: string\n',
+    }
+    values = [{}, {'b': 'x'}, {'b': 'x', 'child': {}}, {'b': 'x', 'c': 'y', 'z': 1}]
+    decided = set()
+    for order in itertools.permutations(declarations):
+        _raml, types = unwrapped(workspace, ''.join(declarations[name] for name in order))
+        decided.add(tuple(types[name].validate(value) is None for name in ('Parent', 'Child') for value in values))
+    assert len(decided) == 1, decided
 
 
 class TestAliases:

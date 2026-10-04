@@ -523,6 +523,16 @@ class PatternProperty:
     def __repr__(self) -> str:
         return f'PatternProperty({self.pattern.pattern!r})'
 
+    def with_base(self, base: BaseShape) -> PatternProperty:
+        """The same pattern property declaring `base`; itself when `base` already is its own.
+
+        Never mutated, only replaced, as `Property.with_base`: inheritance
+        shares a parent's pattern properties with its subtypes (docs/07 § 4).
+        """
+        if base is self.base:
+            return self
+        return PatternProperty(pattern=self.pattern, base=base)
+
 
 #: Where a parameter is bound. `baseUriParameters` binds as `uri`: it declares
 #: the same thing about the same template variables (docs/08 § 6.2).

@@ -215,16 +215,22 @@ def _declared[M: _Member](
     Written inside `base` too, by `wrote`'s test: recursion marking gives an
     inherited property that closes a cycle a shape of its own, and a
     property a template merged into a declaration lies in the template.
+
+    In the order they were written: after unwrap a pattern the subtype
+    redeclares stands at its inherited place (docs/07 § 4), not the author's.
     """
     found = table(base)
     if base.alias is not None or not found:
         return
     inherited = {member.base.id for parent in base.inherits for member in (table(parent) or {}).values()}
     test = _writer(base)
-    for key, member in found.items():
-        shape = member.base
-        if shape.id not in inherited and test(shape.location, shape.key_pos):
-            yield key, member
+    own = [
+        (key, member)
+        for key, member in found.items()
+        if member.base.id not in inherited and test(member.base.location, member.base.key_pos)
+    ]
+    own.sort(key=lambda each: (each[1].base.key_pos.line, each[1].base.key_pos.column))
+    yield from own
 
 
 def properties(base: BaseShape) -> Iterator[tuple[str, Property]]:

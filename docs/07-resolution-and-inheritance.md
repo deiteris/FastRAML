@@ -72,23 +72,59 @@ share a parent container. The fold holds a declaration it took from one parent
 by reference. When a later parent declares a like-named property, pattern
 property or `items`, the two declarations are folded in turn rather than the
 first being narrowed in place, which would write into the first parent.
-A subtype may only narrow:
+A subtype's own declaration that is an alias of an object or array type
+(`n1: Bar` over a parent's `n1: Foo`) is folded the same way: it shares
+`Bar`'s containers (§ 3), so narrowing it in place would give the declared
+`Bar` `Foo`'s properties. Custom facet values a merge adds are written to a
+new dict for the same reason.
+A subtype may only narrow, with one exception, an explicit property over an
+inherited pattern (below, and [01](01-scope-and-coverage.md) § 4.6):
 
 | Kind | Narrowing contract |
 |---|---|
 | common | inherit absent description; custom facets union with child values winning; enum is inherited or becomes a subset, compared with the semantic equality of enum membership ([10](10-validation.md) § 5); annotation target restrictions are inherited when absent and an explicit list may only narrow the parent's ([09](09-security-and-annotations.md) § B4) |
-| string | increase `minLength`, decrease `maxLength`; child pattern replaces parent pattern |
+| string | increase `minLength`, decrease `maxLength`; child pattern replaces parent pattern; two parents' patterns conflict (below) |
 | number/integer | increase minimum, decrease maximum, use a compatible `multipleOf` and format |
 | datetime | format must agree |
 | file | increase/decrease length bounds; each `fileTypes` entry is admitted by a parent's: itself, its `type/*`, or `*/*`, case-insensitively |
 | array | recursively narrow `items`; tighten counts; a unique parent requires a unique child |
-| object | recursively narrow shared properties and patterns; required cannot become optional; tighten counts; inherit absent `additionalProperties` and discriminator |
+| object | recursively narrow shared properties and patterns; inherited patterns stand before the child's own (below); required cannot become optional; tighten counts; inherit absent `additionalProperties` and discriminator |
 | union | merge compatible members as described below |
 | any | contributes no constraint |
 | json | only an identical schema can be inherited |
 
 Different concrete kinds cannot merge. Unknown and recursive targets cannot be
 inherited. A recursive source is compared through its head.
+
+Where several parents meet as equals, a second `pattern` is an invalid type
+declaration (*spec section Multiple Inheritance*: inheriting "a `pattern`
+facet when a parent type already declares a `pattern` facet"), reported as
+`conflicting pattern from multiple parents` with both patterns. That covers the
+fold of a type's parents, the like-named property, pattern property or `items`
+two parents both declare, and the variants a union among the parents expands
+to (§ 5), with the asymmetry § 5 already has for any failed merge. In
+`[A | B, C]` every member must merge with `C`, so one conflicting member makes
+the declaration invalid. In `[C, A | B]` a member that conflicts with `C` is
+dropped like any incompatible member, and only a union with no member left
+fails, as `failed to find compatible union member`. Identical pattern text, or one
+pattern two parents reached through a shared ancestor, is no conflict. A child
+narrowing its one parent is not a meeting of equals: its own pattern replaces
+the parent's, including a member of a union the child declares where its
+parent declares a single type (§ 5).
+
+A subtype's effective pattern properties list the inherited ones first, in
+the parents' `type: [..]` order, then its own. A pattern of the same regex text
+narrows the inherited one, as a like-named property does, and keeps the
+inherited position. Within that order the first matching pattern prevails
+(*spec section Property Declarations*: "If two or more pattern property
+regular expressions match a property name ..., the first one prevails"), and
+only it validates the value ([05](05-type-model.md) § 4). So a subtype's own
+pattern governs only keys no inherited pattern matches: parent `//: string`
+with child `/^n/: number` rejects `n1: 5` and accepts `n1: "s"`. An explicit
+property prevails over every pattern, inherited ones included, and is not
+compared with them, so parent `/^n/: string` with child `n1: number` accepts
+`n1: 5`, which the parent rejects: the exception to "only narrow" above
+([01](01-scope-and-coverage.md) § 4.6).
 
 `example`, `examples` and `default` are not inherited. Each describes the
 declaration that wrote it, and a subtype that narrows a facet or adds a
@@ -176,8 +212,16 @@ written, so `next: Node` keeps the property's key position, not `Node`'s. Alias 
 so a shared alias container is not corrupted. A cycle reached through aliases
 closes on the first shape along the alias chain that the walk is inside: with
 `Chain: Link`, `next: Chain` under `Link` is headed by `Link`, never by the
-anonymous copy, which has no address. Recursive walks use the parse's
-shared depth limit.
+anonymous copy, which has no address. A marker replaces the declaration in
+its container, a `Property` or `PatternProperty` built by `with_base`, and
+never edits it: a subtype shares its parent's declarations, and the marker
+belongs to the parent's cycle. Recursive walks use the parse's shared depth
+limit.
+
+Within a type cycle the result depends on declaration order: the walk can
+reach a type while it is still merging, and an alias, subtype or union member
+reached then takes its fields as they stand ([15](15-implementation-plan.md)
+§ 2).
 
 Marking runs even when a declaration fails to flatten, before P9 reports the
 failure, because `parse_lenient()` returns that model and its consumers walk it

@@ -37,6 +37,7 @@ __all__ = [
     'MultipleInheritance',
     'OptionalAndNil',
     'OptionalDiscriminator',
+    'UnprojectableJsonSchema',
     'UntypedPayload',
 ]
 
@@ -171,6 +172,58 @@ class JsonRefSiblings:
                 elif isinstance(value, list):
                     stack.extend((child, f'{pointer}/{index}') for index, child in enumerate(value))
         return found
+
+
+class UnprojectableJsonSchema:
+    """A JSON Schema type with no nearest RAML type (docs/10 § 7)."""
+
+    meta: ClassVar = RuleMeta(
+        id='unprojectable-json-schema',
+        category=Category.SPEC,
+        summary='a JSON Schema that no RAML type can express',
+        rationale=(
+            'A JSON Schema type validates with its own schema, but whatever reads RAML types (documentation, '
+            'the tree, code generators, the OpenAPI export, mocks) reads it through its nearest RAML type. '
+            'Conditionals, tuple items, schema-valued additionalProperties and contradictory allOf members '
+            'have none, so those readers see an opaque schema with no structure.'
+        ),
+        severity=Severity.WARNING,
+        references=('RAML 1.0 § Using XML and JSON Schemas',),
+        good='#%RAML 1.0\ntitle: t\ntypes:\n  Code: |\n    {"type":"string","maxLength":8}\n',
+        bad='#%RAML 1.0\ntitle: t\ntypes:\n  Code: |\n    {"allOf":[{"type":"string"},{"type":"integer"}]}\n',
+    )
+
+    def run(self, ctx: Context) -> Iterable[Finding]:
+        # One finding per schema. A schema file shared by several types fails
+        # once, but a type inheriting an inline schema holds its own copy of
+        # the shape, and so its own failure, over the same parsed schema. A
+        # schema file is told by its URI: `true` and `false` are one object
+        # wherever they are written.
+        seen: set[str | int] = set()
+        for iri, node in ctx.graph.nodes.items():
+            if not isinstance(node, TypeNode) or not isinstance(shape := node.entity.shape, JsonShape):
+                continue
+            failure = shape.projection_error()
+            schema = shape.canonical_uri or id(shape.contents)
+            if failure is None or schema in seen:
+                continue
+            seen.add(schema)
+            frame = failure.head
+            # A schema file is reported where it is, as `JsonRefSiblings` does:
+            # the frame is placed at whichever type projected it first.
+            # `pointer` tells apart two subschemas of one file, which share
+            # that location: the JSON Pointer the type included, '' for a
+            # whole document or an inline schema.
+            document, _, pointer = (shape.canonical_uri or '').partition('#')
+            yield ctx.at(
+                self.meta,
+                frame.message,
+                location=document or frame.location,
+                position=UNKNOWN if document else frame.position or UNKNOWN,
+                iri=iri,
+                **frame.info,
+                pointer=pointer,
+            )
 
 
 def _nil_member(base: BaseShape) -> BaseShape | None:

@@ -149,10 +149,10 @@ Unknown formats remain annotations and do not reject values. The
 `jsonschema[format-nongpl]` dependency supplies the optional format-checking
 libraries without GPL-licensed dependencies.
 
-`multipleOf`, and Draft 3's `divisibleBy`, are exact, as a RAML `multipleOf` is
+`multipleOf` is exact, as a RAML `multipleOf` is
 (§ 5): the validator replaces `jsonschema`'s float division with a check on
 both numbers read as exact fractions of their decimal text, so `multipleOf: 0.1`
-accepts `0.7`. This holds in every draft a schema reaches, including a `$ref`
+accepts `0.7`. This holds in every supported draft a schema reaches, including a `$ref`
 target that declares another `$schema`. A non-number is left to `type`; a
 failure keeps the keyword as its `schema_path`.
 
@@ -210,6 +210,29 @@ selects a subschema that does not repeat its document's `$schema` declaration.
 Mixed-draft schemas with `$ref` siblings fail projection explicitly rather than
 guessing which draft's sibling rules apply.
 
+A schema that fails projection is still a valid type: it validates through its
+compiled schema, and the parse reports nothing. `as_shape()` returns `None`
+for it, and `projection_error()` returns the `RamlError` the walk raised
+(`JSON schema construct has no RAML equivalent` with its `construct`, or
+`JSON schema nesting too deep`). Only a `RamlError` is caught. The failure is
+cached on the `JsonShape`, and beside the shared projection, so types
+including one schema file share one failure and the walk runs once. Both are
+keyed by the subschema's canonical URI and the entry schema's draft, the one a
+document declaring no `$schema` is read in: `s.json` reached from a draft 7
+type and from a 2020-12 schema's `$ref` is two readings, each computed once
+and final. A projection shared under a key wins over a failure cached for it.
+A type's projection or failure therefore does not depend on which types were
+projected before it.
+`projected(base)` returns `base` itself, an opaque
+JSON Schema leaf that keeps its schema. Views therefore degrade at that type
+alone: the tree carries `json_schema` without `projection`, the graph, render
+and `nodes` read a leaf, a sample needs a declared value, OpenAPI writes the
+type without a constraint and a loss notice naming the error, and the JSON
+Schema export writes the schema itself. The failure surfaces as the
+`unprojectable-json-schema` lint finding (docs/18 § 2). `to_raml` alone raises
+it, since its output is the projection (docs/16 § 8). Tests:
+`tests/unit/test_unprojectable_schema.py`.
+
 Ordinary shapes and conjunctions share the reducers for supported type, numeric,
 enum, object, and array constraints. A cached reference therefore has the same
 restrictions whether it was first projected on its own or as a conjunction's
@@ -242,7 +265,9 @@ a final newline. Both regex engines use the same projected pattern and bounds.
 
 The conjunction walk visits a shared source once per intersection, retaining its
 resolution scope. It does not expand a shared reference graph into a tree.
-Recursive references to an original declaration keep that declaration's head;
+A subschema whose projection is still open, reached again without a `$ref` (an
+`allOf` member's property flattened back into it), is a back-edge to its head,
+not a new walk. Recursive references to an original declaration keep that declaration's head;
 narrowing the containing object does not narrow its recursive children.
 When several recursive child declarations are intersected together, a repeated
 set of scoped constraints refers back to the composite head. Pure conjunction
@@ -297,11 +322,14 @@ document exports, without changing the cached `as_shape_defs()` result. Its
 names are distinct when two referenced files have the same stem or both
 definition keywords contain the same key; their declaration order is retained.
 JSON Pointer escapes in definition keys are decoded. A reference-only cycle has no
-RAML type head and fails projection with a diagnostic rather than recursing.
+RAML type head and fails projection with a diagnostic rather than recursing. A
+cycle through a schema with a type head is productive from whichever of its
+schemas the walk enters by: a reference-only schema on it projects as that
+head, and a back-edge reference is never shared as its target's projection.
 `contents` exposes the decoded schema object by convention only; consumers must
 not mutate it.
 
 Implementation: `types/validate.py`, `types/values.py`, `types/scalars.py`,
 `types/complex_.py`, `types/jsonschema_.py`, and `types/schema_intersection.py`. Tests:
 `tests/unit/test_check.py`, `test_validate.py`, `test_jsonschema.py`,
-`test_depth_guard.py`, and `test_regex_engine.py`.
+`test_depth_guard.py`, `test_regex_engine.py`, and `test_unprojectable_schema.py`.

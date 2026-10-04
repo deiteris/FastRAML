@@ -195,15 +195,8 @@ class TestReferences:
                 1,
                 0,
             ),
-            (
-                'http://json-schema.org/draft-03/schema#',
-                {'type': 'object', 'properties': {'a': {'$ref': 'z.json'}}},
-                {'type': 'string', 'required': True},
-                {'a': 'x'},
-                {'a': 1},
-            ),
         ],
-        ids=['draft4-boolean-exclusive-minimum', 'draft3-boolean-required'],
+        ids=['draft4-boolean-exclusive-minimum'],
     )
     def test_a_referenced_document_naming_no_draft_is_read_in_the_referrers(  # noqa: PLR0913, PLR0917 - one case
         self, workspace, draft, root, target, good, bad
@@ -496,9 +489,8 @@ class TestInstanceValidation:
 
 
 class TestMultipleOfIsExact:
-    """docs/10 § 7: `multipleOf` and Draft 3's `divisibleBy` never divide floats."""
+    """docs/10 § 7: `multipleOf` never divides floats."""
 
-    DRAFT3 = 'http://json-schema.org/draft-03/schema#'
     DRAFT7 = 'http://json-schema.org/draft-07/schema#'
     DRAFT2020 = 'https://json-schema.org/draft/2020-12/schema'
 
@@ -511,56 +503,42 @@ class TestMultipleOfIsExact:
             if trace.message == 'value does not match the JSON schema'
         ]
 
-    def declared(self, workspace, draft: str, keyword: str, divisor: str):
-        schema = f'{{"$schema": "{draft}", "type": "number", "{keyword}": {divisor}}}'
+    def declared(self, workspace, divisor: str):
+        schema = f'{{"$schema": "{self.DRAFT7}", "type": "number", "multipleOf": {divisor}}}'
         raml = parsed(workspace, {'api.raml': API + 'types:\n' + declaration('T', schema)})
         return raml.types_in(raml.location)['T'].shape.base
 
     @pytest.mark.parametrize(
-        ('rule', 'good', 'bad'),
-        [
-            ((DRAFT7, 'multipleOf', '0.1'), 0.7, 0.75),
-            ((DRAFT7, 'multipleOf', '1.1'), 2.2, 2.3),
-            ((DRAFT3, 'divisibleBy', '0.1'), 0.7, 0.75),
-        ],
-        ids=['multipleOf-0.1', 'multipleOf-1.1', 'draft3-divisibleBy-0.1'],
+        ('divisor', 'good', 'bad'),
+        [('0.1', 0.7, 0.75), ('1.1', 2.2, 2.3)],
+        ids=['multipleOf-0.1', 'multipleOf-1.1'],
     )
-    def test_a_decimal_multiple_is_accepted_and_a_non_multiple_rejected(self, workspace, rule, good, bad):
-        shape = self.declared(workspace, *rule)
-        keyword = rule[1]
+    def test_a_decimal_multiple_is_accepted_and_a_non_multiple_rejected(self, workspace, divisor, good, bad):
+        shape = self.declared(workspace, divisor)
         assert shape.validate(good) is None
-        assert self.schema_paths(shape.validate(bad)) == [{'path': '$', 'schema_path': keyword}]
+        assert self.schema_paths(shape.validate(bad)) == [{'path': '$', 'schema_path': 'multipleOf'}]
 
     def test_a_non_number_is_left_to_type(self, workspace):
-        shape = self.declared(workspace, self.DRAFT7, 'multipleOf', '0.1')
+        shape = self.declared(workspace, '0.1')
         assert self.schema_paths(shape.validate(True)) == [{'path': '$', 'schema_path': 'type'}]
 
-    @pytest.mark.parametrize(
-        ('root_draft', 'target'),
-        [
-            (None, (DRAFT2020, 'multipleOf')),
-            (DRAFT7, (DRAFT2020, 'multipleOf')),
-            (DRAFT7, (DRAFT3, 'divisibleBy')),
-        ],
-        ids=['default-to-2020', 'draft7-to-2020', 'draft7-to-draft3'],
-    )
-    def test_a_reference_into_another_draft_stays_exact(self, workspace, root_draft, target):
+    @pytest.mark.parametrize('root_draft', [None, DRAFT7], ids=['default-to-2020', 'draft7-to-2020'])
+    def test_a_reference_into_another_draft_stays_exact(self, workspace, root_draft):
         # A `$ref` into a document declaring another draft is validated by
         # that draft's class, which must be the exact one too.
-        draft, keyword = target
         root = {'$ref': 'z.json'} if root_draft is None else {'$schema': root_draft, '$ref': 'z.json'}
         raml = parsed(
             workspace,
             {
                 'api.raml': API + 'types:\n  T:\n    type: !include s.json\n',
                 's.json': json.dumps(root),
-                'z.json': json.dumps({'$schema': draft, 'type': 'number', keyword: 0.1}),
+                'z.json': json.dumps({'$schema': self.DRAFT2020, 'type': 'number', 'multipleOf': 0.1}),
             },
         )
         shape = raml.types_in(raml.location)['T'].shape.base
         assert shape.validate(0.7) is None
         # `jsonschema` leaves `$ref` out of the schema path.
-        assert self.schema_paths(shape.validate(0.75)) == [{'path': '$', 'schema_path': keyword}]
+        assert self.schema_paths(shape.validate(0.75)) == [{'path': '$', 'schema_path': 'multipleOf'}]
 
 
 class TestRestrictions:
@@ -663,10 +641,22 @@ class TestParameterDeclarations:
         assert parse(workspace, {'api.raml': API + body}) is None
 
 
+def projection_of(shape):
+    """`shape.as_shape()`, raising its `projection_error()` where it has none.
+
+    The projection's policy is which schemas fail and why; `as_shape` keeps the
+    failure rather than raising it (docs/10 § 7), and these tests read it here.
+    """
+    view = shape.as_shape()
+    if view is None:
+        raise shape.projection_error()
+    return view
+
+
 def project(workspace, schema: dict, **files: str):
-    """`as_shape()` of a type declared by `schema`."""
+    """The projection of a type declared by `schema`, or its failure raised."""
     raml = parsed(workspace, {'api.raml': API + 'types:\n  T: |\n' + indent(json.dumps(schema)), **files})
-    return raml.types_in(raml.location)['T'].shape.as_shape()
+    return projection_of(raml.types_in(raml.location)['T'].shape)
 
 
 class TestProjection:
@@ -1178,7 +1168,7 @@ class TestAllOfIntersection:
         declared = raml.types_in(raml.location)['T']
         assert declared.validate({'p': 1}) is None
         with pytest.raises(RamlError) as caught:
-            declared.shape.as_shape()
+            projection_of(declared.shape)
         assert any(
             trace.info == {'construct': 'allOf mixed-draft $ref siblings'}
             for chain in caught.value.chains()
@@ -1219,7 +1209,7 @@ class TestAllOfIntersection:
             },
         )
         with pytest.raises(RamlError) as caught:
-            raml.types_in(raml.location)['T'].shape.as_shape()
+            projection_of(raml.types_in(raml.location)['T'].shape)
         assert [[(trace.message, trace.info) for trace in chain][-1] for chain in caught.value.chains()] == [
             ('JSON schema construct has no RAML equivalent', {'construct': 'allOf invalid numeric facet'})
         ]
@@ -1236,7 +1226,7 @@ class TestAllOfIntersection:
         assert declared.validate({'x': 1}) is not None
         assert declared.validate({'x': '1'}) is not None
         with pytest.raises(RamlError) as caught:
-            declared.shape.as_shape()
+            projection_of(declared.shape)
         assert any(
             trace.info == {'construct': 'unsatisfiable allOf'} for chain in caught.value.chains() for trace in chain
         )
@@ -1783,7 +1773,7 @@ class TestAllOfReferenceGraphs:
         if value_first:
             declared['Value'].shape.as_shape()
         with pytest.raises(RamlError) as caught:
-            declared['T'].shape.as_shape()
+            projection_of(declared['T'].shape)
         assert any(
             trace.message == 'JSON schema construct has no RAML equivalent'
             and trace.info == {'construct': 'allOf keyword: format'}
@@ -1921,7 +1911,7 @@ class TestAllOfReferenceGraphs:
         schema = {'definitions': definitions, 'allOf': [{'$ref': '#/definitions/n14'}]}
         raml = parsed(workspace, {'api.raml': API + 'types:\n' + declaration('T', json.dumps(schema))}, max_depth=20)
         with pytest.raises(RamlError) as caught:
-            raml.types_in(raml.location)['T'].shape.as_shape()
+            projection_of(raml.types_in(raml.location)['T'].shape)
         assert any(
             trace.message == 'JSON schema nesting too deep' and trace.info == {'limit': 20}
             for chain in caught.value.chains()

@@ -398,18 +398,18 @@ class _SchemaConversion:
     subschemas a `$ref` can address (`types/jsonschema_.py`, `_subschema_name`).
     """
 
-    __slots__ = ('by_id', 'by_uri', 'components', 'dropped', 'taken')
+    __slots__ = ('by_id', 'by_schema', 'components', 'dropped', 'taken')
 
     def __init__(self, raml: Raml, api: APIFragment, dropped: list[str]) -> None:
         self.dropped = dropped
         self.components: dict[str, OAS3Schema] = {}
         #: Shape id -> component name.
         self.by_id: dict[int, str] = {}
-        #: Canonical JSON Schema URI -> the same name. A schema document is
-        #: reached as two shapes -- the RAML type that included it, and whatever
-        #: a `$ref` from another schema file resolved to -- and those are one
-        #: component.
-        self.by_uri: dict[str, str] = {}
+        #: One schema -> the same name. A schema document is reached as two
+        #: shapes -- the RAML type that included it, and whatever a `$ref` from
+        #: another schema file resolved to -- and those are one component.
+        #: Keyed by `_schema_key`: by reading, not by URI alone.
+        self.by_schema: dict[object, str] = {}
         #: The names both tables have handed out, which is what `_free` reads.
         #: Not `components`, which holds only the ones a use site asked for:
         #: a declared type nobody references is named here and exported nowhere.
@@ -424,13 +424,13 @@ class _SchemaConversion:
 
     def register(self, base: BaseShape, name: str, qualifier: str = '') -> str:
         """Name `base` in `components.schemas`, or join the entry it shares."""
-        uri = _schema_uri(base)
-        found = self.by_uri.get(uri, '') if uri else ''
+        key = _schema_key(base)
+        found = self.by_schema.get(key, '') if key is not None else ''
         if not found:
             found = self._free(name, qualifier)
             self.taken.add(found)
-            if uri:
-                self.by_uri[uri] = found
+            if key is not None:
+                self.by_schema[key] = found
         self.by_id[base.id] = found
         return found
 
@@ -506,7 +506,14 @@ class _SchemaConversion:
         if isinstance(base.shape, JsonShape):
             projected = base.shape.as_shape()
             if projected is None:
-                self.dropped.append(f'{at}: JSON Schema could not be projected; emitted without a type constraint')
+                # Not the schema itself: OpenAPI 3.0's schema object is not JSON
+                # Schema, and lacks several constructs no projection reads, such
+                # as conditionals and tuple items (docs/16 § 8).
+                failure = base.shape.projection_error()
+                reason = f' ({failure.head.rendered_message()})' if failure is not None else ''
+                self.dropped.append(
+                    f'{at}: JSON Schema could not be projected{reason}; emitted without a type constraint'
+                )
                 schema = self._common(base)
             else:
                 schema = self._direct(projected, at)
@@ -1032,12 +1039,15 @@ def _take(schema: OAS3Schema | None, attr: str) -> Any:
     return value
 
 
-def _schema_uri(base: BaseShape) -> str | None:
-    """The JSON Schema document `base` *is*, if it is one.
+def _schema_key(base: BaseShape) -> object | None:
+    """The JSON Schema reading `base` *is*, if it is one.
 
     The join between the two shapes one schema document produces: the RAML type
     that included it, and whatever a `$ref` from another schema file resolved
-    to. Both answer to the document's canonical URI and share one component.
+    to. Both are one projected shape, shared per canonical URI and draft, and
+    that shape is the key. Not the URI alone: a file naming no draft is read in
+    each including schema's draft, and two readings are two components
+    (docs/10 § 7). A schema with no projection has only its URI.
 
     A RAML type that says something the schema does not is a subtype rather than
     another name for it, and keeps its own component: joining it would put one
@@ -1045,8 +1055,10 @@ def _schema_uri(base: BaseShape) -> str | None:
     """
     shape = base.shape
     if isinstance(shape, JsonShape):
-        return None if _decorated(base) else shape.canonical_uri
-    return base.location if subschema_document(base) is not None else None
+        if _decorated(base) or shape.canonical_uri is None:
+            return None
+        return shape.as_shape() or shape.canonical_uri
+    return base if subschema_document(base) is not None else None
 
 
 def _decorated(base: BaseShape) -> bool:

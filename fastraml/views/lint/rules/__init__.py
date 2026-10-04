@@ -35,6 +35,7 @@ from fastraml.views.lint.rules.schema import (
     MultipleInheritance,
     OptionalAndNil,
     OptionalDiscriminator,
+    UnprojectableJsonSchema,
     UntypedPayload,
 )
 from fastraml.views.lint.rules.security import (
@@ -112,6 +113,7 @@ def builtin_registry() -> Registry:
         UndefinedVersion(),
         UndescribedSecurityScheme(),
         UnnestedResource(),
+        UnprojectableJsonSchema(),
         UntypedPayload(),
         UnusedTrait(),
         UnusedType(),

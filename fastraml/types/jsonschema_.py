@@ -123,7 +123,7 @@ class SchemaRegistry:
     them, so the memo has to live here.
     """
 
-    __slots__ = ('_draft', '_projections', '_raml', '_reached', '_resources')
+    __slots__ = ('_draft', '_failures', '_projections', '_raml', '_reached', '_resources')
 
     def __init__(self, raml: Raml) -> None:
         self._raml = raml
@@ -136,17 +136,30 @@ class SchemaRegistry:
         #: Projections by the subschema's canonical URI, with the named
         #: definitions a walk of the whole document collected.
         #:
-        #: One entry per URI, however the walk reached it: a schema file reached
-        #: as the RAML type that `!include`d it and as another schema's `$ref`
-        #: target is one subschema, so it is one shape (and one view address).
-        self._projections: dict[str, tuple[BaseShape, dict[str, BaseShape]]] = {}
+        #: One entry per URI and draft, however the walk reached it: a schema
+        #: file reached as the RAML type that `!include`d it and as another
+        #: schema's `$ref` target is one subschema, so it is one shape (and one
+        #: view address). The draft is the entry schema's (`_draft_of`): a
+        #: document declaring none is read in it, so each draft is a reading of
+        #: its own, computed once.
+        self._projections: dict[tuple[str, str], tuple[BaseShape, dict[str, BaseShape]]] = {}
+        #: Why a subschema projected on its own has no projection, keyed as
+        #: `_projections` is. Read only by `as_shape`, after `_projections`.
+        self._failures: dict[tuple[str, str], RamlError] = {}
 
-    def projected(self, uri: str) -> tuple[BaseShape, dict[str, BaseShape]] | None:
-        return self._projections.get(uri)
+    def projected(self, uri: str, draft: str) -> tuple[BaseShape, dict[str, BaseShape]] | None:
+        return self._projections.get((uri, draft))
 
-    def share(self, uri: str, built: BaseShape, defs: dict[str, BaseShape] | None = None) -> None:
+    def share(self, uri: str, draft: str, built: BaseShape, defs: dict[str, BaseShape] | None = None) -> None:
         """Record a projection. `defs` only where a whole document was walked."""
-        self._projections[uri] = (built, defs if defs is not None else {})
+        self._projections[uri, draft] = (built, defs if defs is not None else {})
+
+    def failed(self, uri: str, draft: str) -> RamlError | None:
+        return self._failures.get((uri, draft))
+
+    def fail(self, uri: str, draft: str, error: RamlError) -> None:
+        """Record that the subschema at `uri`, projected on its own, has no projection."""
+        self._failures[uri, draft] = error
 
     def compile(self, raw: str, location: str, position: Position | None) -> CompiledSchema:
         """Compile one schema, resolving every reference it names.
@@ -425,17 +438,31 @@ def _specification_of(contents: Any) -> Any:
         return DRAFT7
 
 
-#: The keywords `jsonschema` checks by float division: `multipleOf`, and Draft
-#: 3's `divisibleBy`.
-_MULTIPLE_KEYWORDS: Final = ('multipleOf', 'divisibleBy')
+def _draft_of(validator: Any) -> str:
+    """The draft a compiled schema reads a document declaring none in.
+
+    Part of a shared projection's key: the same file is a different reading
+    under another entry's draft (docs/10 § 7).
+    """
+    validator_class: Any = type(validator)
+    return _draft_named(validator_class)
+
+
+@cache
+def _draft_named(validator_class: Any) -> str:
+    return str(_specification_of(validator_class.META_SCHEMA).name)
+
+
+#: Marks a class `_exact_validator` built, so `evolve` does not wrap it again.
+_EXACT: Final = '_fastraml_exact'
 
 
 @cache
 def _exact_validator(validator_class: Any) -> Any:
-    """`validator_class` with `multipleOf`/`divisibleBy` checked exactly (docs/10 § 7).
+    """`validator_class` with `multipleOf` checked exactly (docs/10 § 7).
 
-    `jsonschema` divides floats, so `multipleOf: 0.1` rejects `0.7`. Only the
-    keyword the draft already has is replaced; one class per draft.
+    `jsonschema` divides floats, so `multipleOf: 0.1` rejects `0.7`. Replaced
+    only in a draft that has the keyword; one class per draft.
 
     `evolve`, which every descent into a subschema calls, picks the class anew
     from the subschema's own `$schema`, so a `$ref` into a document of another
@@ -444,14 +471,15 @@ def _exact_validator(validator_class: Any) -> Any:
     """
     from jsonschema.validators import extend  # noqa: PLC0415 - deferred for startup cost
 
-    keywords = {keyword: _exact_multiple_of for keyword in _MULTIPLE_KEYWORDS if keyword in validator_class.VALIDATORS}
+    keywords = {'multipleOf': _exact_multiple_of} if 'multipleOf' in validator_class.VALIDATORS else {}
     exact = extend(validator_class, keywords)
+    setattr(exact, _EXACT, True)
     stock_evolve = exact.evolve
 
     def evolve(self: Any, **changes: Any) -> Any:
         evolved = stock_evolve(self, **changes)
         picked: Any = type(evolved)
-        if any(picked.VALIDATORS.get(keyword) is _exact_multiple_of for keyword in _MULTIPLE_KEYWORDS):
+        if getattr(picked, _EXACT, False):
             return evolved
         # The same rebuild as jsonschema's own `evolve`, which reads the fields
         # through `attrs.fields`. That returns `__attrs_attrs__`; read here
@@ -507,7 +535,15 @@ class JsonShape(ComplexKind):
     `validate=True` would let a broken schema through the default parse.
     """
 
-    __slots__ = ('_cached_defs', '_cached_schema', '_cached_shape', '_compiled', 'raw', 'validator')
+    __slots__ = (
+        '_cached_defs',
+        '_cached_schema',
+        '_cached_shape',
+        '_compiled',
+        '_projection_error',
+        'raw',
+        'validator',
+    )
 
     def __init__(self, base: BaseShape, raw: str = '') -> None:
         super().__init__(base)
@@ -516,6 +552,7 @@ class JsonShape(ComplexKind):
         self.validator: Any = None
         self._compiled: CompiledSchema | None = None
         self._cached_shape: BaseShape | None = None
+        self._projection_error: RamlError | None = None
         self._cached_defs: dict[str, BaseShape] | None = None
         self._cached_schema: Any | None = None
         if raw:
@@ -571,24 +608,61 @@ class JsonShape(ComplexKind):
         is not in `Raml.shapes`, it carries no positions, and it is marked
         unwrapped. Feeding one back into the parser's own passes is the failure
         mode to avoid: the model looks right until P9 tries to flatten it.
+
+        `None` where the schema has no RAML reading (docs/10 § 7): the type
+        stays an opaque JSON Schema, and `projection_error()` says why. The
+        failure is cached as the projection is, and shared under the same
+        canonical URI, so it is computed once.
         """
         if self._compiled is None:
             return None
         if self._cached_shape is None:
             registry = schema_registry(self.base._raml)  # noqa: SLF001 - one registry per parse
             uri = self.canonical_uri
-            shared = registry.projected(uri) if uri else None
+            # The shared projection first: once any walk has one for this
+            # subschema, a failure cached earlier no longer answers for it.
+            draft = _draft_of(self.validator)
+            shared = registry.projected(uri, draft) if uri else None
+            if shared is None and self._projection_error is not None:
+                return None
+            self._projection_error = None
             if shared is None:
-                defs: dict[str, BaseShape] = {}
-                _, _, pointer = (uri or self._compiled.uri).partition('#')
-                built = _project(
-                    _Projection(self.base, self._compiled.resolver, defs, pointer), self._compiled.contents, {}
-                )
-                if uri:
-                    registry.share(uri, built, defs)
-                shared = (built, defs)
+                shared = self._project_alone(self._compiled, registry, uri, draft)
+                if shared is None:
+                    return None
             self._cached_shape, self._cached_defs = shared
         return self._cached_shape
+
+    def _project_alone(
+        self, compiled: CompiledSchema, registry: SchemaRegistry, uri: str | None, draft: str
+    ) -> tuple[BaseShape, dict[str, BaseShape]] | None:
+        """Walk the whole schema, or record why it has no projection."""
+        failed = registry.failed(uri, draft) if uri else None
+        if failed is None:
+            defs: dict[str, BaseShape] = {}
+            _, _, pointer = (uri or compiled.uri).partition('#')
+            try:
+                built = _project(_Projection(self.base, compiled.resolver, defs, pointer), compiled.contents, {})
+            except RamlError as err:
+                failed = err
+            else:
+                if uri:
+                    registry.share(uri, draft, built, defs)
+                return built, defs
+            if uri:
+                registry.fail(uri, draft, failed)
+        self._projection_error = failed
+        return None
+
+    def projection_error(self) -> RamlError | None:
+        """Why `as_shape()` has no projection, or `None` if it has one.
+
+        Projects on first call, as `as_shape` does. The error is the one
+        the walk raised, kept rather than re-raised: a schema RAML cannot read
+        is still a valid type, and a view reads it as an opaque schema.
+        """
+        self.as_shape()
+        return self._projection_error
 
     def as_shape_defs(self) -> dict[str, BaseShape] | None:
         """The named `$ref` targets `as_shape` extracted, in encounter order.
@@ -603,9 +677,11 @@ class JsonShape(ComplexKind):
         `as_shape_defs()` is the traversal's encountered references; an export
         also needs definitions the root did not reference. Project those only
         when requested, without changing the cached projection or parser model.
+        Empty when the root has no projection: the definitions are read as the
+        root's library, and there is no root to hold them.
         """
         root = self.as_shape()
-        if self._compiled is None:
+        if self._compiled is None or root is None:
             return {}
         defs = dict(self._cached_defs or {})
         contents = self._compiled.contents
@@ -631,8 +707,7 @@ class JsonShape(ComplexKind):
         # file stem without a corresponding Library declaration.
         result = dict(declared)
         used = set(result.values())
-        if root is not None:
-            _collect_projection_names(root, result, used, declared, defs)
+        _collect_projection_names(root, result, used, declared, defs)
         for name, base in defs.items():
             _claim_projection_name(result, used, name, base)
         return result
@@ -745,6 +820,9 @@ def projected(base: BaseShape) -> BaseShape:
     """`base` as a consumer walking structure should see it.
 
     A JSON-schema type through its RAML projection, anything else unchanged.
+    A schema with no projection stays `base`, an opaque JSON Schema leaf whose
+    `JsonShape` keeps the schema; it never raises (docs/10 § 7).
+
     One function rather than the same `isinstance(shape, JsonShape)` in every
     consumer, because a consumer that forgets it does not fail — it sees a leaf
     with no properties, no items and no facets, and reports that a schema type
@@ -930,6 +1008,12 @@ def _project(context: _Projection, contents: Any, visiting: _Visiting) -> BaseSh
         siblings_apply = ref_siblings_apply(context, contents)
     key = id(contents)
     present, previous = key in visiting, visiting.get(key)
+    if previous is not None:
+        # A schema whose projection is open, reached again without a `$ref` --
+        # an `allOf` member's property flattened back into its own subschema.
+        # Re-entering it would not grow `visiting`, so neither the depth guard
+        # nor anything else would stop the walk: it is the cycle's back-edge.
+        return _back_edge(context, previous)
     # A productive recursive target may revisit its caller's reference wrapper.
     # Restore that frame on return; it is not owned by the nested traversal.
     base = None if isinstance(reference, str) and not siblings_apply else _decorate(_view_base(context), contents)
@@ -959,15 +1043,10 @@ def _project_reference(context: _Projection, reference: str, visiting: _Visiting
     # `lookup` shortcuts to.
     document, target = urldefrag(urljoin(_document_of(context.resolver) or '', reference))
     if id(resolved.contents) in visiting:
-        head = visiting[id(resolved.contents)]
+        head = _cycle_head(visiting, id(resolved.contents))
         if head is None:
             raise _unsupported(context, 'reference-only cycle')
-        # The back-edge of a cycle, which is exactly what P9 produces for a
-        # recursive RAML type (docs/07 § 6).
-        base = _view_base(context, head.name)
-        base.type = TYPE_RECURSIVE
-        base.shape = RecursiveShape(base, head)
-        return base
+        return _back_edge(context, head)
 
     uri = f'{document}#{target}'
     # Named by the rule `_view_base` uses, so a target reached through a `$ref`
@@ -983,7 +1062,10 @@ def _project_reference(context: _Projection, reference: str, visiting: _Visiting
     # every other inline schema in that file.
     canonical = uri if _is_one_schema(context.parent._raml, document) else None  # noqa: SLF001 - the parse's index
     registry = schema_registry(context.parent._raml)  # noqa: SLF001 - one registry per parse
-    shared = registry.projected(canonical) if canonical else None
+    owner = context.parent.shape
+    assert isinstance(owner, JsonShape)  # noqa: S101 - the walk starts at a JSON Schema type
+    draft = _draft_of(owner.validator)
+    shared = registry.projected(canonical, draft) if canonical else None
     if shared is not None:
         if name is not None:
             context.defs[name] = shared[0]
@@ -993,11 +1075,44 @@ def _project_reference(context: _Projection, reference: str, visiting: _Visiting
     if name is not None:
         built.name = name
         context.defs[name] = built
-    if canonical is not None:
+    if canonical is not None and not isinstance(built.shape, RecursiveShape):
         # After the walk, never during it: a shape still being built is one a
-        # cycle must reach through `visiting`.
-        registry.share(canonical, built)
+        # cycle must reach through `visiting`. Nor a back-edge: a reference
+        # that is one names a head only this walk has open, so the same target
+        # walked from another entry is the head's projection, not a marker.
+        registry.share(canonical, draft, built)
     return built
+
+
+def _back_edge(context: _Projection, head: BaseShape) -> BaseShape:
+    """The back-edge of a cycle, which is exactly what P9 produces for a
+    recursive RAML type (docs/07 § 6).
+    """
+    base = _view_base(context, head.name)
+    base.type = TYPE_RECURSIVE
+    base.shape = RecursiveShape(base, head)
+    return base
+
+
+def _cycle_head(visiting: _Visiting, key: int) -> BaseShape | None:
+    """The type head a cycle back to the frame `key` passes through, or `None`.
+
+    A reference-only frame has no head of its own, but the frames opened after
+    it are the cycle, and the first of them with a head is what the reference
+    resolves to. Only a cycle of reference-only frames is unproductive, so
+    whether one fails does not depend on which of its schemas the walk entered
+    by (docs/10 § 7). `visiting` is in the order the frames were opened.
+    """
+    head = visiting[key]
+    if head is not None:
+        return head
+    after = False
+    for frame, opened in visiting.items():
+        if frame == key:
+            after = True
+        elif after and opened is not None:
+            return opened
+    return None
 
 
 def _subschema_name(location: str) -> str | None:

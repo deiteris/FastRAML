@@ -34,7 +34,8 @@ P10 checks:
   `type/*` or `*/*`, each name an RFC 6838 § 4.2 restricted-name, optionally
   followed by RFC 9110 parameters. The spec names only `*/*`; `text/*` is as
   meaningful. The root `mediaType` uses the same grammar without wildcards;
-  both are `MEDIA_RANGE` and `MEDIA_TYPE` in `parser/facets.py`;
+  both are `MEDIA_RANGE` and `MEDIA_TYPE` in `parser/facets.py`. A `body:` key
+  takes `MEDIA_RANGE`, checked when the body is decoded (docs/08 § 6.3);
 - every enum member validates against the shape's non-enum constraints;
 - discriminator declarations satisfy the contracts in
   [05](05-type-model.md#6-discriminators).

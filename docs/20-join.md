@@ -372,7 +372,7 @@ nor a view ([16](16-graph.md) § 1). It lives in `fastraml/join/`:
 
 - It may import the model, the parser and `yamlnode`. It does not import
   `fastraml.views`.
-- Nothing imports `fastraml.join` except `cli.py`. A test in
+- Nothing imports `fastraml.join` except `fastraml.cli`. A test in
   `tests/unit/test_views.py` enforces this, next to the view-layer checks.
 
 Tests: `tests/unit/test_join.py`, with one test per rule in §§ 3 to 7 that names

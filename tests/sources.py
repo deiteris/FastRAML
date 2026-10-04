@@ -20,7 +20,7 @@ PACKAGE = Path(fastraml.__file__).parent
 
 #: The model, as roots for `sources`: the passes, what they build, and the
 #: support modules underneath both (docs/02 § 2). The composition roots,
-#: `cli.py` and `service/`, are absent: they are the callers allowed to see
+#: `cli/` and `service/`, are absent: they are the callers allowed to see
 #: both the model and the views.
 MODEL = (
     'fastraml/parser',
@@ -46,7 +46,7 @@ class Import:
 
 def sources(*roots: str) -> list[Path]:
     """The `.py` files under each of `roots`, given relative to the package's
-    parent (`'fastraml/views'`, `'fastraml/cli.py'`).
+    parent (`'fastraml/views'`, `'fastraml/registry.py'`).
     """
     out: list[Path] = []
     for root in roots:

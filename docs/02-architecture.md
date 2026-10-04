@@ -58,22 +58,22 @@ in `Raml.stopped_at` (`Stage` in `registry.py`; docs/13 § 1):
 | Graph node classes | `nodes.py` | [16](16-graph.md) |
 | Joining API documents | `join/` | [20](20-join.md) |
 | Language service | `service/` | [21](21-language-service.md) |
-| CLI | `cli.py` | [13](13-public-api.md) |
+| CLI | `cli/` | [13](13-public-api.md) |
 | Packaged agent guides for `skills` | `skilldata/` | [13](13-public-api.md) |
 
 `views/` is a consumer layer, not a parser pass. Nothing under `parser/` or
 `types/` may import `fastraml.views`; outside `views/`, only the composition
-roots `cli.py` and `service/` may do so, and only `cli.py` imports `service/`.
+roots `cli/` and `service/` may do so, and only `cli/` imports `service/`.
 Views requiring effective types require their caller to provide an unwrapped
 model; CLI commands do this through `ParseOptions(unwrap=True)`.
 
 `join/` runs on source trees before decoding, so it is neither a pass nor a view.
-It imports no view, and only `cli.py` imports it ([20](20-join.md) § 9).
+It imports no view, and only `cli/` imports it ([20](20-join.md) § 9).
 
 Every RAML document, `!include` target and `uses:` library is read through the
 parse's loader (`loaders.py`). No module under `parser/`, `types/`, or
 `registry.py`, `nodes.py`, `datanode.py`, `yamlnode.py` opens a file or URL.
-Modules outside the model (`cli.py`, `config.py`, `service/`, `join/`) and
+Modules outside the model (`cli/`, `config.py`, `service/`, `join/`) and
 `views/bindings` may read non-RAML inputs and packaged data.
 `tests/unit/test_layering.py` enforces this.
 

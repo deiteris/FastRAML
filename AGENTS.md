@@ -34,7 +34,7 @@ message. For a new feature with no base number, use `bench linearity --bench NAM
 - `fastraml/views/`: runs after P10 and holds no pass (`docs/16-graph.md`; linting
   in `views/lint/`, `docs/18-linting.md`). The model — `parser/`, `types/`,
   `nodes.py`, `registry.py`, `datanode.py`, `yamlnode.py` — never imports
-  `fastraml.views`; outside `views/`, only the composition roots `cli.py` and `service/` do. One view imports
+  `fastraml.views`; outside `views/`, only the composition roots `cli/` and `service/` do. One view imports
   another only through the substrates `walk`, `graph` and `severity`.
   `tests/unit/test_views.py` enforces all three.
   `pyoxigraph`, `fastraml-viewer` and `pygls` are optional extras imported inside

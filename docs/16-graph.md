@@ -13,7 +13,7 @@ tree declarations.
 Views run after parsing and decide no RAML rule. A view may read the model but
 must not mutate it. Nothing under `fastraml/parser/` or `fastraml/types/` may
 import `fastraml.views`; outside that package only the composition roots
-`fastraml/cli.py` and `fastraml/service/` may import a view.
+`fastraml/cli/` and `fastraml/service/` may import a view.
 `tests/unit/test_views.py` enforces both directions.
 
 Use an unwrapped model for every effective view:

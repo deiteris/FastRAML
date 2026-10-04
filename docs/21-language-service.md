@@ -13,8 +13,8 @@ differ. The plan orders what comes next.
 
 ## 1. Place
 
-`fastraml/service/` is a composition root, like `cli.py`: it imports the model
-and several views, and only `cli.py` imports it (`docs/02` § 2;
+`fastraml/service/` is a composition root, like `cli/`: it imports the model
+and several views, and only `cli/` imports it (`docs/02` § 2;
 `tests/unit/test_views.py`). It reads the folder only through
 `SafeFileLoader` (`docs/03` § 5), so OS paths stay in `loaders.py`.
 

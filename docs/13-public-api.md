@@ -221,6 +221,14 @@ HTTP client such as `fastraml[http]`. Lint defaults to failing on `error`;
 The CLI's `-r` client follows HTTP redirects; a library caller supplying its own
 `http_client` controls that client's redirect policy.
 
+The CLI is the package `fastraml/cli/`; `python -m fastraml.cli` runs the same
+entry point as the console script. `arguments.py` builds the argument parser
+and names each verb's handler as `module:function` text, so `--help` and
+`--version` import no verb module, parser, view, or YAML library. `common.py`
+holds what several verbs share: parse options, parsing with a failure report,
+and writing a document. Each other module is one verb group, and imports its
+heavy and optional dependencies inside the verb.
+
 For library callers, `to_raml(shape, *, name=None)` accepts a compiled
 `JsonShape` and returns the same complete RAML document (docs/16 § 8). It raises
 the schema's projection error where the schema has no projection.

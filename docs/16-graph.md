@@ -235,7 +235,9 @@ literal content whose meaning depends on the includer's namespace (docs/04 § 4.
 - Numeric value bounds (`minimum`, `maximum`, `multiple_of`) are exact decimal
   strings. Counts such as `min_length` and `max_items` are JSON numbers.
 - JSON Schema shapes retain their source schema and a RAML-shape projection.
-  Consumers read the projection when they need uniform shape structure.
+  Consumers read the projection when they need uniform shape structure. A
+  schema with no projection (docs/10 § 7) has `json_schema` and no
+  `projection`: an opaque leaf, while the rest of the tree is unaffected.
 - Tree format changes are versioned by `format_version`. Additive optional keys
   do not require a version change; incompatible renames or reinterpretations do.
 
@@ -293,7 +295,9 @@ union member, an anonymous recursion, or a root name colliding with a definition
 fails rather than silently losing a constraint. Fraction facets are written as
 exact YAML numbers. The export uses the nearest-RAML shape
 projection (docs/10 § 7), with its documented semantic losses; it is not a
-lossless translation of JSON Schema. `fastraml convert raml FILE.json [-o FILE]`
+lossless translation of JSON Schema. It is the one view that raises a schema's
+projection error (`JsonShape.projection_error()`): the projection is its whole
+output, so it has no opaque form to fall back to. `fastraml convert raml FILE.json [-o FILE]`
 parses the schema through the normal loader and writes this document.
 
 `fastraml.views.jsonschema.to_json_schema(shape)` returns a JSON Schema draft-07
@@ -318,7 +322,13 @@ conversion notice.
 
 `fastraml.views.openapi.to_openapi(raml)` returns an OpenAPI 3.0.3 document and
 loss notices. `fastraml convert openapi` emits YAML by default or JSON with
-`--format json`; notices go to stderr.
+`--format json`; notices go to stderr. A JSON Schema type with no projection is
+written without a type constraint, with a notice naming the projection error;
+its schema is not embedded, since OpenAPI 3.0's schema object is not JSON
+Schema and lacks several constructs that fail projection, such as conditionals
+and tuple items. The RAML type including a schema file and a `$ref` reaching it
+share one component when they are one projected shape; a file naming no draft
+read in two drafts (docs/10 § 7) is two readings, and two components.
 Named use sites retain a reference when their effective constraints and members
 match the component. The match is read from the model, recursively through
 members and their metadata, before any component is built: a narrowing leaves

@@ -183,9 +183,16 @@ def to_raml(shape: JsonShape, *, name: str | None = None) -> str:
     becomes a Library; otherwise it becomes a DataType. `name` overrides the
     schema file's stem for the root type (and is required for an inline schema
     needing a Library).
+
+    Raises the schema's projection error (`JsonShape.projection_error`) where it
+    has none: the projection is this export's whole content, so unlike the
+    other views it has no opaque form to fall back to (docs/16 § 8).
     """
     root = shape.as_shape()
     if root is None:
+        failure = shape.projection_error()
+        if failure is not None:
+            raise failure
         raise ValueError('JSON Schema has no compiled projection')
     defs = shape.as_shape_definitions()
     root_name = name or (uri_stem(shape.document_uri) if shape.canonical_uri and shape.document_uri else None)

@@ -45,8 +45,11 @@ separate parse instances.
   are applied to every union member during unwrap. An `enum` beside the union
   is checked against the union. An `enum` inside a distributed declaration is
   narrowed per member ([07](07-resolution-and-inheritance.md) § 5).
-- External JSON Schema types, including JSON Pointer targets. Supported drafts
-  are determined by the installed `jsonschema` package.
+- External JSON Schema types, including JSON Pointer targets. The supported
+  drafts are 4, 7, 2019-09 and 2020-12 (draft 7 when none is declared). Other
+  drafts the installed `jsonschema` package recognises are validated by it but
+  not covered: no behaviour of [10](10-validation.md) § 7 is promised or tested
+  for them.
 
 ### 2.3 Modularization
 

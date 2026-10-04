@@ -160,6 +160,10 @@ import fastraml
 fastraml.set_gc_tuning(False)
 ```
 
+A JSON Schema type's RAML reading, `JsonShape.as_shape()`, is `None` where the
+schema has none, and `JsonShape.projection_error()` returns the `RamlError` that
+says why; neither raises (docs/10 § 7). `projected(base)` then returns `base`.
+
 For direct value validation, `validate(value)` returns `None` or `RamlError`.
 `validate_or_raise(value)` raises the same error. Use concrete exported shape
 classes with `isinstance` for type narrowing.
@@ -214,4 +218,5 @@ The CLI's `-r` client follows HTTP redirects; a library caller supplying its own
 `http_client` controls that client's redirect policy.
 
 For library callers, `to_raml(shape, *, name=None)` accepts a compiled
-`JsonShape` and returns the same complete RAML document (docs/16 § 8).
+`JsonShape` and returns the same complete RAML document (docs/16 § 8). It raises
+the schema's projection error where the schema has no projection.

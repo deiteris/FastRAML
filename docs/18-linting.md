@@ -68,6 +68,16 @@ spellings and inherited properties or discriminators, reports the optional
 property's authored location once across inherited uses, and is independently
 configurable through `lint.rules`.
 
+`unprojectable-json-schema` warns by default where a JSON Schema type has no
+nearest RAML type (docs/10 § 7). The schema stays valid and validates values;
+views read it as an opaque schema, so this finding is where the projection
+failure is reported. The finding's message and `info` are the projection
+error's message key and `info`, plus `pointer`: the JSON Pointer the type
+included (`/definitions/A`), so two subschemas of one file are told apart,
+and `''` for a whole file or an inline schema. It is reported once per schema, however many
+types include or inherit it: for a schema file at that file, without a
+position, and for an inline schema at its declaration.
+
 ### 2.1 Rule shapes
 
 A rule is exactly one of two forms:

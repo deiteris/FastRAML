@@ -116,7 +116,7 @@ ShapeType: TypeAlias = Literal[
     'union',
     'json',
 ]
-HttpMethod: TypeAlias = Literal['connect', 'delete', 'get', 'head', 'options', 'patch', 'post', 'put', 'trace']
+HttpMethod: TypeAlias = Literal['delete', 'get', 'head', 'options', 'patch', 'post', 'put']
 FragmentKind: TypeAlias = Literal[
     'API',
     'Library',

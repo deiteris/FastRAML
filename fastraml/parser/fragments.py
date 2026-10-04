@@ -771,7 +771,10 @@ class APIFragment(_DeclaringFragment):
 
     def _unmarshal_media_types(self, key: Node, node: Node) -> list[ScalarFacet[str]]:
         node, location = inline_include(self._raml, node, self.location)
-        if node.kind is NodeKind.SCALAR:
+        if node.kind in {NodeKind.SCALAR, NodeKind.MAPPING}:
+            # A mapping is the annotated-scalar spelling, `{value: ..., (a): ...}`
+            # (spec section Annotating Scalar-valued Nodes); its annotations
+            # target the enclosing document (docs/09 § B4).
             items = [make_scalar_facet(self._raml, key, node, location, scalar_str)]
         elif node.kind is NodeKind.SEQUENCE:
             items = [make_scalar_facet(self._raml, None, item, location, scalar_str) for item in node.content]
@@ -1116,6 +1119,9 @@ def unmarshal_documentation_items(
     value_node, location = inline_include(raml, value_node, location)
     if value_node.kind is not NodeKind.SEQUENCE:
         raise node_error('documentation must be a sequence', location, key_node)
+    if not value_node.content:
+        # Spec section User Documentation: "a sequence of one or more documents".
+        raise node_error('documentation must not be empty', location, value_node)
 
     items: list[DocumentationItem] = []
     for item_node in value_node.content:

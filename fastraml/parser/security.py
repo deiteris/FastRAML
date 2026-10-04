@@ -383,7 +383,12 @@ def _item(settings: Node, key: str, value: str) -> Node:
 def _validate_oauth2(settings: SecuritySchemeSettings, node: Node, location: str) -> RamlError | None:
     if not settings.values.get('accessTokenUri', None) or not settings.values['accessTokenUri'].value:
         return node_error('security scheme setting is required', location, node, info={'setting': 'accessTokenUri'})
-    grants = settings.lists.get('authorizationGrants', [])
+    grants = settings.lists.get('authorizationGrants')
+    if grants is None:
+        # Spec section OAuth 2.0: the settings table writes it without `?`.
+        return node_error(
+            'security scheme setting is required', location, node, info={'setting': 'authorizationGrants'}
+        )
     for grant in grants:
         if grant not in OAUTH2_GRANTS and not _is_absolute_uri(grant):
             # Not one of the four RFC 6749 names, and not an extension grant.

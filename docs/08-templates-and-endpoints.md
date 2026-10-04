@@ -146,13 +146,18 @@ Code: `parser/traits.py`. Tests: `tests/unit/test_traits.py` and
 
 ### 3.3 `resourcePathName`
 
-`resourcePathName` is the rightmost path segment that is neither empty nor a
-URI-parameter-only segment. A trailing `{ext}` is ignored:
+Every literal `{ext}` is removed from the full resource URI before either
+value is computed: processors "MUST also omit any ext parameter and its
+parametrizing brackets" (*spec section Resource Type and Trait Parameters*).
+`resourcePath` is the result. `resourcePathName` is its rightmost path segment
+that is neither empty nor a URI-parameter-only segment:
 
 ```
-/users/{userId}/addresses  -> addresses
-/users/{userId}            -> users
-/bom/{itemId}{ext}         -> bom
+URI                        resourcePath     resourcePathName
+/users/{userId}/addresses  (unchanged)      addresses
+/users/{userId}            (unchanged)      users
+/bom/{itemId}{ext}         /bom/{itemId}    bom
+/bom{ext}                  /bom             bom
 ```
 
 Code: `parser/uritemplates.py`.

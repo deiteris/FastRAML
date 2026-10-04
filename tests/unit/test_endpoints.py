@@ -70,6 +70,28 @@ class TestOperations:
         assert get.display_name.value == 'List'
         assert get.description.value == 'd'
 
+    @pytest.mark.parametrize('method', ['trace', 'connect'])
+    def test_only_the_seven_raml_methods_are_methods(self, workspace, method):
+        """Spec § Methods (raml-10.md L1944) lists get, patch, put, post, delete,
+        head and options; any other key on a resource is unknown.
+        """
+        error = fails(workspace, f'/users:\n  {method}:\n  get:\n')
+        assert error is not None
+        assert [frame.info for chain in error.chains() for frame in chain if frame.message == 'unknown field'] == [
+            {'field': method}
+        ]
+
+    @pytest.mark.parametrize('method', ['trace', 'connect'])
+    def test_a_resource_type_cannot_contribute_a_non_raml_method(self, workspace, method):
+        error = fails(workspace, f'resourceTypes:\n  r:\n    {method}:\n/users:\n  type: r\n')
+        assert error is not None
+        assert [
+            frame.info
+            for chain in error.chains()
+            for frame in chain
+            if frame.message == 'resource type method must be an HTTP method'
+        ] == [{'key': method}]
+
     def test_protocols_are_upper_cased(self, workspace):
         raml = parse(workspace, '/users:\n  get:\n    protocols: [http, https]\n')
         assert raml.endpoints['/users'].operations['get'].protocols == ['HTTP', 'HTTPS']

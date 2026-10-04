@@ -40,7 +40,7 @@ from fastraml.parser.templates import (
     make_template_definition,
     parameter_node,
 )
-from fastraml.parser.uritemplates import resource_path_name
+from fastraml.parser.uritemplates import resource_path, resource_path_name
 from fastraml.registry import ParseCtx
 from fastraml.yamlnode import TAG_STR, Node, NodeKind, node_error, pairs, with_content, with_value
 
@@ -153,7 +153,7 @@ def apply_resource_type(raml: Raml, endpoint: SourceEndPoint, ref: DirectiveRef,
     definition = _definition_for(ref)
     params: dict[str, Node] = {
         **ref.params,
-        'resourcePath': parameter_node(endpoint.full_uri),
+        'resourcePath': parameter_node(resource_path(endpoint.full_uri)),
         'resourcePathName': parameter_node(resource_path_name(endpoint.full_uri)),
     }
     compiled = compile_resource_type(

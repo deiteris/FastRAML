@@ -30,6 +30,7 @@ __all__ = [
     'UriTemplateExpression',
     'check_uri_reference',
     'extract_uri_template_params',
+    'resource_path',
     'resource_path_name',
     'simple_parameter_segment',
     'unused_uri_parameters',
@@ -43,6 +44,9 @@ _LEVEL_2_OPERATORS = ('+', '#')
 
 # A parameter-only segment is at least "{x}", so longer than two characters.
 _MIN_PARAMETER_SEGMENT_LEN = 2
+
+# The spec's media-type extension parameter, omitted from `<<resourcePath>>`.
+_EXT = '{ext}'
 
 _ERR_UNCLOSED_BRACE = "unclosed '{'"
 _ERR_NESTED_BRACE = "nested '{'"
@@ -202,14 +206,28 @@ def simple_parameter_segment(segment: str) -> bool:
     return segment == ''.join(f'{{{expression.name}}}' for expression in expressions)
 
 
+def resource_path(full_uri: str) -> str:
+    """`<<resourcePath>>`: `full_uri` with every literal `{ext}` removed.
+
+    Spec section Resource Type and Trait Parameters: processors "MUST also omit
+    any ext parameter and its parametrizing brackets" found in the resource URI
+    (docs/08 § 3.3).
+
+    >>> resource_path('/bom/{itemId}{ext}')
+    '/bom/{itemId}'
+    """
+    return full_uri.replace(_EXT, '')
+
+
 def resource_path_name(full_uri: str) -> str:
     """The rightmost path segment of `full_uri` that is not a URI template parameter.
 
-    Scans from the right over *segments* (`rstrip` + `rpartition`, not
-    characters; docs/12-performance.md § 2), skipping trailing slashes
-    and any segment that is entirely template expressions (`{...}`, possibly
-    several concatenated, e.g. `{itemId}{ext}`). Returns `''` when every
-    segment is such a parameter, or when `full_uri` is empty.
+    Every `{ext}` is removed first, as from `<<resourcePath>>`. Scans from the
+    right over *segments* (`rstrip` + `rpartition`, not characters;
+    docs/12-performance.md § 2), skipping trailing slashes and any segment that
+    is entirely template expressions (`{...}`, possibly several concatenated,
+    e.g. `{itemId}{version}`). Returns `''` when every segment is such a
+    parameter, or when `full_uri` is empty.
 
     >>> resource_path_name('/users/{userId}/addresses')
     'addresses'
@@ -217,8 +235,10 @@ def resource_path_name(full_uri: str) -> str:
     'users'
     >>> resource_path_name('/bom/{itemId}{ext}')
     'bom'
+    >>> resource_path_name('/bom{ext}')
+    'bom'
     """
-    remainder = full_uri
+    remainder = resource_path(full_uri)
     while remainder:
         remainder = remainder.rstrip('/')
         if not remainder:

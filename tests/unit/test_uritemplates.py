@@ -11,7 +11,12 @@ from __future__ import annotations
 import pytest
 
 from fastraml.errors import RamlError
-from fastraml.parser.uritemplates import UriTemplateExpression, extract_uri_template_params, resource_path_name
+from fastraml.parser.uritemplates import (
+    UriTemplateExpression,
+    extract_uri_template_params,
+    resource_path,
+    resource_path_name,
+)
 from fastraml.positions import Position
 
 LOC = 'file:///t/api.raml'
@@ -181,7 +186,20 @@ class TestResourcePathName:
         assert resource_path_name('/users/{userId}') == 'users'
 
     def test_concatenated_parameters_form_one_skipped_segment(self):
-        assert resource_path_name('/bom/{itemId}{ext}') == 'bom'
+        assert resource_path_name('/bom/{itemId}{version}') == 'bom'
+
+    @pytest.mark.parametrize(
+        ('uri', 'path', 'name'),
+        [
+            ('/bom/{itemId}{ext}', '/bom/{itemId}', 'bom'),
+            ('/bom{ext}', '/bom', 'bom'),
+            ('/users{ext}/{id}', '/users/{id}', 'users'),
+        ],
+    )
+    def test_ext_is_omitted_from_both(self, uri, path, name):
+        """Spec § Resource Type and Trait Parameters (raml-10.md L2356), docs/08 § 3.3."""
+        assert resource_path(uri) == path
+        assert resource_path_name(uri) == name
 
     def test_trailing_slash_is_ignored(self):
         assert resource_path_name('/foo/bar/') == 'bar'

@@ -47,6 +47,16 @@ class TestParameters:
             if frame.message == 'missing required parameter'
         ] == [{'parameter': 'methodName'}]
 
+    def test_the_reserved_parameters_omit_ext(self, workspace):
+        """Spec § Resource Type and Trait Parameters (raml-10.md L2356): applying
+        a resource type to `/bom/{itemId}{ext}` sets "`/bom/{itemId}`" and
+        "`bom`" (docs/08 § 3.3).
+        """
+        rt = 'resourceTypes:\n  r:\n    get:\n      description: <<resourcePath>> <<resourcePathName>>\n'
+        root = workspace({'api.raml': API + rt + '/bom/{itemId}{ext}:\n  type: r\n'})
+        endpoint = parse(workspace, root).endpoints['/bom/{itemId}{ext}']
+        assert endpoint.operations['get'].description.value == '/bom/{itemId} bom'
+
 
 class TestApplication:
     def test_a_method_the_resource_lacks_is_grafted(self, workspace):

@@ -41,11 +41,10 @@ from fastraml.parser.templates import (
     compile_source_provenance,
     find_template_definition,
     make_template_definition,
-    parameter_node,
 )
 from fastraml.parser.uritemplates import resource_path, resource_path_name
 from fastraml.registry import EMPTY_CTX
-from fastraml.yamlnode import pairs, with_content
+from fastraml.yamlnode import pairs, str_scalar, with_content
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator
@@ -99,13 +98,13 @@ def apply_traits(raml: Raml, endpoint: SourceEndPoint) -> None:
     # and every trait of this resource, so their nodes are built once. They are
     # read-only scalars that substitution never inserts by pointer, so sharing
     # them is safe and saves an allocation per application.
-    path = parameter_node(resource_path(endpoint.full_uri))
-    path_name = parameter_node(resource_path_name(endpoint.full_uri))
+    path = str_scalar(resource_path(endpoint.full_uri))
+    path_name = str_scalar(resource_path_name(endpoint.full_uri))
 
     accumulator = Accumulator()
     looked_up: set[DirectiveRef] = set()
     for method, operation in endpoint.operations.items():
-        method_name = parameter_node(method)
+        method_name = str_scalar(method)
         seen: set[str] = set()
         # Spec section Algorithm of Merging Traits and Methods: one distance at
         # a time, the traits the previous distance's traits apply coming next.

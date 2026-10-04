@@ -10,7 +10,7 @@ from fastraml.types.complex_ import ArrayShape, ObjectShape
 from fastraml.types.scalars import AnyShape, DateTimeShape, FileShape, IntegerShape, NumberShape, StringShape
 from fastraml.views.lint.engine import Category, Finding, RuleMeta, Severity
 from fastraml.views.lint.labels import type_label
-from fastraml.views.lint.regex import REGEX_TOKEN, fully_anchored
+from fastraml.views.lint.regex import fully_anchored, nested_quantifier
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -88,80 +88,6 @@ def _request_type(declaration: str) -> str:
 
 def _is_input(ctx: Context, iri: str, base: BaseShape) -> bool:
     return base.alias is None and iri in ctx.graph.request_shape_iris()
-
-
-# -- reading a RAML regular expression -------------------------------------------
-#
-# Through the shared tokenizer in `views/lint/regex.py`.
-
-_QUANTIFIERS: Final = frozenset({'*', '+', '?'})
-
-
-def _pattern_source(shape: StringShape) -> str:
-    """The expression as written. `re` and `re2` both expose `.pattern`."""
-    return '' if shape.pattern is None else str(getattr(shape.pattern.value, 'pattern', ''))
-
-
-def _is_quantifier(piece: str) -> bool:
-    return piece in _QUANTIFIERS or (piece.startswith('{') and piece.endswith('}'))
-
-
-def _unbounded(piece: str) -> bool:
-    return piece in {'*', '+'} or (piece.startswith('{') and piece.endswith(',}'))
-
-
-class _Group:
-    """What one group's direct content can do, for `_nested_quantifier`."""
-
-    __slots__ = ('mandatory', 'unbounded')
-
-    def __init__(self) -> None:
-        #: Something inside must match exactly once: a separator, such as `-` in `(-[a-z]+)*`.
-        self.mandatory = False
-        #: Something inside repeats without limit.
-        self.unbounded = False
-
-    def settle(self, atom: _Group | None) -> None:
-        """An unquantified atom: a group passes on what it holds, anything else must match."""
-        if atom is None:
-            self.mandatory = True
-        else:
-            self.mandatory |= atom.mandatory
-            self.unbounded |= atom.unbounded
-
-
-def _nested_quantifier(pattern: str) -> bool:
-    r"""An unboundedly repeated group whose content repeats and has no separator: `(a+)+`, `(\w+\s?)*`.
-
-    A separator that must match once per repetition, as in `(-[a-z]+)*`, fixes
-    where each repetition starts, so the group is not reported. That misses a
-    separator the repeated part can also match; this is a heuristic.
-    """
-    stack = [_Group()]
-    pending = False  # an atom is waiting to learn whether a quantifier follows
-    atom: _Group | None = None  # that atom, when it is a group
-    for piece in REGEX_TOKEN.findall(pattern):
-        frame = stack[-1]
-        if _is_quantifier(piece):
-            if pending and _unbounded(piece):
-                if atom is not None and atom.unbounded and not atom.mandatory:
-                    return True
-                frame.unbounded = True
-            elif pending and atom is not None:
-                frame.unbounded |= atom.unbounded
-            pending, atom = False, None
-            continue
-        if pending:
-            frame.settle(atom)
-            pending, atom = False, None
-        if piece.startswith('('):
-            stack.append(_Group())
-        elif piece == ')':
-            if len(stack) > 1:
-                atom, pending = stack.pop(), True
-        elif piece not in {'|', '^', '$'}:
-            pending = True
-    return False
 
 
 class InsecureBasicAuthentication:
@@ -794,7 +720,7 @@ class UnanchoredStringPattern:
         shape = base.shape
         if not isinstance(shape, StringShape) or shape.pattern is None or not _is_input(ctx, iri, base):
             return ()
-        pattern = _pattern_source(shape)
+        pattern = shape.pattern.value.pattern
         if fully_anchored(pattern):
             return ()
         return (
@@ -836,8 +762,8 @@ class NestedQuantifierPattern:
             or not _is_input(ctx, iri, base)
         ):
             return ()
-        pattern = _pattern_source(shape)
-        if not _nested_quantifier(pattern):
+        pattern = shape.pattern.value.pattern
+        if not nested_quantifier(pattern):
             return ()
         return (
             ctx.on(

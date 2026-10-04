@@ -39,7 +39,6 @@ from fastraml.parser.templates import (
     compile_source_provenance,
     find_template_definition,
     make_template_definition,
-    parameter_node,
 )
 from fastraml.parser.uritemplates import resource_path, resource_path_name
 from fastraml.registry import EMPTY_CTX
@@ -154,8 +153,8 @@ def apply_resource_type(raml: Raml, endpoint: SourceEndPoint, ref: DirectiveRef,
     definition = _definition_for(ref)
     params: dict[str, Node] = {
         **ref.params,
-        'resourcePath': parameter_node(resource_path(endpoint.full_uri)),
-        'resourcePathName': parameter_node(resource_path_name(endpoint.full_uri)),
+        'resourcePath': str_scalar(resource_path(endpoint.full_uri)),
+        'resourcePathName': str_scalar(resource_path_name(endpoint.full_uri)),
     }
     compiled = compile_resource_type(
         raml,

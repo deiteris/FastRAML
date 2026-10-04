@@ -44,7 +44,6 @@ from fastraml.yamlnode import (
     is_null,
     node_error,
     pairs,
-    str_scalar,
     with_content,
     with_grafts,
 )
@@ -77,7 +76,6 @@ __all__ = [
     'find_template_definition',
     'iter_nodes',
     'make_template_definition',
-    'parameter_node',
     'parse_template_variables',
 ]
 
@@ -93,15 +91,6 @@ TRAIT_PARAMETERS: Final = RESOURCE_TYPE_PARAMETERS | {'methodName'}
 #: (docs/08 § 5). An `!include` or an application tag stays text: its meaning
 #: belongs to where it was written.
 _VALUE_TAGS: Final = frozenset({TAG_STR, TAG_INT, TAG_FLOAT, TAG_BOOL, TAG_NULL, TAG_TIMESTAMP})
-
-
-def parameter_node(value: str) -> Node:
-    """A template parameter value as a plain string scalar.
-
-    Read-only, and never inserted into a compiled tree by pointer, so one node
-    can serve every application site of a resource.
-    """
-    return str_scalar(value)
 
 
 #: What one scan of a template body produces: every `<<...>>` bearing scalar,

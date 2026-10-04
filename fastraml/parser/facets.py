@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import re
 from fractions import Fraction
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from fastraml.datanode import included_data_node, make_data_node, parse_int
 from fastraml.facet_names import FACET_VALUE
@@ -52,6 +52,8 @@ if TYPE_CHECKING:
     from fastraml.registry import Raml
 
 __all__ = [
+    'MEDIA_RANGE',
+    'MEDIA_TYPE',
     'annotated_scalar_value',
     'compile_pattern',
     'make_annotated_data_facet',
@@ -62,6 +64,7 @@ __all__ = [
     'make_scalar_facet',
     'make_seq_facet',
     'make_string_facet',
+    'media_parts',
     'regex_engine',
     'resolve_annotated_scalar',
     'scalar_bool',
@@ -69,6 +72,53 @@ __all__ = [
     'scalar_int',
     'scalar_str',
 ]
+
+
+#: RFC 6838 § 4.2 `restricted-name`: ASCII, a letter or digit, then up to 126
+#: of those or `!#$&-^_.+`.
+_RESTRICTED_NAME: Final = r'[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,126}'
+
+#: RFC 9110 § 5.6.6 `parameters`, each `token "=" (token / quoted-string)`,
+#: with optional whitespace around the `;` and an empty one allowed, as there.
+_TOKEN: Final = r"[!#$%&'*+.^_`|~0-9A-Za-z-]+"  # noqa: S105 - an HTTP token grammar, not a credential
+_QUOTED: Final = r'"(?:[\t \x21\x23-\x5b\x5d-\x7e\x80-\xff]|\\[\t \x21-\x7e\x80-\xff])*"'
+_PARAMETERS: Final = rf'(?:[ \t]*;[ \t]*(?:{_TOKEN}=(?:{_TOKEN}|{_QUOTED}))?)*'
+
+#: A media type, `type/subtype` plus parameters: what the root `mediaType`
+#: takes (spec section Default Media Types names RFC 6838). Use `fullmatch`.
+MEDIA_TYPE: Final = re.compile(rf'{_RESTRICTED_NAME}/{_RESTRICTED_NAME}{_PARAMETERS}')
+
+#: A media range, RFC 9110 § 12.5.1: a media type, `type/*` or `*/*`. What
+#: `fileTypes` takes; the spec requires `*/*` there (docs/10 § 2).
+MEDIA_RANGE: Final = re.compile(rf'(?:\*/\*|{_RESTRICTED_NAME}/(?:\*|{_RESTRICTED_NAME})){_PARAMETERS}')
+
+_MEDIA_HEAD: Final = re.compile(rf'\*/\*|{_RESTRICTED_NAME}/(?:\*|{_RESTRICTED_NAME})')
+_PARAMETER: Final = re.compile(rf'[ \t]*;[ \t]*(?:({_TOKEN})=({_TOKEN}|{_QUOTED}))?')
+_QUOTED_PAIR: Final = re.compile(r'\\(.)', re.DOTALL)
+
+
+def media_parts(text: str) -> tuple[str, frozenset[tuple[str, str]]]:
+    """A media type or range as `(type/subtype, parameters)`, for comparison.
+
+    `type/subtype` and parameter names are lowercased, as RFC 9110 § 8.3.1
+    makes them case-insensitive; whitespace around `;` is dropped and a
+    quoted value is unquoted, so `a="b"` and `a=b` are one parameter. Text
+    outside `MEDIA_RANGE` is returned lowercased, whole, with no parameters:
+    P10 reports it, and a comparison before then must not fail on it.
+    """
+    if MEDIA_RANGE.fullmatch(text) is None:
+        return text.lower(), frozenset()
+    head = _MEDIA_HEAD.match(text)
+    assert head is not None  # noqa: S101 - `MEDIA_RANGE` matched, and starts with this
+    parameters = set()
+    for found in _PARAMETER.finditer(text, head.end()):
+        name, value = found.group(1), found.group(2)
+        if name is None:
+            continue
+        if value[:1] == '"':
+            value = _QUOTED_PAIR.sub(r'\1', value[1:-1])
+        parameters.add((name.lower(), value))
+    return head.group().lower(), frozenset(parameters)
 
 
 def scalar_bool(node: Node, location: str) -> bool:

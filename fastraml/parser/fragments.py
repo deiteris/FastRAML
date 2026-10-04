@@ -57,7 +57,7 @@ from fastraml.parser.annotations import DomainExtension, add_domain_extension, i
 from fastraml.parser.directives import decode_secured_by, make_security_schemes
 from fastraml.parser.documentation import DocumentationItem, decode_documentation_item
 from fastraml.parser.endpoints import base_uri_protocol, decode_protocols
-from fastraml.parser.facets import make_scalar_facet, make_string_facet, scalar_str
+from fastraml.parser.facets import MEDIA_TYPE, make_scalar_facet, make_string_facet, scalar_str
 from fastraml.parser.includes import (
     content_include,
     inline_include,
@@ -775,7 +775,7 @@ class APIFragment(_DeclaringFragment):
         if not items:
             raise node_error('media type must not be empty', location, node)
         for item in items:
-            if not _is_valid_media_type(item.value):
+            if MEDIA_TYPE.fullmatch(item.value) is None:
                 raise node_error('invalid media type', location, node, info={'media type': item.value})
         return items
 
@@ -1130,21 +1130,6 @@ def unmarshal_documentation_items(
         else:
             items.append(decode_documentation_item(raml, item_node, location))
     return items
-
-
-# -- media types --------------------------------------------------------------
-
-
-def _is_valid_media_type(value: str) -> bool:
-    """`type/subtype`, where both parts are non-empty RFC 2045 tokens."""
-    kind, separator, subtype = value.partition('/')
-    if not separator or not kind or not subtype:
-        return False
-    return _is_media_token(kind) and _is_media_token(subtype)
-
-
-def _is_media_token(value: str) -> bool:
-    return all(character.isalnum() or character in '-.+' for character in value)
 
 
 # -- the fragment cache -------------------------------------------------------

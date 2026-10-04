@@ -183,13 +183,18 @@ _RE_CALLS = frozenset({'compile', 'search', 'match', 'fullmatch', 'finditer', 'f
 #: The calls that compile a pattern that is not RAML's, as (module, scope),
 #: the scope being the enclosing function or, at module level, the name
 #: assigned: a configuration file's regex, one built from `re.escape`d pieces,
-#: and the built-in date/time grammars, composed from constant pieces and
-#: shared with the schema exports. Those end in `(?![\s\S])`, which re2 cannot
-#: compile. A RAML regex goes through `compile_pattern` / `regex_engine`
-#: instead, so `regex_engine='re2'` covers it (docs/13 § 2).
+#: the media-type grammars, and the built-in date/time grammars, composed from
+#: constant pieces and shared with the schema exports. Those end in
+#: `(?![\s\S])`, which re2 cannot compile. A RAML regex goes through
+#: `compile_pattern` / `regex_engine` instead, so `regex_engine='re2'` covers
+#: it (docs/13 § 2).
 _NON_RAML_PATTERNS = frozenset(
     {
         ('fastraml.config', '_compatibility_rule'),
+        ('fastraml.parser.facets', 'MEDIA_RANGE'),
+        ('fastraml.parser.facets', 'MEDIA_TYPE'),
+        ('fastraml.parser.facets', '_MEDIA_HEAD'),
+        ('fastraml.parser.facets', '_PARAMETER'),
         ('fastraml.types.values', 'DATE_ONLY'),
         ('fastraml.types.values', 'TIME_ONLY'),
         ('fastraml.types.values', 'DATETIME_ONLY'),

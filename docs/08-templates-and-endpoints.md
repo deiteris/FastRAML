@@ -374,8 +374,9 @@ is one declaration instantiated separately for every API default media type;
 without a default media type this spelling is an error. Each body it becomes
 is placed at the `body:` key and records `media_type_written=False`, so a
 reader tells one declaration from several written under their own keys. A
-mapping that mixes media-type keys and type facets is an error. API default media types must use
-valid RFC 6838 `type/subtype` syntax.
+mapping that mixes media-type keys and type facets is an error. API default media types must be
+RFC 6838 `type/subtype`, without wildcards, optionally followed by RFC 9110
+parameters (docs/10 § 2).
 
 ### 6.4 Query strings
 

@@ -22,7 +22,8 @@ separate parse instances.
   `baseUriParameters`, `protocols`, `mediaType`, and `documentation`. `baseUri`
   rejects invalid URI characters, malformed percent escapes, and malformed
   schemes. Every declared base URI parameter must name a template variable, and
-  media types must use valid `type/subtype` syntax.
+  media types must be RFC 6838 `type/subtype`, without wildcards, optionally
+  followed by RFC 9110 parameters (docs/10 § 2).
 - Declarations: `types` (and the deprecated `schemas` alias),
   `annotationTypes`, `traits`, `resourceTypes`, `securitySchemes`, and `uses`.
 - Domain extensions at supported RAML targets.

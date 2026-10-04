@@ -56,6 +56,10 @@ __all__ = [
 ]
 
 
+#: The message key of the reference-chain depth guard (docs/12 § 3).
+_CHAIN_TOO_DEEP = 'type reference chain too deep'
+
+
 def resolve_shapes(raml: Raml) -> None:
     """Drain the worklist (docs/07 § 2).
 
@@ -82,7 +86,7 @@ def resolve_shapes(raml: Raml) -> None:
     accumulator.raise_if_any()
 
 
-def resolve_shape(raml: Raml, base: BaseShape) -> None:
+def resolve_shape(raml: Raml, base: BaseShape, depth: int = 0) -> None:
     """Settle one declaration's kind, in place (docs/07 § 2).
 
     Idempotent and re-entrant: the visitor calls this on a referent that may
@@ -107,6 +111,21 @@ def resolve_shape(raml: Raml, base: BaseShape) -> None:
             kind=ErrorKind.RESOLVING,
             info={'type': base.type},
         )
+    if shape.chain_failure is not None:
+        # Reached again after a chain through it passed the ceiling: the same
+        # error, already marked here, rather than another walk to the ceiling
+        # and another mark on every shape along it.
+        raise shape.chain_failure
+    if depth > raml.max_depth:
+        # `depth` counts the referents being resolved out of queue order on
+        # this path: `T0: T1`, `T1: T2`, ... declared top-down (docs/12 § 3).
+        raise RamlError.new(
+            _CHAIN_TOO_DEEP,
+            base.location,
+            base.key_pos,
+            kind=ErrorKind.RESOLVING,
+            info={'limit': raml.max_depth},
+        )
     base._visiting = True  # noqa: SLF001 - see above
     # P7 runs after fragment decoding has popped its context. Pending facets
     # may be authored in a typed trait even when a substituted `type:` gave the
@@ -118,15 +137,17 @@ def resolve_shape(raml: Raml, base: BaseShape) -> None:
     try:
         # The pending facets decode now, at the target they were written at.
         if base.link is not None:
-            _resolve_link(raml, base, shape)
+            _resolve_link(raml, base, shape, depth)
         elif base.type == TYPE_COMPOSITE:
-            _resolve_multiple_inheritance(raml, base, shape)
+            _resolve_multiple_inheritance(raml, base, shape, depth)
         else:
-            _build(raml, shape, _parse(raml, base))
+            _build(raml, shape, _parse(raml, base), depth)
     except RamlError as err:
         # Left an `UnknownShape`, or its kind if one of its declaration facets
         # failed. It is marked, as is every shape the failure passes through on
         # its way out (docs/13 § 1).
+        if err.head.message == _CHAIN_TOO_DEEP:
+            shape.chain_failure = err
         raml.mark(base, err)
         raise
     finally:
@@ -137,7 +158,7 @@ def resolve_shape(raml: Raml, base: BaseShape) -> None:
 # -- the three non-expression cases ------------------------------------------
 
 
-def _resolve_link(raml: Raml, base: BaseShape, target: UnknownShape) -> None:
+def _resolve_link(raml: Raml, base: BaseShape, target: UnknownShape, depth: int) -> None:
     """`type: !include other.raml` — take the linked declaration's kind.
 
     `base.link` is left in place. Rewriting it to `inherits` is the first thing
@@ -147,11 +168,11 @@ def _resolve_link(raml: Raml, base: BaseShape, target: UnknownShape) -> None:
     linked = base.link.shape if base.link is not None else None
     if linked is None:
         raise RamlError.new('linked data type declares no shape', base.location, base.key_pos, kind=ErrorKind.RESOLVING)
-    resolve_shape(raml, linked)
+    resolve_shape(raml, linked, depth + 1)
     attach_kind(raml, base, linked.type, target.pending_facets, from_mapping=target.from_mapping)
 
 
-def _resolve_multiple_inheritance(raml: Raml, base: BaseShape, target: UnknownShape) -> None:
+def _resolve_multiple_inheritance(raml: Raml, base: BaseShape, target: UnknownShape, depth: int) -> None:
     """`type: [Cat, Dog]` — resolve every parent, then take the first one's kind.
 
     Whether the parents are mutually compatible is not asked here: that needs
@@ -160,7 +181,7 @@ def _resolve_multiple_inheritance(raml: Raml, base: BaseShape, target: UnknownSh
     if not base.inherits:
         raise RamlError.new('type must name at least one parent', base.location, base.key_pos, kind=ErrorKind.RESOLVING)
     for parent in base.inherits:
-        resolve_shape(raml, parent)
+        resolve_shape(raml, parent, depth + 1)
     attach_kind(raml, base, base.inherits[0].type, target.pending_facets, from_mapping=target.from_mapping)
 
 
@@ -186,7 +207,7 @@ def _parse(raml: Raml, base: BaseShape) -> RdtNode:
 # -- the AST -> shape visitor (docs/06 § 3) -----------------------------------
 
 
-def _build(raml: Raml, target: UnknownShape, node: RdtNode) -> None:
+def _build(raml: Raml, target: UnknownShape, node: RdtNode, depth: int) -> None:
     """Replace `target` with the kind `node` denotes, on the same `BaseShape`.
 
     The pending facets travel with the *outermost* shape only. In `string[]`
@@ -202,11 +223,11 @@ def _build(raml: Raml, target: UnknownShape, node: RdtNode) -> None:
             _note(raml, base, node.col, builtin=node.name)
 
         case Reference():
-            _build_reference(raml, base, node, facets, from_mapping=from_mapping)
+            _build_reference(raml, target, node, depth)
 
         case Array():
             items = _anonymous(raml, base)
-            _build(raml, items, node.item)
+            _build(raml, items, node.item, depth)
             attach_kind(raml, base, TYPE_ARRAY, facets, from_mapping=from_mapping)
             # KIND_TO_CLASS maps `array` to ArrayShape by construction.
             # An `items:` facet written beside an array expression is overridden
@@ -218,24 +239,26 @@ def _build(raml: Raml, target: UnknownShape, node: RdtNode) -> None:
         case Optional_():
             # `T?` is sugar for `T | nil` (docs/06 § 1).
             member = _anonymous(raml, base)
-            _build(raml, member, node.inner)
+            _build(raml, member, node.inner, depth)
             _attach_union(raml, base, facets, [member.base, _nil(raml, base)], from_mapping=from_mapping)
 
         case Union():
             members = []
             for item in node.members:
                 member = _anonymous(raml, base)
-                _build(raml, member, item)
+                _build(raml, member, item, depth)
                 members.append(member.base)
             _attach_union(raml, base, facets, members, from_mapping=from_mapping)
 
 
-def _build_reference(raml: Raml, base: BaseShape, node: Reference, facets: list[Node], *, from_mapping: bool) -> None:
+def _build_reference(raml: Raml, target: UnknownShape, node: Reference, depth: int) -> None:
     """A name: bind it, take its kind, and record which edge this is.
 
     A mapping declaration narrows the referent and so inherits from it; a bare
     scalar one aliases it, sharing its facets (docs/06 § 3).
     """
+    base = target.base
+    facets, from_mapping = target.pending_facets, target.from_mapping
     resolver = base.anchor if base.anchor is not None else raml.resolver_at(base.location)
     ref = _lookup(raml, base, node, resolver)
     if ref is base:
@@ -247,7 +270,7 @@ def _build_reference(raml: Raml, base: BaseShape, node: Reference, facets: list[
         )
     # The referent may still be unknown; resolving it out of queue order is why
     # `resolve_shape` has to be idempotent.
-    resolve_shape(raml, ref)
+    resolve_shape(raml, ref, depth + 1)
     attach_kind(raml, base, ref.type, facets, from_mapping=from_mapping)
     if from_mapping:
         base.inherits.append(ref)

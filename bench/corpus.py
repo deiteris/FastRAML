@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 __all__ = [
+    'DIAMOND_DEPTH',
     'ENUM_SIZES',
     'FACET_PARENTS',
     'INHERITED_UNION_WIDTHS',
@@ -27,6 +28,7 @@ __all__ = [
     'UNIQUE_LENGTHS',
     'write_annotation_targets',
     'write_datatype_fragments',
+    'write_diamonds',
     'write_endpoints',
     'write_enums',
     'write_facets',
@@ -754,6 +756,32 @@ def write_inheritance(root: Path, *, family_count: int = 150) -> Path:
             lines.append(f'  {stem}W{width}After:\n    type: [{stem}H, {union}]')
             lines.append(f'  {stem}W{width}First:\n    type: [{union}, {stem}H]')
             lines.append(f'  {stem}W{width}Pairs:\n    type: [{stem}H | {stem}O, {union}]')
+    _write(root, {'lib.raml': '\n'.join(lines) + '\n'})
+    return root / 'lib.raml'
+
+
+# -- shared nested types ------------------------------------------------------
+
+#: Levels in each family's chain of diamonds.
+DIAMOND_DEPTH = 12
+
+
+def write_diamonds(root: Path, *, family_count: int = 20) -> Path:
+    """Chains of diamonds: each level has two properties of the next level's type.
+
+    A family's `D0` reaches its leaf by `2 ** DIAMOND_DEPTH` paths through
+    `DIAMOND_DEPTH + 1` declarations, declared top-down. A walk that visits a
+    shared subtree once per path is exponential here and linear elsewhere,
+    which is why no general corpus shows it. `tests/bench/test_corpus.py` pins
+    that every level is reached by both routes.
+    """
+    lines = ['#%RAML 1.0 Library', 'types:']
+    for family in range(family_count):
+        stem = f'F{family}D'
+        for level in range(DIAMOND_DEPTH):
+            child = f'{stem}{level + 1}'
+            lines.append(f'  {stem}{level}:\n    properties:\n      l: {child}\n      r: {child}')
+        lines.append(f'  {stem}{DIAMOND_DEPTH}:\n    type: string\n    maxLength: 8\n    example: leaf')
     _write(root, {'lib.raml': '\n'.join(lines) + '\n'})
     return root / 'lib.raml'
 

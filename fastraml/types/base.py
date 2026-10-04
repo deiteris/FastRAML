@@ -20,6 +20,8 @@ read, the annotated-scalar form unwrapped — so the builder stays in
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Final, Literal, Protocol
 
@@ -75,8 +77,29 @@ __all__ = [
     'ScalarFacet',
     'Shape',
     'TypeExprRef',
+    'checks_memoized',
     'declaration_facets',
 ]
+
+
+#: `BaseShape.check` outcomes inside `checks_memoized()`, by shape identity.
+_CHECKED: ContextVar[dict[BaseShape, RamlError | None] | None] = ContextVar('_CHECKED', default=None)
+
+
+@contextmanager
+def checks_memoized() -> Iterator[None]:
+    """Check each shape once in this block, not once per path to it (docs/10 § 2).
+
+    For a pass over a model nothing mutates while it runs: a type whose levels
+    each hold two properties of the next level's type is otherwise checked
+    once per path, exponentially many.
+    """
+    token = _CHECKED.set({})
+    try:
+        yield
+    finally:
+        _CHECKED.reset(token)
+
 
 # The built-in type names (spec section Raml Data Types). `null` is the spec's
 # alias for `nil`.
@@ -299,7 +322,7 @@ class BaseShape:
 
     # -- copying (docs/07-resolution-and-inheritance.md § 6) -------------------
 
-    def clone(self, memo: dict[int, BaseShape]) -> BaseShape:
+    def clone(self, memo: dict[int, BaseShape], depth: int = 0) -> BaseShape:
         """A deep, **structure-preserving** copy.
 
         `memo` is keyed on `BaseShape.id`, so a diamond stays a diamond and a
@@ -319,6 +342,16 @@ class BaseShape:
         existing = memo.get(self.id)
         if existing is not None:
             return existing
+        if depth > self._raml.max_depth:
+            # Every edge counts, names included: each is a frame here, and
+            # P10's private copy is cloned before unwrap can bound anything.
+            raise RamlError.new(
+                'type graph too deep to copy',
+                self.location,
+                self.key_pos,
+                kind=ErrorKind.UNWRAPPING,
+                info={'limit': self._raml.max_depth},
+            )
 
         clone = BaseShape(
             id=self.id,
@@ -355,10 +388,10 @@ class BaseShape:
         clone.custom_facets = dict(self.custom_facets)
         clone.annotations = dict(self.annotations)
         clone.custom_facet_defs = {
-            name: prop.with_base(prop.base.clone(memo)) for name, prop in self.custom_facet_defs.items()
+            name: prop.with_base(prop.base.clone(memo, depth + 1)) for name, prop in self.custom_facet_defs.items()
         }
-        clone.inherits = [parent.clone(memo) for parent in self.inherits]
-        clone.alias = self.alias.clone(memo) if self.alias is not None else None
+        clone.inherits = [parent.clone(memo, depth + 1) for parent in self.inherits]
+        clone.alias = self.alias.clone(memo, depth + 1) if self.alias is not None else None
 
         if self.link is not None and self.link.shape is not None:
             # A link is rewritten to inheritance at the start of unwrap
@@ -366,11 +399,11 @@ class BaseShape:
             # Doing it here rather than copying the fragment keeps a file to one
             # `DataTypeFragment` per parse, which invariant I3 depends on.
             clone.link = None
-            clone.inherits = [self.link.shape.clone(memo)]
+            clone.inherits = [self.link.shape.clone(memo, depth + 1)]
         else:
             clone.link = self.link
 
-        clone.shape = self.shape.clone(clone, memo) if self.shape is not None else None
+        clone.shape = self.shape.clone(clone, memo, depth) if self.shape is not None else None
         return clone
 
     def clone_detached(self) -> BaseShape:
@@ -390,7 +423,29 @@ class BaseShape:
         The base-level half is `enum`: every member is validated against this
         shape, so `type: integer, enum: [1, "two"]` fails at the declaration
         rather than at first use. The kind's own facet rules follow.
+
+        Inside `checks_memoized()` a shape is checked once, however many paths
+        reach it: the outcome depends on the shape alone, and a second route
+        raises the first route's error object, so an accumulator keeps it
+        once, as it would have kept two equal ones.
         """
+        memo = _CHECKED.get()
+        if memo is None:
+            self._check()
+            return
+        if self in memo:
+            error = memo[self]
+            if error is not None:
+                raise error
+            return
+        try:
+            self._check()
+        except RamlError as err:
+            memo[self] = err
+            raise
+        memo[self] = None
+
+    def _check(self) -> None:
         if self.shape is None:
             raise RamlError.new('declaration has no shape', self.location, self.key_pos, kind=ErrorKind.VALIDATING)
         if not self.enum:
@@ -720,7 +775,7 @@ class KindBase:
     def validate(self, value: Any, path: str) -> None:
         raise NotImplementedError
 
-    def clone(self, base: BaseShape, memo: dict[int, BaseShape]) -> Shape:  # noqa: ARG002 - the four kinds that override this need `memo`
+    def clone(self, base: BaseShape, memo: dict[int, BaseShape], depth: int) -> Shape:  # noqa: ARG002 - the four kinds that override this need `memo` and `depth`
         """Copy this kind onto an already-cloned `base` (docs/07 § 6).
 
         Every facet a kind holds is a `ScalarFacet` or a list of them, and
@@ -769,6 +824,6 @@ class Shape(Protocol):
         """Does a data value conform to this declaration? (P10)"""
         ...
 
-    def clone(self, base: BaseShape, memo: dict[int, BaseShape]) -> Shape: ...
+    def clone(self, base: BaseShape, memo: dict[int, BaseShape], depth: int) -> Shape: ...
 
     def is_scalar(self) -> bool: ...

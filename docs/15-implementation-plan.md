@@ -36,6 +36,19 @@ of inheritance and alias edges, with property, item and member types handled
 as references rather than walked into, so a type is merged only after
 everything it inherits from (docs/07 § 6).
 
+**Accepted benchmark regressions (to revisit).** Measured with `bench ab`
+against `aab7a4a` when the JSON Schema module split, the model-memory work,
+the media-type fixes and the type-walk work landed together:
+
+- `large/validate`: peak +2.4% and time +3.8%. P10 memoizes `check()` per
+  shape for the whole pass (`checks_memoized`); clearing it per declaration
+  is the likely fix.
+- `endpoints`: memory kept after the parse +1.8%. Likely the `WrittenScalar`
+  record that replaces `type_expr` after P7, kept beside YAML nodes the
+  endpoint build still holds; skip the swap where the node is retained anyway.
+- `validate`: time up to +4.9% on some configurations in a 3-round run; a
+  5-round rerun of `unwrap+validate` was within noise.
+
 ## 3. Potential future work
 
 Potential tooling includes more editor recovery in `parse_lenient` and

@@ -42,6 +42,10 @@ P10 checks:
 Unknown shapes fail declaration checking. A uniformly discriminated union also
 fails when two members claim the same discriminator value.
 
+A check reads only the shape it is called on and changes nothing, so P10
+checks each shape once, however many paths reach it. A second path raises the
+first path's error, which the accumulator keeps once.
+
 P10 also checks each effective `queryString` declaration on operations and
 security-scheme descriptions. Its flattened shape may admit scalar or object
 values, but it must not contain an array member. A declaration that cannot be

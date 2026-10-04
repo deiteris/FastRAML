@@ -44,6 +44,14 @@ def deep_graph(depth: int) -> str:
     return LIB + 'types:\n' + body
 
 
+def top_down_graph(depth: int) -> str:
+    """`deep_graph`, each type declared before the one it names."""
+    body = ''.join(
+        f'  T{level}:\n    type: object\n    properties:\n      p: T{level - 1}\n' for level in range(depth - 1, 0, -1)
+    )
+    return LIB + 'types:\n' + body + '  T0: string\n'
+
+
 def deep_document(depth: int) -> str:
     body = '  T:\n'
     for level in range(depth):
@@ -77,6 +85,53 @@ class TestEachGuardNamesItself:
         with pytest.raises(RamlError) as caught:
             workspace.parse(root / 'lib.raml', ParseOptions(max_depth=10))
         assert 'JSON schema nesting too deep' in messages(caught.value)
+
+    @pytest.mark.parametrize('options', [{'unwrap': True}, {'unwrap': True, 'validate': True}])
+    def test_the_limit_does_not_depend_on_declaration_order(self, workspace, options):
+        """A named reference is one level, whichever of the two is declared first.
+
+        Declared top-down, unwrap reaches each level through the property and
+        then through the reference it names; that hop is not a level.
+        """
+
+        def too_deep(document):
+            root = workspace({'lib.raml': document})
+            _raml, error = workspace.lenient(root / 'lib.raml', ParseOptions(max_depth=10, **options))
+            return error is not None and 'type nesting too deep' in messages(error)
+
+        # `deep_graph(n)` is `n - 1` levels below its last declaration.
+        assert [too_deep(top_down_graph(depth)) for depth in range(8, 15)] == [False] * 4 + [True] * 3
+        assert [too_deep(deep_graph(depth)) for depth in range(8, 15)] == [False] * 4 + [True] * 3
+
+    def test_the_private_copy_counts_every_edge(self, workspace):
+        """docs/07 § 6: without unwrap, P10 copies each declaration, names included.
+
+        The copy is made before anything is flattened, so a name is a frame
+        like any other edge: `deep_graph(n)` is `2 * (n - 1)` edges deep, in
+        either declaration order.
+        """
+
+        def too_deep(document):
+            root = workspace({'lib.raml': document})
+            _raml, error = workspace.lenient(root / 'lib.raml', ParseOptions(max_depth=10, validate=True))
+            return error is not None and 'type graph too deep to copy' in messages(error)
+
+        assert [too_deep(top_down_graph(depth)) for depth in range(4, 10)] == [False] * 3 + [True] * 3
+        assert [too_deep(deep_graph(depth)) for depth in range(4, 10)] == [False] * 3 + [True] * 3
+
+    def test_a_chain_of_names_unwrap_follows_is_bounded_too(self, workspace):
+        """A name is not a level, but each one unwrap follows is a frame: they are counted apart.
+
+        Eight levels, each reached through two names: `p: A0`, then `A0: T1`.
+        Resolution never follows them in a row; unwrap follows sixteen.
+        """
+        body = ''.join(
+            f'  T{level}:\n    properties:\n      p: A{level}\n  A{level}: T{level + 1}\n' for level in range(8)
+        )
+        root = workspace({'lib.raml': LIB + 'types:\n' + body + '  T8: string\n'})
+        with pytest.raises(RamlError) as caught:
+            workspace.parse(root / 'lib.raml', ParseOptions(unwrap=True, max_depth=10))
+        assert 'type nesting too deep' in messages(caught.value)
 
     def test_the_limit_travels_in_the_diagnostic(self, workspace):
         """A caller who raises the ceiling has to be able to see what it was."""
@@ -121,6 +176,52 @@ class TestNoRecursionErrorEscapes:
         with pytest.raises(RamlError) as caught:
             workspace.parse(root / 'lib.raml', ParseOptions(unwrap=True, validate=True))
         assert 'JSON schema nesting too deep' in messages(caught.value)
+
+    def test_a_chain_of_names_resolution_follows_raises_ramlerror(self, workspace):
+        """P7 resolves a referent out of queue order, so a chain declared top-down recurses.
+
+        The chain is long enough to exhaust the stack unguarded. The ceiling is
+        low because every declaration past it fails on its own path, which
+        costs a walk to the ceiling each.
+        """
+        depth = DEFAULT_MAX_DEPTH * 2
+        body = ''.join(f'  T{level}: T{level + 1}\n' for level in range(depth))
+        root = workspace({'lib.raml': LIB + 'types:\n' + body + f'  T{depth}: string\n'})
+        with pytest.raises(RamlError) as caught:
+            workspace.parse(root / 'lib.raml', ParseOptions(max_depth=10))
+        assert 'type reference chain too deep' in messages(caught.value)
+        limits = [trace.info.get('limit') for chain in caught.value.chains() for trace in chain]
+        assert 10 in limits
+
+    def test_a_chain_past_the_ceiling_marks_each_shape_once(self, workspace, monkeypatch):
+        """Each declaration on the chain fails, but only the first route walks to the ceiling.
+
+        Marking every shape on every route cost the length times the ceiling
+        squared: a 600-name chain took nine seconds.
+        """
+        from fastraml.registry import Raml
+
+        marked = []
+        original = Raml.mark
+
+        def counting(raml, entity, error):
+            marked.append(entity)
+            return original(raml, entity, error)
+
+        monkeypatch.setattr(Raml, 'mark', counting)
+        depth = 400
+        body = ''.join(f'  T{level}: T{level + 1}\n' for level in range(depth))
+        root = workspace({'lib.raml': LIB + 'types:\n' + body + f'  T{depth}: string\n'})
+        _raml, error = workspace.lenient(root / 'lib.raml', ParseOptions(max_depth=10))
+        assert error is not None
+        assert len(marked) == len({id(entity) for entity in marked}) <= depth
+
+    def test_a_long_property_chain_copied_for_validation_raises_ramlerror(self, workspace):
+        """Unguarded, P10's private copy exhausted the stack at about 250 levels."""
+        root = workspace({'lib.raml': deep_graph(DEFAULT_MAX_DEPTH * 2)})
+        with pytest.raises(RamlError) as caught:
+            workspace.parse(root / 'lib.raml', ParseOptions(validate=True))
+        assert 'type graph too deep to copy' in messages(caught.value)
 
     def test_a_ref_to_a_deep_schema_is_bounded_too(self, workspace):
         """A shallow schema must not be able to reach the stack through a `$ref`."""

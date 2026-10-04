@@ -218,6 +218,13 @@ never edits it: a subtype shares its parent's declarations, and the marker
 belongs to the parent's cycle. Recursive walks use the parse's shared depth
 limit.
 
+The walk visits a shape once per path to it, not once in all: whether a
+marker is placed below a shape depends on which shapes are on the stack, so a
+shape reached again is walked again. A type whose levels each hold two
+properties of the next level's type therefore costs time exponential in its
+depth (the `diamonds` workload, [12](12-performance.md) § 4). Each union's
+dispatch table is still built once, however many paths reach it.
+
 Within a type cycle the result depends on declaration order: the walk can
 reach a type while it is still merging, and an alias, subtype or union member
 reached then takes its fields as they stand ([15](15-implementation-plan.md)
@@ -238,7 +245,9 @@ until no more shapes change.
 `clone(memo)` makes a structure-preserving copy keyed by `BaseShape.id`; cycles
 and diamonds remain cycles and diamonds, and the clone retains IDs. A caller that
 needs a fresh identity assigns one. `clone_detached()` uses a fresh memo for an
-independent mutable shape graph, used by P10 private unwrap. Union merging
+independent mutable shape graph, used by P10 private unwrap. A copy counts
+every edge it follows, names included, against `max_depth`
+([12](12-performance.md) § 3). Union merging
 does not detach: a non-union child inheriting a union is copied with its
 parents seeded into the memo, so they stay shared, and every other variant is
 a fold (§ 4, § 5).

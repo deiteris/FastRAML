@@ -57,15 +57,32 @@ can duplicate declarations; copying a node can lose its provenance.
 
 `ParseOptions.max_depth` is the one configurable ceiling for recursion driven by
 user input. It is carried by `Raml.max_depth` and used by document composition,
-type unwrap and recursion marking, and JSON Schema processing. Each guarded path
+type resolution, type unwrap and recursion marking, shape copies, and JSON
+Schema processing.
+Resolution counts the referents it resolves out of queue order on one path:
+`T0: T1`, `T1: T2`, and so on, declared top-down. A declaration that error
+passed through raises the same error on any later route, so a long chain costs
+time linear in its length. Each guarded path
 reports its own positioned diagnostic and includes the configured limit.
+
+In a type graph, a level is a property, pattern property, array item, union
+member, parent or facet declaration. The name a bare reference such as
+`p: Node` uses is not a level, so a chain of types fails at the same depth
+whichever end is declared first. Unwrap counts the names it follows on one
+path separately, against the same limit, because each is still a frame.
+A shape copy (`BaseShape.clone`) counts every edge it follows, names
+included, because it copies the graph before anything is flattened. A chain of
+named types therefore reaches half the levels in a copy. Two paths copy: P10
+copies each declaration when `validate` is on and `unwrap` is off, and unwrap
+copies a type that has a union among its parents, and the declarations written
+beside a union, for each member (`types/inherit.py`, `types/unwrap.py`).
 
 Do not replace a guard with reliance on Python's recursion limit. A user document
 must receive a parser diagnostic rather than `RecursionError`.
 
 ## 4. Benchmark suite
 
-`bench/` generates deterministic corpora and measures twenty-three workloads:
+`bench/` generates deterministic corpora and measures twenty-four workloads:
 
 | Bench | Primary coverage |
 |---|---|
@@ -84,6 +101,7 @@ must receive a parser diagnostic rather than `RecursionError`.
 | `unions` | `properties` and `items` beside unions of 2, 4, and 8 members, flat and nested, with an enum each member narrows differently ([07](07-resolution-and-inheritance.md) § 5) |
 | `facets` | custom facets declared up every parent of types that inherit from 2, 4, and 8 parents, and a diamond ([10](10-validation.md) § 4) |
 | `inheritance` | a union of 2 and 4 members among a type's parents: after an object, first, and paired with a second union; and a property, pattern property and items property that every parent declares, folded on each merge ([07](07-resolution-and-inheritance.md) § 4 and § 5) |
+| `diamonds` | chains of diamonds, each level two properties of the next level's type: a nested type reached by two routes at every level, so a walk that visits it once per path is exponential ([07](07-resolution-and-inheritance.md) § 6, [10](10-validation.md) § 1) |
 | `templates` | resource types and a trait with parameters and transforms: a collection per resource and an item child, applied as real APIs apply them ([08](08-templates-and-endpoints.md) § 5) |
 | `sequence-merge` | a trait's query-parameter `enum` of 5, 100, and 1000 values merged into the method's own, half of them shared: the structural merge's union by value ([08](08-templates-and-endpoints.md) § 1) |
 | `template-scopes` | literal included library resource types using their own security scheme, a literal included trait with parameter annotations restricted to `TypeDeclaration`, and a standalone trait using a scheme from its own imports ([09](09-security-and-annotations.md) § A6, § B4) |
@@ -94,7 +112,7 @@ must receive a parser diagnostic rather than `RecursionError`.
 | `annotation-targets` | included annotation restrictions, query strings and nested body declarations, literal and substituted template-root annotations, annotated substituted type names, and annotated default and discriminator scalars ([09](09-security-and-annotations.md) § B4) |
 
 The six general workloads are `small`, `large`, `endpoints`, `extensions`,
-`validate` and `jsonschema`. The other seventeen are feature workloads:
+`validate` and `jsonschema`. The other eighteen are feature workloads:
 each exists because no general workload runs the code it covers. Their reach
 tests (`tests/bench/test_corpus.py`) count calls or check bound results, and fail
 if a corpus stops reaching that code at every size it covers.

@@ -67,20 +67,18 @@ class MemoryWorkspace:
     def lenient(self, path: Path, options: ParseOptions | None = None) -> tuple[Raml, RamlError | None]:
         return parse_lenient(path, self._options(options))
 
-    def document(self, text: str, options: ParseOptions | None = None, **files: str) -> Raml:
-        """Parse `text` as `api.raml`, beside `files` keyed by relative path."""
-        return self.parse(self({'api.raml': text, **files}) / 'api.raml', options)
+    def document(self, text: str, options: ParseOptions | None = None) -> Raml:
+        """Parse `text` as `api.raml`, beside whatever files the workspace holds."""
+        return self.parse(self({'api.raml': text}) / 'api.raml', options)
 
-    def lenient_document(
-        self, text: str, options: ParseOptions | None = None, **files: str
-    ) -> tuple[Raml, RamlError | None]:
+    def lenient_document(self, text: str, options: ParseOptions | None = None) -> tuple[Raml, RamlError | None]:
         """`document`, through `parse_lenient`."""
-        return self.lenient(self({'api.raml': text, **files}) / 'api.raml', options)
+        return self.lenient(self({'api.raml': text}) / 'api.raml', options)
 
-    def rejection(self, text: str, options: ParseOptions | None = None, **files: str) -> RamlError | None:
+    def rejection(self, text: str, options: ParseOptions | None = None) -> RamlError | None:
         """The error `document` raises, or `None` if it parses."""
         try:
-            self.document(text, options, **files)
+            self.document(text, options)
         except RamlError as err:
             return err
         return None

@@ -44,6 +44,7 @@ __all__ = [
     'pairs',
     'plain_tag',
     'read_head',
+    'str_scalar',
     'with_content',
     'with_grafts',
     'with_value',
@@ -114,6 +115,13 @@ class _RamlLoader(_Loader):  # type: ignore[valid-type, misc]
     already parses correctly.
     """
 
+    def __init__(self, stream: str) -> None:
+        super().__init__(stream)
+        #: The tag each plain scalar text resolved to, for this document only:
+        #: a key or value repeats across a document, and a module-level cache
+        #: would grow with every document parsed (docs/12 § 2).
+        self._plain_tags: dict[str, str] = {}
+
     def resolve(self, kind: Any, value: str, implicit: Any) -> Any:
         """`BaseResolver.resolve`, specialised for implicit scalars.
 
@@ -126,10 +134,11 @@ class _RamlLoader(_Loader):  # type: ignore[valid-type, misc]
         import. `value[:1]` also covers the empty string.
         """
         if kind is ScalarNode and implicit[0]:
-            for tag, regexp in self.yaml_implicit_resolvers.get(value[:1], ()):
-                if regexp.match(value):
-                    return tag
-            return self.DEFAULT_SCALAR_TAG
+            tags = self._plain_tags
+            tag = tags.get(value)
+            if tag is None:
+                tag = tags[value] = _implicit_tag(value)
+            return tag
         return super().resolve(kind, value, implicit)
 
 
@@ -160,6 +169,16 @@ def _assert_resolver_shape() -> None:
 _assert_resolver_shape()
 
 
+def _implicit_tag(value: str) -> str:
+    """The full tag `value`, written as a plain scalar, resolves to."""
+    for tag, regexp in _RamlLoader.yaml_implicit_resolvers.get(value[:1], ()):
+        if regexp.match(value):
+            resolved: str = tag
+            return resolved
+    default: str = _RamlLoader.DEFAULT_SCALAR_TAG
+    return default
+
+
 def bool_text(text: str) -> bool | None:
     """A `!!bool` scalar's truth value under the YAML 1.2 core schema.
 
@@ -177,11 +196,8 @@ def plain_tag(value: str) -> str:
     A writer needs it to know whether a scalar reads back with its tag unquoted:
     under YAML 1.2, `1e3` is a float and `no` is a string.
     """
-    for tag, regexp in _RamlLoader.yaml_implicit_resolvers.get(value[:1], ()):
-        if regexp.match(value):
-            short: str = _SHORT_TAGS.get(tag, tag)
-            return short
-    return TAG_STR
+    tag = _implicit_tag(value)
+    return _SHORT_TAGS.get(tag, tag)
 
 
 def backend_name() -> str:
@@ -393,6 +409,15 @@ def with_value(model: Node, value: str) -> Node:
     return Node(NodeKind.SCALAR, model.tag, value, None, model.line, model.column, model.end_line, model.end_column)
 
 
+def str_scalar(value: str, at: Node | None = None) -> Node:
+    """A plain string scalar no document wrote: zero-width at `at`'s start, or
+    at 1:1 where it has no place.
+    """
+    if at is None:
+        return Node(NodeKind.SCALAR, TAG_STR, value)
+    return Node(NodeKind.SCALAR, TAG_STR, value, None, at.line, at.column, at.line, at.column)
+
+
 def pairs(node: Node) -> Iterator[tuple[Node, Node]]:
     """Iterate a mapping node's key/value pairs."""
     content = node.content
@@ -537,10 +562,14 @@ class _Converter:
     expanded into independent copies, bounded by `MAX_NODES`.
     """
 
-    __slots__ = ('_in_progress', '_key_pool', '_max_depth', '_max_nodes', '_produced', '_uri')
+    __slots__ = ('_in_progress', '_key_pool', '_lines', '_max_depth', '_max_nodes', '_produced', '_uri')
 
-    def __init__(self, uri: str, max_depth: int, max_nodes: int, key_pool: dict[str, str]) -> None:
+    def __init__(self, uri: str, max_depth: int, max_nodes: int, key_pool: dict[str, str], breaks: int) -> None:
         self._uri = uri
+        #: The 1-based line numbers, indexed by PyYAML's 0-based line, for a
+        #: text with `breaks` newlines: every node on a line shares one int
+        #: rather than holding an equal new one.
+        self._lines = list(range(1, breaks + 2))
         self._key_pool = key_pool
         self._max_depth = max_depth
         self._max_nodes = max_nodes
@@ -570,16 +599,26 @@ class _Converter:
             )
 
         # `_mark_position` inlined: this runs once per node, and the call and
-        # tuple cost more than the arithmetic.
+        # tuple cost more than the arithmetic. Line numbers come from the
+        # converter's table, so `position`, which keeps them for the life of
+        # the model, holds no int of its own (docs/12 § 2).
         start = node.start_mark
         end = node.end_mark
-        line = start.line + 1
+        lines = self._lines
+        try:
+            line = lines[start.line]
+            stop_line = line if end.line == start.line else lines[end.line]
+        except IndexError:  # a line break other than `\n`, which the table does not count
+            line = start.line + 1
+            stop_line = end.line + 1
         column = start.column + 1
-        stop_line = end.line + 1
         stop_column = end.column + 1
 
-        if isinstance(node, yaml.ScalarNode):
-            tag = self._tag_of(node.tag, line, column, stop_line, stop_column)
+        # `type() is`, and the common tags looked up here: both run once per
+        # node, and PyYAML builds exactly these three node classes.
+        node_type = type(node)
+        if node_type is yaml.ScalarNode:
+            tag = _SHORT_TAGS.get(node.tag) or self._tag_of(node.tag, line, column, stop_line, stop_column)
             # The raw text is kept even for resolved scalars: RAML needs the
             # literal form of a `date-only` example, and `!!int` bounds are
             # parsed exactly rather than through float.
@@ -605,7 +644,7 @@ class _Converter:
             )
         self._in_progress.add(identity)
         try:
-            if isinstance(node, yaml.MappingNode):
+            if node_type is yaml.MappingNode:
                 content: list[Node] = []
                 seen: set[str] = set()
                 for key, value in node.value:
@@ -634,7 +673,7 @@ class _Converter:
         finally:
             self._in_progress.discard(identity)
 
-        tag = self._tag_of(node.tag, line, column, stop_line, stop_column)
+        tag = _SHORT_TAGS.get(node.tag) or self._tag_of(node.tag, line, column, stop_line, stop_column)
         return Node(kind, tag, '', content, line, column, stop_line, stop_column)
 
     def _tag_of(self, tag: str, line: int, column: int, stop_line: int, stop_column: int) -> str:
@@ -709,7 +748,8 @@ def compose(
     if root is None:
         return _empty_mapping()
 
-    return _Converter(uri, max_depth, max_nodes, {} if key_pool is None else key_pool).convert(root)
+    pool = {} if key_pool is None else key_pool
+    return _Converter(uri, max_depth, max_nodes, pool, text.count('\n')).convert(root)
 
 
 def _line_separator_error(text: str, uri: str) -> RamlError | None:

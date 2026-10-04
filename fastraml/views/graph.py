@@ -121,7 +121,7 @@ USE_EDGES: Final = (
     'annotation',
 )
 
-_REQUEST_EDGES: Final = (*TYPE_EDGES, 'parameter', 'queryString', 'payload')
+_REQUEST_EDGES: Final = frozenset((*TYPE_EDGES, 'parameter', 'queryString', 'payload'))
 
 _XSD: Final = 'http://www.w3.org/2001/XMLSchema#'
 
@@ -342,12 +342,23 @@ class Graph:
             ):
                 roots.append(iri)
 
-        self._request_shape_iris = frozenset(
-            route.target
-            for root in roots
-            for route in self.walk(root, _REQUEST_EDGES)
-            if isinstance(self.nodes.get(route.target), TypeNode)
-        )
+        # One breadth-first search from every root at once: the set is all the
+        # caller asks, so no route is built and no node is reached twice. A
+        # root is never a type, so seeding `seen` with the roots loses none.
+        seen = set(roots)
+        frontier = roots
+        outgoing = self._outgoing
+        while frontier:
+            reached: list[str] = []
+            for iri in frontier:
+                for edge in outgoing.get(iri, ()):
+                    other = edge.object
+                    if other not in seen and edge.predicate in _REQUEST_EDGES:
+                        seen.add(other)
+                        reached.append(other)
+            frontier = reached
+        nodes = self.nodes
+        self._request_shape_iris = frozenset(iri for iri in seen if isinstance(nodes.get(iri), TypeNode))
         return self._request_shape_iris
 
     def kind_of(self, iri: str) -> str:

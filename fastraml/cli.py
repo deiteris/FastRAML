@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING, Any, Final, NamedTuple
 from fastraml import __version__
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Iterable, Sequence
     from pathlib import Path
 
     from fastraml.config import ParserConfig
@@ -49,6 +49,7 @@ if TYPE_CHECKING:
     from fastraml.views.graph import Graph
     from fastraml.views.lint import Config as LintConfig
     from fastraml.views.lint import Registry as LintRegistry
+    from fastraml.views.queries import Query
 
 __all__ = ['main']
 
@@ -659,22 +660,26 @@ def _graph(args: argparse.Namespace) -> int:
     return _emit_document(args, ''.join(f'{line}\n' for line in emit()))
 
 
-def _emit_document(args: argparse.Namespace, text: str) -> int:
-    """Write an export to FILE with `-o`, or to stdout without it.
+def _emit_document(args: argparse.Namespace, text: str, dropped: Iterable[str] = ()) -> int:
+    """Write an export to FILE with `-o`, or to stdout without it, then warn
+    of each thing the export `dropped`.
 
     The file is opened UTF-8 with LF newlines regardless of platform, so the
     result does not depend on the shell that ran the command.
     """
+    code = EXIT_OK
     if args.output is None:
         print(text, end='')
-        return EXIT_OK
-    try:
-        with open(args.output, 'w', encoding='utf-8', newline='') as handle:
-            handle.write(text)
-    except OSError as err:
-        print(f'{args.output}: {err}', file=sys.stderr)
-        return EXIT_INVALID
-    return EXIT_OK
+    else:
+        try:
+            with open(args.output, 'w', encoding='utf-8', newline='') as handle:
+                handle.write(text)
+        except OSError as err:
+            print(f'{args.output}: {err}', file=sys.stderr)
+            code = EXIT_INVALID
+    for message in dropped:
+        print(f'warning: {message}', file=sys.stderr)
+    return code
 
 
 def _openapi(args: argparse.Namespace) -> int:
@@ -697,10 +702,7 @@ def _openapi(args: argparse.Namespace) -> int:
         text = yaml.safe_dump(payload, sort_keys=False, allow_unicode=True)
         if not text.endswith('\n'):
             text += '\n'
-    code = _emit_document(args, text)
-    for message in dropped:
-        print(f'warning: {message}', file=sys.stderr)
-    return code
+    return _emit_document(args, text, dropped)
 
 
 def _tree(args: argparse.Namespace) -> int:
@@ -1086,14 +1088,19 @@ def _workspace_hint(error: RamlError) -> str:
     return ''
 
 
-def _parsed(args: argparse.Namespace, path: str | None = None) -> Raml | None:
-    """Parse without projecting, for a verb that needs no graph."""
-    from fastraml.errors import RamlError  # noqa: PLC0415 - graph commands only
+def _parsed(args: argparse.Namespace, path: str | None = None, *, retain_text: bool = False) -> Raml | None:
+    """Parse without projecting, for a verb that needs no graph, or report
+    why not.
+
+    Validation is off, as for every reading verb, so a document with a bad
+    example remains navigable (docs/13 § 5).
+    """
+    from fastraml.errors import RamlError  # noqa: PLC0415 - reading commands only
     from fastraml.parser.entry import parse_from_path  # noqa: PLC0415
 
     path = path or args.files[0]
     try:
-        return parse_from_path(path, _options(args, validate=False))
+        return parse_from_path(path, _options(args, validate=False, retain_text=retain_text))
     except RamlError as err:
         _invalid(path, err)
         return None
@@ -1102,22 +1109,11 @@ def _parsed(args: argparse.Namespace, path: str | None = None) -> Raml | None:
 def _built(
     args: argparse.Namespace, path: str | None = None, *, retain_text: bool = False
 ) -> tuple[Graph, Raml] | None:
-    """Parse and project, or report why not. Returns the graph and the model.
+    """`_parsed`, then projected. Returns the graph and the model."""
+    from fastraml.views.graph import build_graph  # noqa: PLC0415 - graph commands only
 
-    Validation is off, as for every reading verb, so a document with a bad
-    example remains navigable (docs/13 § 5).
-    """
-    from fastraml.errors import RamlError  # noqa: PLC0415 - graph commands only
-    from fastraml.parser.entry import parse_from_path  # noqa: PLC0415
-    from fastraml.views.graph import build_graph  # noqa: PLC0415
-
-    path = path or args.files[0]
-    try:
-        raml = parse_from_path(path, _options(args, validate=False, retain_text=retain_text))
-    except RamlError as err:
-        _invalid(path, err)
-        return None
-    return build_graph(raml), raml
+    raml = _parsed(args, path, retain_text=retain_text)
+    return None if raml is None else (build_graph(raml), raml)
 
 
 def _owning_path(graph: Graph, iri: str) -> str:
@@ -1167,28 +1163,34 @@ def _query_text(args: argparse.Namespace) -> str | None:
     """The SPARQL to run: given, read from a file, or named in the catalogue."""
     from pathlib import Path  # noqa: PLC0415 - query files only
 
-    from fastraml.views.queries import QUERIES, render  # noqa: PLC0415
+    from fastraml.views.queries import render  # noqa: PLC0415
 
     if args.sparql is not None:
         return str(args.sparql)
     if args.query_file is not None:
         return Path(args.query_file).read_text(encoding='utf-8')
     if args.named is not None:
-        query = QUERIES.get(args.named)
-        if query is None:
-            print(f'{args.named}: no such query; try --list', file=sys.stderr)
-            return None
-        return render(query)
+        query = _named_query(args.named)
+        return None if query is None else render(query)
     print('query needs one of -q, -Q or -n (or --list)', file=sys.stderr)
     return None
 
 
-def _show(name: str) -> int:
-    from fastraml.views.queries import QUERIES, render  # noqa: PLC0415 - query command only
+def _named_query(name: str) -> Query | None:
+    """The catalogue query `name`, or `None` having said there is none."""
+    from fastraml.views.queries import QUERIES  # noqa: PLC0415 - query command only
 
     query = QUERIES.get(name)
     if query is None:
         print(f'{name}: no such query; try --list', file=sys.stderr)
+    return query
+
+
+def _show(name: str) -> int:
+    from fastraml.views.queries import render  # noqa: PLC0415 - query command only
+
+    query = _named_query(name)
+    if query is None:
         return EXIT_INVALID
     print(f'# {query.question}')
     print(render(query), end='')
@@ -1490,10 +1492,7 @@ def _convert_jsonschema(args: argparse.Namespace) -> int:
         print(f'convert jsonschema: no type {args.name!r} in {args.files[0]}', file=sys.stderr)
         return EXIT_INVALID
     document, dropped = to_json_schema(base)
-    code = _emit_document(args, json.dumps(document, indent=2, ensure_ascii=False) + '\n')
-    for message in dropped:
-        print(f'warning: {message}', file=sys.stderr)
-    return code
+    return _emit_document(args, json.dumps(document, indent=2, ensure_ascii=False) + '\n', dropped)
 
 
 def _convert_raml(args: argparse.Namespace) -> int:

@@ -48,6 +48,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     'DEFAULT_MAX_INCLUDE_SIZE',
+    'EMPTY_CTX',
     'ParseCtx',
     'Raml',
     'Stage',
@@ -102,7 +103,9 @@ class ParseCtx:
     target: DomainLocation = DomainLocation.API
 
 
-_EMPTY_CTX: Final = ParseCtx()
+#: The scope outside any fragment decode, and a template's caller scope when
+#: the caller has none: one instance, not one per use (docs/12 § 2).
+EMPTY_CTX: Final = ParseCtx()
 
 
 class _TargetScope:
@@ -121,7 +124,7 @@ class _TargetScope:
 
     def __enter__(self) -> None:
         raml = self._raml
-        raml._parse_ctx_stack.append(raml._scope(raml.current_ctx().anchor, self._target))  # noqa: SLF001
+        raml._parse_ctx_stack.append(raml.scope(raml.current_ctx().anchor, self._target))  # noqa: SLF001
 
     def __exit__(self, *exc: object) -> None:
         self._raml._parse_ctx_stack.pop()  # noqa: SLF001
@@ -347,7 +350,7 @@ class Raml:
     def current_ctx(self) -> ParseCtx:
         """The innermost scope, or an empty one outside any fragment decode."""
         if not self._parse_ctx_stack:
-            return _EMPTY_CTX
+            return EMPTY_CTX
         return self._parse_ctx_stack[-1]
 
     def target_scope(self, target: DomainLocation) -> _TargetScope:
@@ -391,7 +394,7 @@ class Raml:
         """Decode `entity`'s content, marking it if that fails."""
         return _Marking(self, entity)
 
-    def _scope(self, anchor: ReferenceResolver | None, target: DomainLocation) -> ParseCtx:
+    def scope(self, anchor: ReferenceResolver | None, target: DomainLocation) -> ParseCtx:
         """The one `ParseCtx` for this anchor and target."""
         key = (anchor, target)
         scope = self._scopes.get(key)
@@ -470,7 +473,7 @@ class Raml:
         if scope is not None and scope.target is not self.current_ctx().target:
             # Provenance selects a namespace; the materializing decoder selects
             # the annotation site (docs/09 § B4).
-            return self._scope(scope.anchor, self.current_ctx().target)
+            return self.scope(scope.anchor, self.current_ctx().target)
         return scope
 
     # -- document provenance (docs/19 § 5.3) ----------------------------------
@@ -505,7 +508,7 @@ class Raml:
         anchor = self.document_anchor(node)
         if anchor is None:
             return None
-        return self._scope(anchor, self.current_ctx().target)
+        return self.scope(anchor, self.current_ctx().target)
 
     def document_site[S: ParseCtx | None](self, node: Node, location: str, scope: S) -> tuple[str, S | ParseCtx]:
         """The location and scope to decode `node` under.
@@ -517,7 +520,7 @@ class Raml:
         anchor = self.document_anchor(node)
         if anchor is None:
             return location, scope
-        return anchor.location, self._scope(anchor, self.current_ctx().target)
+        return anchor.location, self.scope(anchor, self.current_ctx().target)
 
     @contextmanager
     def authorship(self) -> Iterator[None]:

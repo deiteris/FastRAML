@@ -251,9 +251,12 @@ node_variable_index: dict[Node, list[VariableInfo]]
 ```
 
 The index is keyed by node identity. Optional-method filtering removes
-subtrees after indexing, so positional indexes are invalid. Required variables
-are collected by walking the filtered tree and looking up its surviving nodes.
-The traversal is iterative.
+subtrees after indexing, so positional indexes are invalid. Filtering drops
+top-level methods only, so the required variables are the union of the
+surviving top-level keys' sets. Each key's set is collected once per
+resource type, by an iterative walk of its key and value, on the first
+application that drops a method; one that drops none requires every
+declared variable.
 
 Each `VariableInfo` stores the variable name, its exact `<<...>>` substring,
 and ordered actions. Parsing accepts `<<name | !action | !action>>`; the first

@@ -14,6 +14,7 @@ from fastraml.types.jsonschema_ import JsonShape
 from fastraml.views.graph import is_declaration
 from fastraml.views.lint.engine import Category, Finding, RuleMeta, Severity
 from fastraml.views.lint.labels import type_label
+from fastraml.views.lint.messages import messages
 from fastraml.views.lint.regex import fully_anchored
 from fastraml.views.lint.source import declaration_nodes, mapping_value
 from fastraml.yamlnode import NodeKind, pairs
@@ -404,8 +405,7 @@ class MissingExample:
         return (ctx.on(self.meta, 'type has no example', base, iri=iri, type=type_label(ctx, iri, base)),)
 
     def operation(self, ctx: Context, iri: str, operation: Operation) -> Iterable[Finding]:
-        bodies = list(operation.request.bodies.values()) if operation.request is not None else []
-        bodies += [body for response in operation.responses.values() for body in response.bodies.values()]
+        bodies = [body for _where, message in messages(operation) for body in message.bodies.values()]
         if not bodies or any(body.shape is not None and self._has_example(body.shape) for body in bodies):
             return ()
         return (ctx.on(self.meta, 'operation has no payload example', operation, iri=iri, method=operation.method),)

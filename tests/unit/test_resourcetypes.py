@@ -143,6 +143,26 @@ class TestOptionalMethods:
         )
         assert parse(workspace, root).endpoints['/queues'].operations['get'].description.value == 'about get'
 
+    def test_each_application_requires_its_kept_methods_variables(self, workspace):
+        # Each key's variables are collected once per definition (docs/08 § 5);
+        # every application still requires what its own kept methods use.
+        root = workspace(
+            {
+                'api.raml': self.CORP
+                + '/queues:\n  type: { corpResource: { TextAboutGet: g } }\n  get:\n'
+                + '/topics:\n  type: { corpResource: { TextAboutPost: p } }\n  get:\n'
+                + '/orders:\n  type: { corpResource: { TextAboutGet: g } }\n  post:\n'
+            }
+        )
+        with pytest.raises(RamlError) as caught:
+            parse(workspace, root)
+        assert [
+            frame.info
+            for chain in caught.value.chains()
+            for frame in chain
+            if frame.message == 'missing required parameter'
+        ] == [{'parameter': 'TextAboutGet'}, {'parameter': 'TextAboutPost'}]
+
     def test_a_sibling_variable_is_still_substituted(self, workspace):
         # The second half of the same fault: with a stale index, filtering out
         # `post` leaves `<<TextAboutGet>>` looking up the wrong entry and

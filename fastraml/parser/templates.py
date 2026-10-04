@@ -44,6 +44,7 @@ from fastraml.yamlnode import (
     is_null,
     node_error,
     pairs,
+    str_scalar,
     with_content,
     with_grafts,
 )
@@ -100,7 +101,7 @@ def parameter_node(value: str) -> Node:
     Read-only, and never inserted into a compiled tree by pointer, so one node
     can serve every application site of a resource.
     """
-    return Node(NodeKind.SCALAR, TAG_STR, value)
+    return str_scalar(value)
 
 
 #: What one scan of a template body produces: every `<<...>>` bearing scalar,
@@ -245,24 +246,22 @@ def make_template_definition[T: TemplateDefinition](  # noqa: PLR0913 - the decl
 
 
 def find_template_definition[T: TemplateDefinition](
-    ref: DirectiveRef, lookup: Callable[[ReferenceResolver, str], T | None], *, what: str, info_key: str
+    ref: DirectiveRef, lookup: Callable[[ReferenceResolver, str], T], *, what: str
 ) -> T:
     """Resolve a template name in the namespace of the document that wrote it.
 
     Lexical, with no application-site fallback: a name written inside a fragment
     resolves against that fragment's own declarations and `uses:` only, which
-    is what keeps a typed fragment self-contained (docs/04 § 4).
+    is what keeps a typed fragment self-contained (docs/04 § 4). `lookup`
+    raises `LookupError` for a name it cannot find.
     """
     anchor = ref.scope.anchor if ref.scope is not None else None
     if anchor is None:
         raise RamlError.new(f'no scope to resolve a {what} name in', ref.location, ref.value_pos)
     try:
-        definition = lookup(anchor, ref.name)
+        return lookup(anchor, ref.name)
     except LookupError as err:
         raise RamlError.wrap(f'get {what} definition', err, ref.location, ref.value_pos) from err
-    if definition is None:
-        raise RamlError.new(f'{what} not found', ref.location, ref.value_pos, info={info_key: ref.name})
-    return definition
 
 
 def check_parameters(
@@ -610,8 +609,11 @@ def compile_source_provenance(  # noqa: PLR0913 - the body, its values, and wher
     from (docs/08 § 5.1). A `reserved` parameter is the parser's, and is not.
 
     Unchanged node pointers are shared with the input, so the result is still a
-    valid key set for the overlay and for the merge that follows.
+    valid key set for the overlay and for the merge that follows. A body with
+    no variable, and a leaf no variable is in, is returned without a call.
     """
+    if not index:
+        return node
     if node.kind is NodeKind.SCALAR:
         return _compile_scalar(
             node, params, index, caller_scope, overlay, written_in, substitutions, reserved, param_scopes
@@ -620,6 +622,9 @@ def compile_source_provenance(  # noqa: PLR0913 - the body, its values, and wher
     modified = False
     content: list[Node] = []
     for child in node.content:
+        if not child.content and child not in index:
+            content.append(child)
+            continue
         compiled = compile_source_provenance(
             child,
             params,

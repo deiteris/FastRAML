@@ -326,6 +326,22 @@ class TestTheEdgesThatAnswerQuestions:
         assert graph.find('User')[0] not in request_shapes, 'response-only type'
         assert graph.request_shape_iris() is request_shapes, 'derived once per graph'
 
+    def test_request_shapes_are_every_type_a_request_root_reaches(self, graph):
+        # The index is one search from every root at once; it must equal the
+        # union of a `walk` from each: every request, and each parameter an
+        # API or a resource declares.
+        edges = (*TYPE_EDGES, 'parameter', 'queryString', 'payload')
+        roots = [iri for iri in graph.nodes if graph.kind_of(iri) == 'Request'] + [
+            iri
+            for iri in iris(graph, 'Parameter')
+            if any(graph.kind_of(edge.subject) in {'Api', 'EndPoint'} for edge in graph.into(iri, ('parameter',)))
+        ]
+        walked = {
+            route.target for root in roots for route in graph.walk(root, edges) if graph.kind_of(route.target) == 'Type'
+        }
+        assert walked
+        assert graph.request_shape_iris() == walked
+
     def test_base_uri_parameter_shape_is_request_input(self, workspace):
         root = workspace(
             {

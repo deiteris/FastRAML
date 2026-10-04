@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, ClassVar, Final
 from fastraml.types.scalars import DateOnlyShape, DateTimeOnlyShape, DateTimeShape, TimeOnlyShape
 from fastraml.views.lint.engine import Category, Finding, RuleMeta, Severity
 from fastraml.views.lint.mediatypes import media_essence
+from fastraml.views.lint.messages import messages
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Mapping
@@ -50,10 +51,8 @@ def _header(parameter: Parameter) -> bool:
 
 def _header_maps(operation: Operation) -> Iterator[tuple[str, Mapping[str, Parameter]]]:
     """Each header map of one operation, named by where it sits."""
-    if operation.request is not None:
-        yield 'request', operation.request.headers
-    for code, response in operation.responses.items():
-        yield code, response.headers
+    for where, message in messages(operation):
+        yield where, message.headers
 
 
 def _scheme_header_maps(definition: SecuritySchemeDefinition) -> Iterator[tuple[str, Mapping[str, Parameter]]]:
@@ -270,8 +269,6 @@ class ContentTypeHeader:
 
     def operation(self, ctx: Context, iri: str, operation: Operation) -> Iterable[Finding]:
         found: list[Finding] = []
-        if operation.request is not None:
-            found.extend(self._check(ctx, iri, 'request', operation.request.headers, operation.request.bodies))
-        for code, response in operation.responses.items():
-            found.extend(self._check(ctx, iri, code, response.headers, response.bodies))
+        for where, message in messages(operation):
+            found.extend(self._check(ctx, iri, where, message.headers, message.bodies))
         return found

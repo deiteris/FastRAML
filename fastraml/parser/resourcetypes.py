@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, ClassVar, Final
 
 from fastraml import facet_names as fn
 from fastraml.domains import DomainLocation
+from fastraml.facet_names import chomp_optional
 from fastraml.parser.annotations import is_annotation_key, retain_annotation_sites
 from fastraml.parser.source_ir import METHODS, make_source_endpoint
 from fastraml.parser.structural_merge import copy_overlay, merge_structural
@@ -41,8 +42,8 @@ from fastraml.parser.templates import (
     parameter_node,
 )
 from fastraml.parser.uritemplates import resource_path, resource_path_name
-from fastraml.registry import ParseCtx
-from fastraml.yamlnode import TAG_STR, Node, NodeKind, node_error, pairs, with_content, with_value
+from fastraml.registry import EMPTY_CTX
+from fastraml.yamlnode import Node, node_error, pairs, str_scalar, with_content, with_value
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -50,7 +51,7 @@ if TYPE_CHECKING:
     from fastraml.parser.directives import DirectiveRef
     from fastraml.parser.source_ir import SourceEndPoint
     from fastraml.parser.structural_merge import ProvenanceOverlay
-    from fastraml.registry import Raml
+    from fastraml.registry import ParseCtx, Raml
 
 __all__ = [
     'ResourceTypeDefinition',
@@ -86,6 +87,9 @@ class ResourceTypeDefinition(TemplateDefinition):
 
     #: The methods written `get?`, by their plain name.
     optional_methods: set[str] = field(default_factory=set)
+    #: The variables each top-level key of `source` holds, key and value, by
+    #: key node. Filled on the first application that drops an optional method.
+    key_variables: dict[Node, set[str]] | None = None
 
 
 def make_resource_type_definition(
@@ -123,10 +127,7 @@ def _method_key(definition: ResourceTypeDefinition, key: Node) -> Node:
     The key is normalised so that nothing downstream has to rename it: the
     optional ones are named in `optional_methods` instead.
     """
-    name = key.value
-    optional = name.endswith('?')
-    if optional:
-        name = name[:-1]
+    name, optional = chomp_optional(key.value)
     if name not in METHODS:
         raise node_error(
             'resource type method must be an HTTP method', definition.location, key, info={'key': key.value}
@@ -187,10 +188,7 @@ def _definition_for(ref: DirectiveRef) -> ResourceTypeDefinition:
     keeps RT-to-RT inheritance self-contained.
     """
     definition = find_template_definition(
-        ref,
-        lambda anchor, name: anchor.resource_type_definition(name),
-        what='resource type',
-        info_key='resourceType',
+        ref, lambda anchor, name: anchor.resource_type_definition(name), what='resource type'
     )
     ref.resolved = definition
     return definition
@@ -229,7 +227,7 @@ def compile_resource_type(  # noqa: PLR0913 - one input per step of docs/08 § 3
 
     source = _filter_optional_methods(definition, definition.source, existing_methods)
     check_parameters(
-        definition, params, application, required=collect_required_variables(source, definition.variable_index)
+        definition, params, application, required=_required_variables(definition, definition.source, source)
     )
 
     overlay: ProvenanceOverlay = {}
@@ -237,7 +235,7 @@ def compile_resource_type(  # noqa: PLR0913 - one input per step of docs/08 § 3
         source,
         params,
         definition.variable_index,
-        caller_scope if caller_scope is not None else ParseCtx(),
+        caller_scope if caller_scope is not None else EMPTY_CTX,
         overlay,
         written_in=application.location,
         substitutions=raml.substitutions,
@@ -245,8 +243,8 @@ def compile_resource_type(  # noqa: PLR0913 - one input per step of docs/08 § 3
         param_scopes=application.param_scopes,
     )
 
-    key = Node(NodeKind.SCALAR, TAG_STR, uri, None, compiled.line, compiled.column, compiled.line, compiled.column)
-    raml.push_ctx(ParseCtx(anchor=definition.anchor, target=DomainLocation.RESOURCE_TYPE))
+    key = str_scalar(uri, compiled)
+    raml.push_ctx(raml.scope(definition.anchor, DomainLocation.RESOURCE_TYPE))
     try:
         if definition.may_have_root_annotations and compiled is not definition.source:
             retain_annotation_sites(raml, compiled, raml.current_ctx())
@@ -275,6 +273,27 @@ def _filter_optional_methods(definition: ResourceTypeDefinition, source: Node, e
     if len(kept) == len(source.content):
         return source
     return with_content(source, kept)
+
+
+def _required_variables(definition: ResourceTypeDefinition, body: Node, source: Node) -> set[str] | None:
+    """The variables `source`, `body` filtered, requires; `None` for all declared.
+
+    Filtering drops top-level methods only, so the answer is the union of the
+    kept keys' sets, each collected once per definition (docs/08 § 5).
+    """
+    if source is body:
+        return None
+    key_variables = definition.key_variables
+    if key_variables is None:
+        index = definition.variable_index
+        key_variables = definition.key_variables = {
+            key: collect_required_variables(key, index) | collect_required_variables(value, index)
+            for key, value in pairs(body)
+        }
+    required: set[str] = set()
+    for key in source.content[::2]:
+        required |= key_variables[key]
+    return required
 
 
 def _distribute_overlay(endpoint: SourceEndPoint, overlay: ProvenanceOverlay) -> None:

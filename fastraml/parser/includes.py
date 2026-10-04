@@ -23,7 +23,15 @@ from typing import TYPE_CHECKING, Final
 
 from fastraml.errors import ErrorKind, RamlError
 from fastraml.uris import path_to_file_uri, resolve_uri_ref
-from fastraml.yamlnode import TAG_INCLUDE, TAG_STR, Node, NodeKind, compose, decode_source, node_error, read_head
+from fastraml.yamlnode import (
+    TAG_INCLUDE,
+    Node,
+    compose,
+    decode_source,
+    node_error,
+    read_head,
+    str_scalar,
+)
 
 if TYPE_CHECKING:
     from fastraml.parser.fragments import LibraryLink, ReferenceResolver
@@ -41,6 +49,7 @@ __all__ = [
     'content_anchor',
     'content_include',
     'inline_include',
+    'is_json_ref',
     'load_include',
     'note_include_ref',
     'resolve_include',
@@ -222,7 +231,7 @@ def content_include(raml: Raml, node: Node, location: str, *, schema: bool = Fal
     """
     if node.tag != TAG_INCLUDE or not _composes_as_yaml(node.value):
         return None
-    if schema and strip_uri_suffix(node.value).lower().endswith('.json'):
+    if schema and is_json_ref(node.value):
         return None
     try:
         target = resolve_include_uri(raml, node, raml.document_location(node, location))
@@ -287,9 +296,9 @@ def _compose_include(raml: Raml, node: Node, data: bytes, target: str, location:
     ref = node.value
     if not _composes_as_yaml(ref):
         # Spec section Resolving Includes: any other file is included as a scalar.
-        return Node(NodeKind.SCALAR, TAG_STR, text), ''
+        return str_scalar(text), ''
     head = read_head(text)
-    if strip_uri_suffix(ref).lower().endswith('.json'):
+    if is_json_ref(ref):
         text = _json_tabs_as_spaces(text)
     content = compose(text, uri=target, max_depth=raml.max_depth, key_pool=raml.mapping_keys)
     return content, head if head.startswith(RAML_HEADER_PREFIX) else ''
@@ -323,6 +332,13 @@ def strip_uri_suffix(ref: str) -> str:
         if index >= 0:
             ref = ref[:index]
     return ref
+
+
+def is_json_ref(ref: str) -> bool:
+    """Whether an include reference names a `.json` file, whatever its case,
+    `#fragment` or `?query`.
+    """
+    return strip_uri_suffix(ref).lower().endswith('.json')
 
 
 class IncludedContent:

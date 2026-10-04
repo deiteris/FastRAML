@@ -56,7 +56,7 @@ from fastraml.facet_names import (
 from fastraml.parser.annotations import DomainExtension, add_domain_extension, is_annotation_key
 from fastraml.parser.directives import decode_secured_by, make_security_schemes
 from fastraml.parser.documentation import DocumentationItem, decode_documentation_item
-from fastraml.parser.endpoints import VALID_PROTOCOLS
+from fastraml.parser.endpoints import base_uri_protocol, decode_protocols
 from fastraml.parser.facets import make_scalar_facet, make_string_facet, scalar_str
 from fastraml.parser.includes import (
     content_include,
@@ -674,6 +674,11 @@ class APIFragment(_DeclaringFragment):
             variables = [expression.name for expression in extract_uri_template_params(uri, self.location, UNKNOWN)]
             for unused in unused_uri_parameters(self.base_uri_parameters, variables, uri, self.location):
                 accumulator.add(unused)
+        if self.base_uri is not None and all(key.value != FACET_PROTOCOLS for key, _ in pairs(node)):
+            # Spec § Protocols: without a `protocols` node, the baseUri's
+            # protocol is used. `self.protocols` stays as authored (docs/08 § 6.1).
+            protocol = base_uri_protocol(self.base_uri.value)
+            self._raml.global_protocols = [] if protocol is None else [protocol]
         accumulator.raise_if_any()
         self._raw_secured_by = None
 
@@ -740,7 +745,7 @@ class APIFragment(_DeclaringFragment):
         for key, value in pairs(node):
             try:
                 if key.value == FACET_PROTOCOLS:
-                    self.protocols = self._unmarshal_protocols(value)
+                    self.protocols = decode_protocols(raml, value, self.location)
                     raml.global_protocols = [item.value for item in self.protocols]
                 elif key.value == FACET_MEDIA_TYPE:
                     self.media_types = self._unmarshal_media_types(key, value)
@@ -754,20 +759,6 @@ class APIFragment(_DeclaringFragment):
             except RamlError as err:
                 accumulator.add(err)
         return remainder
-
-    def _unmarshal_protocols(self, node: Node) -> list[ScalarFacet[str]]:
-        node, location = inline_include(self._raml, node, self.location)
-        if node.kind is not NodeKind.SEQUENCE:
-            raise node_error('protocols must be an array', location, node)
-        if not node.content:
-            raise node_error('protocols must not be empty', location, node)
-        protocols = []
-        for item in node.content:
-            facet = make_scalar_facet(self._raml, None, item, location, scalar_str)
-            if facet.value.lower() not in VALID_PROTOCOLS:
-                raise node_error('unknown protocol', location, item, info={'protocol': facet.value})
-            protocols.append(facet)
-        return protocols
 
     def _unmarshal_media_types(self, key: Node, node: Node) -> list[ScalarFacet[str]]:
         node, location = inline_include(self._raml, node, self.location)

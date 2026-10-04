@@ -286,6 +286,9 @@ class Raml:
         # the right; a deque keeps both ends O(1).
         self.unresolved_shapes: deque[BaseShape] = deque()
 
+        #: The API's effective protocols, upper-cased: its `protocols:`, else
+        #: its baseUri's literal HTTP or HTTPS scheme, else none (docs/08 § 6.1).
+        #: `APIFragment.protocols` and `Operation.protocols` stay as authored.
         self.global_protocols: list[str] = []
         self.global_media_types: list[str] = []
         self.global_secured_by: list[SecurityScheme] = []

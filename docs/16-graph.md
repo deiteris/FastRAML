@@ -171,6 +171,13 @@ policy is configurable through the common configuration and repeatable `--rule`
 overrides. See `fastraml/views/backward/` and `tests/unit/test_cli.py` for the
 supported record and CLI behavior.
 
+Protocols are compared as effective sets (docs/08 § 6.1). Undetermined
+protocols, with no `protocols:` and no literal `http`/`https` baseUri scheme,
+are compared with nothing: they are neither removed nor added. Without
+`protocols:`, an edit of the baseUri scheme from `http` to `https` reports two
+changes, `base-uri-changed` for the address and `protocol-removed` for the
+transport; they are different facts and each has its own rule override.
+
 ## 6. Effective document tree
 
 `fastraml.views.tree.build_tree(raml)` produces the addressed effective tree.

@@ -75,7 +75,12 @@ POSITIONS = {
         lambda r: list(_get(r).request.query_parameters),
         ['q'],
     ),
-    'protocols': ('/x:\n  get:\n    protocols: !include c.yaml\n', '[HTTPS]\n', lambda r: _get(r).protocols, ['HTTPS']),
+    'protocols': (
+        '/x:\n  get:\n    protocols: !include c.yaml\n',
+        '[HTTPS]\n',
+        lambda r: [p.value for p in _get(r).protocols],
+        ['HTTPS'],
+    ),
     'root protocols': (
         'protocols: !include c.yaml\n',
         '[HTTPS]\n',

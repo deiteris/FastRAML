@@ -320,8 +320,29 @@ Nothing reads the record after P7, which drops it.
 The endpoint index rejects duplicate unexpanded template text, while distinct
 template variable names coexist. Response keys must be concrete strings from
 `100` through `599`; YAML numeric and quoted spellings normalize to the same
-string key. `protocols` accepts only HTTP or HTTPS, case-insensitively, and
-stores uppercase values.
+string key.
+
+`protocols` has one decoder, `decode_protocols` in `parser/endpoints.py`, for
+the API root and for a method. Its value is a non-empty sequence: anything
+else is `protocols must be an array`, and `[]` is `protocols must not be
+empty`, at either level. Each item is HTTP or HTTPS in any case, may be an
+annotated scalar, and is stored upper-cased; another value is `unknown
+protocol`.
+
+`APIFragment.protocols` and `Operation.protocols` hold what was written, as
+`ScalarFacet`s that keep each item's annotations, so the tree and a rendering
+show the author's statement. The tree emits the values only. The effective value is
+separate. `Raml.global_protocols` is the root's `protocols`; without one, it is
+the protocol of the `baseUri` scheme when that scheme is a literal `http` or
+`https`, upper-cased, as spec § Protocols prescribes. A templated scheme
+(`{scheme}://`), another scheme, a reference without a scheme, or no `baseUri`
+leaves it empty: undetermined, not "none". A method's effective protocols are
+its own when it states any, else `Raml.global_protocols`. Views read these
+and neither re-derive them from `baseUri` nor fold their case: `https-only`
+lints the effective value, and `compat` compares effective protocols as sets,
+so a change of case or order, or a method restating what is already in force,
+is no change; undetermined protocols are compared with nothing
+([16](16-graph.md) § 5).
 
 The API root parses `baseUri` with the same RFC 6570 level-1/level-2 template
 parser, then rejects invalid URI characters, malformed percent escapes, and

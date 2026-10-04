@@ -364,12 +364,6 @@ class TestGlobalPrePass:
         root = workspace({'api.raml': API + document})
         assert list(workspace.parse(root / 'api.raml').entry_point.base_uri_parameters) == ['version']
 
-    def test_an_unknown_protocol_is_rejected(self, workspace):
-        root = workspace({'api.raml': API + 'protocols: [FTP]\n'})
-        with pytest.raises(RamlError) as caught:
-            workspace.parse(root / 'api.raml')
-        assert 'unknown protocol' in messages(caught.value)[0]
-
     def test_secured_by_is_harvested_early_and_decoded_late(self, workspace):
         # It is taken out before the main loop because everything decoded after
         # it may need it, but it names a scheme the loop has yet to declare, so

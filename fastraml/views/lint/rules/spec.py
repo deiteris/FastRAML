@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import re
 from typing import TYPE_CHECKING, ClassVar, Final
-from urllib.parse import urlsplit
 
+from fastraml.parser.endpoints import base_uri_protocol
 from fastraml.parser.uritemplates import extract_uri_template_params
 from fastraml.positions import UNKNOWN
 from fastraml.types.complex_ import ArrayShape, ObjectShape, UnionShape
@@ -37,7 +37,6 @@ __all__ = [
     'UnnestedResource',
 ]
 
-_WEB_SCHEMES: Final = frozenset({'http', 'https'})
 #: A segment that is one simple expansion, `{name}`; the parser has validated the name.
 _PARAMETER_SEGMENT: Final = re.compile(r'\{([^{}+#][^{}]*)\}')
 
@@ -151,9 +150,8 @@ class BaseUriProtocol:
     def api(self, ctx: Context, iri: str, api: APIFragment) -> Iterable[Finding]:
         if api.base_uri is None or not api.protocols:
             return ()
-        scheme = urlsplit(api.base_uri.value).scheme.casefold()
-        declared = {protocol.value.casefold() for protocol in api.protocols}
-        if scheme not in _WEB_SCHEMES or scheme in declared:
+        scheme = base_uri_protocol(api.base_uri.value)
+        if scheme is None or scheme in {protocol.value for protocol in api.protocols}:
             return ()
         first = api.protocols[0]
         return (
@@ -163,8 +161,8 @@ class BaseUriProtocol:
                 first,
                 iri=iri,
                 position=first.value_pos,
-                scheme=scheme.upper(),
-                protocols=','.join(protocol.value.upper() for protocol in api.protocols),
+                scheme=scheme,
+                protocols=','.join(protocol.value for protocol in api.protocols),
             ),
         )
 

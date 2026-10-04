@@ -396,10 +396,22 @@ class TestRuleExamples:
         )
         assert not Linter(builtin_registry(), config).run(parsed(source, tmp_path))
 
-    def test_https_only_uses_the_base_uri_protocol(self, tmp_path):
-        source = '#%RAML 1.0\ntitle: t\nbaseUri: https://api.example.test\n/a:\n  get:\n'
-        config = Config(extends=(), rules=(RuleSetting(id='https-only'),))
-        assert not Linter(builtin_registry(), config).run(parsed(source, tmp_path))
+    @pytest.mark.parametrize(
+        ('document', 'protocols'),
+        [
+            ('baseUri: https://api.example.test\n/a:\n  get:\n', None),
+            ("baseUri: 'HTTPS://x.test'\n/a:\n  get:\n", None),
+            ('protocols: [http]\n/a:\n  get:\n    protocols: [https]\n', None),
+            ('baseUri: http://x.test\n/a:\n  get:\n', 'HTTP'),
+            ("baseUri: '{scheme}://x.test'\n/a:\n  get:\n", 'unspecified'),
+            ('baseUri: ftp://x.test\n/a:\n  get:\n', 'unspecified'),
+        ],
+    )
+    def test_https_only_reads_the_effective_protocols(self, document, protocols, tmp_path):
+        """The parser's effective protocols (docs/08 § 6.1), not a re-reading
+        of `baseUri`: a templated or non-web scheme is undetermined."""
+        findings = run_rule('https-only', '#%RAML 1.0\ntitle: t\n' + document, tmp_path)
+        assert [finding.info['protocols'] for finding in findings] == ([] if protocols is None else [protocols])
 
     def test_optional_security_alternative_is_unsecured(self, tmp_path):
         source = (

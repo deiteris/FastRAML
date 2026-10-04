@@ -589,7 +589,7 @@ def _operation(
         # Narrows the API's own list for this method, and nothing else in the
         # view says so — a reader looking for "is this one HTTPS-only?" has no
         # other line to read.
-        yield _Line(f'{inner.indent}protocols: [{", ".join(operation.protocols)}]')
+        yield _Line(f'{inner.indent}protocols: [{", ".join(facet.value for facet in operation.protocols)}]')
     if operation.traits:
         yield _Line(f'{inner.indent}is: [{", ".join(ref.name for ref in operation.traits)}]')
     yield from _secured(operation.secured_by, inner)

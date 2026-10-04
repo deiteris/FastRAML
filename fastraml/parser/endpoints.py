@@ -11,22 +11,29 @@ Every map preserves declaration order, which is a project invariant rather than
 a convenience: a consumer generating documentation or a client SDK reproduces
 the document's own order.
 
-Nothing here decodes. `source_decode.py` builds these from the stage-1 IR.
+`source_decode.py` builds these from the stage-1 IR. The one decoder here is
+`protocols:`, which the API root and a method share (docs/08 § 6.1).
 
 See docs/08-templates-and-endpoints.md § 6 and docs/13-public-api.md § 3.
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final
 
+from fastraml.parser.facets import make_string_facet
+from fastraml.parser.includes import inline_include
 from fastraml.positions import UNKNOWN, Position
+from fastraml.yamlnode import NodeKind, node_error
 
 if TYPE_CHECKING:
     from fastraml.parser.annotations import DomainExtension
     from fastraml.parser.directives import DirectiveRef, SecurityScheme
+    from fastraml.registry import Raml
     from fastraml.types.base import BaseShape, Parameter, ScalarFacet
+    from fastraml.yamlnode import Node
 
 __all__ = [
     'VALID_PROTOCOLS',
@@ -35,13 +42,53 @@ __all__ = [
     'Operation',
     'Request',
     'Response',
+    'base_uri_protocol',
+    'decode_protocols',
 ]
 
-#: Spec § Protocols: "the value is an array of strings, of values `HTTP` and/or
-#: `HTTPS`". Compared case-insensitively, and stored upper-cased. Here rather
-#: than in either decoder because both the API root and a method declare the
-#: facet, and the rule has to be the same in both.
-VALID_PROTOCOLS: Final = frozenset({'http', 'https'})
+#: Spec § Protocols: "a non-empty array of strings, of values HTTP and/or
+#: HTTPS, and be case-insensitive". Stored upper-cased.
+VALID_PROTOCOLS: Final = frozenset({'HTTP', 'HTTPS'})
+
+#: A literal scheme at the start of a base URI. A templated one, `{scheme}://`,
+#: does not match: its protocol is known only once a caller supplies it.
+_SCHEME: Final = re.compile(r'([A-Za-z][A-Za-z0-9+.-]*):')
+
+
+def decode_protocols(raml: Raml, node: Node, location: str) -> list[ScalarFacet[str]]:
+    """`protocols:` at the API root or on a method: one rule for both (docs/08 § 6.1).
+
+    A non-empty sequence of `HTTP` and `HTTPS` in any case, each stored
+    upper-cased. An item may be an annotated scalar.
+    """
+    node, location = inline_include(raml, node, location)
+    if node.kind is not NodeKind.SEQUENCE:
+        raise node_error('protocols must be an array', location, node)
+    if not node.content:
+        raise node_error('protocols must not be empty', location, node)
+    protocols = []
+    for item in node.content:
+        facet = make_string_facet(raml, None, item, location)
+        upper = facet.value.upper()
+        if upper not in VALID_PROTOCOLS:
+            raise node_error('unknown protocol', location, item, info={'protocol': facet.value})
+        facet.value = upper
+        protocols.append(facet)
+    return protocols
+
+
+def base_uri_protocol(base_uri: str) -> str | None:
+    """The protocol a base URI's literal scheme names, upper-cased, if HTTP or HTTPS.
+
+    `None` for a templated or other scheme, or a reference without one: the
+    spec's fallback to the protocol "included in the baseUri" then has nothing
+    to read (docs/08 § 6.1).
+    """
+    match = _SCHEME.match(base_uri)
+    if match is None:
+        return None
+    scheme = match.group(1).upper()
+    return scheme if scheme in VALID_PROTOCOLS else None
 
 
 @dataclass(slots=True, eq=False)
@@ -114,7 +161,11 @@ class Operation:
     location: str
     display_name: ScalarFacet[str] | None = None
     description: ScalarFacet[str] | None = None
-    protocols: list[str] = field(default_factory=list)
+    #: As written on the method or a trait it applies, upper-cased, each with
+    #: its annotations as at the API root; empty when neither states any. The
+    #: method's effective protocols are these values, else
+    #: `Raml.global_protocols` (docs/08 § 6.1).
+    protocols: list[ScalarFacet[str]] = field(default_factory=list)
     request: Request | None = None
     #: Keyed by the status code normalised to text, in declaration order.
     responses: dict[str, Response] = field(default_factory=dict)

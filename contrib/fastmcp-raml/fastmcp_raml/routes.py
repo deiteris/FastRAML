@@ -266,8 +266,10 @@ def _route(endpoint: EndPoint, operation: Operation, scheme: str | None, dropped
     # One conversion per route, so a type reached twice lands in `$defs` once.
     conv = Conversion(DEFS)
 
-    if scheme is not None and operation.protocols and scheme.upper() not in {p.upper() for p in operation.protocols}:
-        allowed = ', '.join(operation.protocols)
+    # The parser upper-cases `protocols`; only the client's scheme needs folding.
+    protocols = [facet.value for facet in operation.protocols]
+    if scheme is not None and protocols and scheme.upper() not in protocols:
+        allowed = ', '.join(protocols)
         dropped.append(f'{at}: protocols narrow to {allowed}, but the request goes to the client base URL')
 
     parameters = _parameters(endpoint, operation, conv, at, dropped)

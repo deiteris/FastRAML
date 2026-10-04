@@ -63,6 +63,82 @@ class TestStructure:
         assert len(raml.endpoints) == 3
 
 
+#: `protocols: <value>` written at the API root and on a method: one decoder
+#: reads both (docs/08 § 6.1).
+LEVELS = {
+    'root': lambda value: f'protocols: {value}\n',
+    'method': lambda value: f'/users:\n  get:\n    protocols: {value}\n',
+}
+
+
+def frames(error: RamlError) -> list[tuple[str, dict]]:
+    return [(frame.message, frame.info) for chain in error.chains() for frame in chain]
+
+
+class TestProtocols:
+    def test_root_protocols_are_stored_upper_cased(self, workspace):
+        raml = parse(workspace, LEVELS['root']('[http, hTtPs]'))
+        assert [facet.value for facet in raml.entry_point.protocols] == ['HTTP', 'HTTPS']
+        assert raml.global_protocols == ['HTTP', 'HTTPS']
+
+    def test_method_protocols_are_stored_upper_cased(self, workspace):
+        raml = parse(workspace, LEVELS['method']('[http, https]'))
+        assert [facet.value for facet in raml.endpoints['/users'].operations['get'].protocols] == ['HTTP', 'HTTPS']
+
+    @pytest.mark.parametrize('level', LEVELS)
+    def test_an_empty_list_is_rejected_at_either_level(self, workspace, level):
+        """Spec § Protocols: "a non-empty array"; a method accepted `[]` while
+        its decoder was its own."""
+        error = fails(workspace, LEVELS[level]('[]'))
+        assert error is not None
+        assert frames(error) == [('protocols must not be empty', {})]
+
+    @pytest.mark.parametrize('level', LEVELS)
+    @pytest.mark.parametrize('value', ['HTTPS', '{a: b}'])
+    def test_a_non_sequence_is_rejected_with_one_key_at_either_level(self, workspace, level, value):
+        error = fails(workspace, LEVELS[level](value))
+        assert error is not None
+        assert frames(error) == [('protocols must be an array', {})]
+
+    @pytest.mark.parametrize('level', LEVELS)
+    def test_an_unknown_protocol_is_rejected_at_either_level(self, workspace, level):
+        error = fails(workspace, LEVELS[level]('[HTTP, ftp]'))
+        assert error is not None
+        assert frames(error) == [('unknown protocol', {'protocol': 'ftp'})]
+
+    @pytest.mark.parametrize(
+        ('document', 'effective'),
+        [
+            ("baseUri: 'https://x/'\n", ['HTTPS']),
+            ("baseUri: 'HTTP://x/'\n", ['HTTP']),
+            ("baseUri: 'https://x/'\nprotocols: [HTTP]\n", ['HTTP']),
+            ("baseUri: '{scheme}://x/'\n", []),
+            ("baseUri: 'ftp://x/'\n", []),
+            ("baseUri: 'x.test/api'\n", []),
+            ('', []),
+        ],
+    )
+    def test_without_protocols_the_base_uri_scheme_is_effective(self, workspace, document, effective):
+        """Spec § Protocols: without a `protocols` node the baseUri's protocol
+        is used. A templated scheme leaves it undetermined; the authored
+        `protocols` is not filled in (docs/08 § 6.1)."""
+        raml = parse(workspace, document)
+        assert raml.global_protocols == effective
+        assert [facet.value for facet in raml.entry_point.protocols] == (['HTTP'] if 'protocols' in document else [])
+
+    def test_a_method_accepts_the_annotated_scalar_item_the_root_does(self, workspace):
+        head = API + 'annotationTypes:\n  a:\n'
+        raml = parse(workspace, LEVELS['method']('[{value: https, (a): 1}]'), head)
+        [facet] = raml.endpoints['/users'].operations['get'].protocols
+        assert facet.value == 'HTTPS'
+        # Kept on the model, as the root keeps its own, and bound like any other.
+        assert facet.annotations['a'].value.raw == 1
+        assert facet.annotations['a'].target is DomainLocation.METHOD
+        error = fails(workspace, LEVELS['method']('[{value: https, (b): 1}]'), head)
+        assert error is not None
+        assert 'reference not found' in {message for message, _ in frames(error)}
+
+
 class TestOperations:
     def test_common_facets_land_on_the_operation(self, workspace):
         raml = parse(workspace, '/users:\n  get:\n    displayName: List\n    description: d\n')
@@ -91,17 +167,6 @@ class TestOperations:
             for frame in chain
             if frame.message == 'resource type method must be an HTTP method'
         ] == [{'key': method}]
-
-    def test_protocols_are_upper_cased(self, workspace):
-        raml = parse(workspace, '/users:\n  get:\n    protocols: [http, https]\n')
-        assert raml.endpoints['/users'].operations['get'].protocols == ['HTTP', 'HTTPS']
-
-    def test_an_unknown_protocol_on_a_method_is_rejected(self, workspace):
-        # The same rule the API root applies to its own `protocols:`; a method
-        # accepted anything until it was shared.
-        with pytest.raises(RamlError) as caught:
-            parse(workspace, '/users:\n  get:\n    protocols: [HTTP, FTP]\n')
-        assert 'unknown protocol' in str(caught.value)
 
     def test_headers_and_query_parameters_are_properties(self, workspace):
         raml = parse(

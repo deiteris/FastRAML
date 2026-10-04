@@ -157,7 +157,8 @@ walking the model graph.
 
 Fragments are cached by resolved URI. A fragment is registered before its body
 is decoded, allowing mutually importing libraries to terminate as a cyclic model
-graph. Its `uses:` entries are resolved after body decoding. Reference binding
+graph. Its `uses:` entries are resolved after body decoding, even when the
+body failed: the failure is raised after them. Reference binding
 waits until P7, so unresolved links during body decoding do not prevent mutual
 imports.
 
@@ -167,4 +168,9 @@ cached fragment cannot bypass a kind mismatch. A cache hit needs no header read
 or second decode.
 
 `uses:` resolution accumulates failures across entries. It uses the same URI
-rules as `!include`; see [03](03-yaml-and-io.md).
+rules as `!include`; see [03](03-yaml-and-io.md). An entry whose library
+failed is marked, including one that finds the failed library in the cache,
+finished or still being decoded, which reports nothing again. An `!include`
+of a fragment that failed on an earlier include marks the declaration or
+definition it is written in the same way. A library that loaded but failed in its content
+is linked as it stands (docs/13 § 1).

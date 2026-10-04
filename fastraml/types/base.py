@@ -461,7 +461,7 @@ class BaseShape:
         """
         assert self._unwrapped, (  # noqa: S101 - invariant I12 (docs/02 § 4), not input validation
             'validate() needs an unwrapped shape: parse with ParseOptions(unwrap=True), '
-            'or call unwrap_shape() on a detached clone'
+            'or validate the copy unwrap_detached() returns'
         )
 
     def validate(self, value: Any) -> RamlError | None:

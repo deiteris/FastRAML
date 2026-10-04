@@ -579,8 +579,61 @@ class TestAFailedMerge:
         )
         assert len(list(error.chains())) == 1
 
+    @pytest.mark.parametrize(
+        'body',
+        [
+            FAILING_MERGE + '  P:\n    type: C\n    minLength: 1\n',
+            '  P:\n    type: C\n    minLength: 1\n' + FAILING_MERGE,
+        ],
+        ids=['failed-first', 'failed-later'],
+    )
+    def test_a_subtype_of_a_failed_shape_is_marked_whatever_the_order(self, workspace, body):
+        """docs/13 § 1, P9 row: a shape inheriting from a failed one is marked
+        with that failure, whether the failure was met before or through it."""
+        raml, types, error = lenient(workspace, body)
+        subtype = types['P']
+        assert not subtype._unwrapped
+        assert raml.broken[subtype.id] is raml.broken[types['C'].id]
+        assert len(list(error.chains())) == 1
+
+    def test_a_shape_enclosing_a_second_route_is_marked(self, workspace):
+        raml, types, _error = lenient(workspace, FAILING_MERGE + '  E:\n    properties:\n      c: C\n')
+        assert types['E'].id in raml.broken
+        assert not types['E']._unwrapped
+
+    @pytest.mark.parametrize(
+        'extra',
+        [
+            '',
+            # `D` reaches `B` after `B` finished and before `A` failed.
+            '  D:\n    properties:\n      x: B\n',
+        ],
+        ids=['cycle', 'through-a-finished-shape'],
+    )
+    def test_a_shape_that_reached_it_before_it_failed_is_marked(self, workspace, extra):
+        """docs/07 § 6: `B` closes a cycle back to `A` while `A` is still being
+        walked, and finishes; `A` fails afterwards, through `C`. `B` encloses
+        a shape inheriting from `A`, so it is marked, as is every shape that
+        reached `B` in the meantime."""
+        body = (
+            '  A:\n    properties:\n      b: B\n'
+            + ('      d: D\n' if extra else '')
+            + '      c: C\n  B:\n    properties:\n      a?: A\n'
+            + extra
+            + FAILING_MERGE
+        )
+        raml, types, error = lenient(workspace, body)
+        # The back-edge as unwrap left it; recursion marking then puts a marker
+        # headed by the marked `A` in its slot.
+        (back_edge,) = [shape for shape in raml.shapes if shape.name == 'a?']
+        reached = [types['B'], back_edge] + ([types['D']] if extra else [])
+        assert [shape.id in raml.broken for shape in reached] == [True] * len(reached)
+        assert [shape._unwrapped for shape in reached] == [False] * len(reached)
+        assert raml.broken[types['B'].id] is raml.broken[types['A'].id]
+        assert len(list(error.chains())) == 1
+
     def test_unwrap_shape_leaves_a_failed_clone_unflagged(self, workspace):
-        """The one-declaration entry point, which P10 calls on a detached clone."""
+        """The one-declaration entry point; P10 flattens its detached copy through `unwrap_detached`."""
         root = workspace({'lib.raml': LIB + 'types:\n' + FAILING_MERGE})
         raml = workspace.parse(root / 'lib.raml')
         clone = raml.types_in(raml.location)['C'].clone_detached()

@@ -29,7 +29,7 @@ import collections.abc
 from enum import StrEnum
 from functools import partial
 from operator import setitem
-from typing import TYPE_CHECKING, Any, ClassVar, Final, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, ClassVar, Final, Protocol, cast, runtime_checkable
 
 from fastraml.domains import DomainLocation
 from fastraml.errors import Accumulator, ErrorKind, RamlError
@@ -94,7 +94,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping
 
     from fastraml.parser.extension_merge import RemovedProperty
-    from fastraml.registry import Raml
+    from fastraml.registry import Identified, Raml
     from fastraml.types.base import BaseShape, Parameter, ScalarFacet
 
 __all__ = [
@@ -303,16 +303,48 @@ def resolve_uses(raml: Raml, uses: Mapping[str, LibraryLink], location: str) -> 
     Recursive: each library's own `uses:` is resolved by its own decode. A
     failure is recorded and the remaining imports are still resolved, so one
     missing library does not hide the others.
+
+    A link whose library failed is marked, whether it met the failure or
+    found the library in the cache, finished or still being decoded; only the
+    first is reported. A library that failed in its content is registered,
+    and linked as it stands (docs/13 § 1).
     """
     accumulator = Accumulator()
     for link in uses.values():
+        uri: str | None = None
         try:
-            link.link = parse_library(raml, resolve_ref_uri(raml, link.value, location, link.value_pos))
+            uri = resolve_ref_uri(raml, link.value, location, link.value_pos)
+            link.link = parse_library(raml, uri)
+            refer(raml, link.link, link, partial(_uses_error, location, link))
+            continue
         except RamlError as err:
-            accumulator.add(RamlError.wrap('parse uses library', err, location, link.key_pos))
+            error = RamlError.wrap('parse uses library', err, location, link.key_pos)
         except (OSError, ValueError) as err:
-            accumulator.add(RamlError.wrap('resolve uses URI', err, location, link.key_pos))
+            error = RamlError.wrap('resolve uses URI', err, location, link.key_pos)
+        partial_library = raml.get_fragment(uri) if uri is not None else None
+        if isinstance(partial_library, Library):
+            link.link = partial_library
+        raml.mark(link, error)
+        accumulator.add(error)
     accumulator.raise_if_any()
+
+
+def _uses_error(location: str, link: LibraryLink, failure: RamlError) -> RamlError:
+    return RamlError.wrap('parse uses library', failure, location, link.key_pos)
+
+
+def refer(raml: Raml, fragment: Fragment, referrer: Identified, wrap: Callable[[RamlError], RamlError]) -> None:
+    """Mark `referrer`, which found `fragment` in the cache, if it failed.
+
+    The failure was reported by whatever decoded the fragment, so the mark
+    reports nothing again. A fragment still being decoded, met through a cycle,
+    marks its referrers once it finishes (docs/04 § 6).
+    """
+    state = cast('_BaseFragment', fragment)  # every fragment class is one
+    if state._failure is not None:  # noqa: SLF001 - this module owns the field
+        raml.mark(referrer, wrap(state._failure))  # noqa: SLF001 - see above
+    elif state._waiting is not None:  # noqa: SLF001 - see above
+        state._waiting.append((referrer, wrap))  # noqa: SLF001 - see above
 
 
 # -- fragment classes ---------------------------------------------------------
@@ -321,7 +353,7 @@ def resolve_uses(raml: Raml, uses: Mapping[str, LibraryLink], location: str) -> 
 class _BaseFragment:
     """State every fragment has: an id, its location, and its `uses:` map."""
 
-    __slots__ = ('_raml', 'id', 'kind', 'location', 'uses')
+    __slots__ = ('_failure', '_raml', '_waiting', 'id', 'kind', 'location', 'uses')
 
     def __init__(self, raml: Raml, location: str) -> None:
         self.id = raml.next_id()
@@ -329,6 +361,11 @@ class _BaseFragment:
         self.location = location
         self.uses: dict[str, LibraryLink] = {}
         self._raml = raml
+        # Why its decode failed, for a referrer that meets it in the cache
+        # rather than through the failure; and, while it is being decoded, the
+        # referrers that met it then (`refer`, docs/04 § 6).
+        self._failure: RamlError | None = None
+        self._waiting: list[tuple[Identified, Callable[[RamlError], RamlError]]] | None = None
 
     def __repr__(self) -> str:
         return f'{type(self).__name__}({self.location!r})'
@@ -869,11 +906,16 @@ class DataTypeFragment(_UsesOnlyFragment):
         """The whole remaining mapping is the declaration (docs/04 § 5).
 
         A synthetic key node carrying the file's base name gives the shape a
-        sensible name; from there it is an ordinary declaration.
+        sensible name; from there it is an ordinary declaration, attached before
+        its content is decoded, so one that fails is kept and marked
+        (docs/13 § 1).
         """
         key = Node(NodeKind.SCALAR, TAG_STR, self.declared_name)
-        self.shape = make_shape(self._raml, key, declaration, self.location)
-        self._raml.put_typedef(self.location, self.shape)
+        make_shape(self._raml, key, declaration, self.location, attach=self._attach)
+
+    def _attach(self, base: BaseShape) -> None:
+        self.shape = base
+        self._raml.put_typedef(self.location, base)
 
     @property
     def declared_name(self) -> str:
@@ -891,10 +933,18 @@ class NamedExample(_UsesOnlyFragment):
         self.examples: dict[str, Example] = {}
 
     def decode(self, node: Node) -> None:
+        """Each example that builds is kept; one that fails is absent, and
+        does not hide the ones after it (docs/11 § 2).
+        """
         filtered, uses = filter_fragment_uses(self._raml, node, self.location)
         self.uses = uses
+        accumulator = Accumulator()
         for key, value in pairs(filtered):
-            self.examples[key.value] = make_example(self._raml, key, value, key.value, self.location)
+            try:
+                self.examples[key.value] = make_example(self._raml, key, value, key.value, self.location)
+            except RamlError as err:
+                accumulator.add(err)
+        accumulator.raise_if_any()
 
 
 class DocumentationItemFragment(_UsesOnlyFragment):
@@ -998,7 +1048,7 @@ def _one_definition(  # noqa: PLR0913 - the declaration, its kind, and where to 
     # Linked already when the file was content, not a fragment (docs/03 § 4.2).
     if definition.link_uri and definition.link is None:
         with raml.marking(definition):
-            fragment = parse_included_fragment(raml, definition.link_uri, kind, value, location)
+            fragment = parse_included_fragment(raml, definition.link_uri, kind, value, location, referrer=definition)
         definition.link = getattr(fragment, 'definition', None)
 
 
@@ -1205,23 +1255,54 @@ def decode_fragment(raml: Raml, uri: str, kind: FragmentKind, text: str) -> Frag
     # Registered before the body is decoded: a cycle back to this file resolves
     # to the in-progress object instead of recursing.
     raml.put_fragment(uri, fragment)
+    state = cast('_BaseFragment', fragment)  # every fragment class is one
+    state._waiting = []  # noqa: SLF001 - this module owns the field
     anchor = fragment if isinstance(fragment, ReferenceResolver) else None
     if anchor is not None:
         # Indexed here, where the capability check already happens, so that P7's
         # fallback for a shape built outside any parse context is a dict lookup
         # rather than a second isinstance in `types/` (docs/04 § 2).
         raml.put_resolver(uri, anchor)
+    accumulator = Accumulator()
     raml.push_ctx(ParseCtx(anchor=anchor, target=FRAGMENT_TARGETS[kind]))
     try:
         root = compose(text, uri=uri, max_depth=raml.max_depth, key_pool=raml.mapping_keys)
         raml.store_source_node(uri, root)
         fragment.decode(root)
+    except RamlError as err:
+        # The `uses:` that decoded are still resolved, so a mistake in the body
+        # does not leave every library unlinked (docs/11 § 2).
+        accumulator.add(err)
     finally:
         raml.pop_ctx()
 
+    # Before `uses:`, so a library that imports this one back meets it failed.
+    _settle(raml, fragment, accumulator.result())
     # After the body, never before: mutual imports depend on this ordering.
-    resolve_uses(raml, fragment.uses, uri)
+    try:
+        resolve_uses(raml, fragment.uses, uri)
+    except RamlError as err:
+        accumulator.add(err)
+    failure = accumulator.result()
+    _settle(raml, fragment, failure)
+    state._waiting = None  # noqa: SLF001 - this module owns the field
+    if failure is not None:
+        raise failure
     return fragment
+
+
+def _settle(raml: Raml, fragment: Fragment, failure: RamlError | None) -> None:
+    """Record why `fragment` failed, and mark each referrer that met it while
+    it was being decoded (`refer`). Run after the body and again after
+    `uses:`, which can fail on its own.
+    """
+    state = cast('_BaseFragment', fragment)  # every fragment class is one
+    state._failure = failure  # noqa: SLF001 - this module owns the field
+    if failure is None:
+        return
+    waiting, state._waiting = state._waiting or [], []  # noqa: SLF001 - see above
+    for referrer, wrap in waiting:
+        raml.mark(referrer, wrap(failure))
 
 
 def _decode_json_data_type(raml: Raml, uri: str, text: str) -> DataTypeFragment:
@@ -1229,24 +1310,41 @@ def _decode_json_data_type(raml: Raml, uri: str, text: str) -> DataTypeFragment:
     fragment = DataTypeFragment(raml, uri)
     fragment.kind = FragmentKind.DATA_TYPE
     raml.put_fragment(uri, fragment)
-    fragment.decode_json_schema(text)
+    try:
+        fragment.decode_json_schema(text)
+    except RamlError as err:
+        fragment._failure = err  # noqa: SLF001 - this module owns the field
+        raise
     return fragment
 
 
-def parse_included_fragment(raml: Raml, target: str, kind: FragmentKind, node: Node, location: str) -> Fragment:
+def parse_included_fragment(  # noqa: PLR0913 - the include, and what it is written in
+    raml: Raml, target: str, kind: FragmentKind, node: Node, location: str, *, referrer: Identified | None = None
+) -> Fragment:
     """`parse_fragment` for the `!include` `node` names, `target`, with a
     failure wrapped at the include: the fragment's own frames carry no place in
     the including file, and one that fails to load carries none at all
     (docs/11 § 3). `include` is no fatal key, so the failure stays local
     (docs/11 § 2).
+
+    `referrer`, the entity the include is written in, is marked when the
+    fragment it finds in the cache failed (`refer`).
     """
+    wrap = partial(_include_error, raml, target, node, location)
     try:
-        return parse_fragment(raml, target, kind)
+        fragment = parse_fragment(raml, target, kind)
     except RamlError as err:
-        written = raml.document_location(node, location)
-        raise RamlError.wrap(
-            'include', err, written, node.full_position, kind=ErrorKind.LOADING, info={'path': target}
-        ) from err
+        raise wrap(err) from err
+    if referrer is not None:
+        refer(raml, fragment, referrer, wrap)
+    return fragment
+
+
+def _include_error(raml: Raml, target: str, node: Node, location: str, failure: RamlError) -> RamlError:
+    written = raml.document_location(node, location)
+    return RamlError.wrap(
+        'include', failure, written, node.full_position, kind=ErrorKind.LOADING, info={'path': target}
+    )
 
 
 def parse_library(raml: Raml, uri: str) -> Library:

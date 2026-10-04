@@ -91,7 +91,7 @@ def _build_endpoints(raml: Raml) -> None:
             except RamlError as err:
                 accumulator.add(err)
             for endpoint in decoded:
-                _walk(raml, endpoint, accumulator, inherited={})
+                _walk(raml, endpoint, accumulator, inherited={}, held=False)
     finally:
         raml.pop_ctx()
 
@@ -139,21 +139,42 @@ def _resolve_directives(raml: Raml, source: SourceEndPoint, acc: Accumulator) ->
     return source.failure
 
 
-def _walk(raml: Raml, endpoint: EndPoint, acc: Accumulator, *, inherited: dict[str, Parameter]) -> None:
+def _walk(  # noqa: PLR0913 - the resource, and what its ancestors decided
+    raml: Raml,
+    endpoint: EndPoint,
+    acc: Accumulator,
+    *,
+    inherited: dict[str, Parameter],
+    held: bool,
+    register: bool = True,
+) -> RamlError | None:
+    """Register `endpoint` and its children by full URI, and resolve their URI parameters.
+
+    `held` says the enclosing resource is in the model, so this one is too,
+    whether or not it registers. Returns a duplicate URI found here or below:
+    a loser that stays in a held resource's `endpoints`, and every resource
+    enclosing it, is marked with it. A top-level loser is in no index and no
+    tree, so it is not marked, and its subtree is walked with `register`
+    false: checked and reported as usual, but neither registered nor marked,
+    because the model does not hold the resource its children hang from
+    (docs/13 § 1).
+    """
+    failure: RamlError | None = None
     if endpoint.full_uri in raml.endpoints:
         # Comparison is on the template text, unexpanded, so `/users/{userId}`
         # and `/users/{username}` coexist while `/users: {/foo:}` and
         # `/users/foo:` collide (docs/08 § 6.1).
-        acc.add(
-            RamlError.new(
-                'duplicate resource URI',
-                endpoint.location,
-                endpoint.key_pos,
-                info={'uri': endpoint.full_uri},
-            )
+        failure = RamlError.new(
+            'duplicate resource URI',
+            endpoint.location,
+            endpoint.key_pos,
+            info={'uri': endpoint.full_uri},
         )
-    else:
+        acc.add(failure)
+        register = register and held
+    elif register:
         raml.endpoints[endpoint.full_uri] = endpoint
+        held = True
 
     try:
         _resolve_uri_parameters(raml, endpoint, inherited)
@@ -161,7 +182,12 @@ def _walk(raml: Raml, endpoint: EndPoint, acc: Accumulator, *, inherited: dict[s
         acc.add(err)
 
     for child in endpoint.endpoints.values():
-        _walk(raml, child, acc, inherited=endpoint.uri_parameters)
+        below = _walk(raml, child, acc, inherited=endpoint.uri_parameters, held=held, register=register)
+        if failure is None:
+            failure = below
+    if failure is not None and held:
+        raml.mark(endpoint, failure)
+    return failure
 
 
 def _resolve_uri_parameters(raml: Raml, endpoint: EndPoint, inherited: dict[str, Parameter]) -> None:

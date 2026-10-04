@@ -52,6 +52,18 @@ run leaves its outputs at their defaults; for example, `endpoints` is empty
 until `ENDPOINTS` finishes, which is not the same as an API with no
 resources.
 
+A stage can hold more than one step, and `stopped_at` names the stage, not
+the step. `RESOLVED` is P7 and then the discriminator declaration check
+(docs/05 § 6), so a model that check stopped has `stopped_at` set to
+`RESOLVED` although P7 finished: invariant I5 may hold there without
+`RESOLVED` in `completed`.
+
+When `completed` is empty, `entry_point` may be `None` or an empty shell. An
+entry document whose own YAML does not compose leaves the fragment it
+registered, with nothing decoded, when it is an API, a Library or another
+fragment, and `None` when it is an Overlay or an Extension, whose chain was
+never loaded.
+
 `Raml.broken` maps an entity's id to the `RamlError` that left it incomplete.
 A marked entity is in the model, and its identity (name, `key_pos`,
 `value_pos`, `location`) is sound; its content is partial. Read a marked
@@ -65,19 +77,24 @@ marked today:
 
 | Entity | Kept as |
 |---|---|
-| A type or annotation type declaration | Its kind, and each property, `items` or `anyOf` member that built; the failed one is absent, and the other facets are not decoded. A failure before its kind was settled leaves an `UnknownShape`, never `shape is None` |
+| A type or annotation type declaration, or a DataType fragment's root | Its kind, and each property, `items` or `anyOf` member that built; the failed one is absent, and the other facets are not decoded. A failure before its kind was settled leaves an `UnknownShape`, never `shape is None` |
 | A trait, resource type or security scheme definition | Every key that decoded; a security scheme's `describedBy` and its responses as a resource's. One whose `!include` failed has `link is None` |
 | A resource, an operation, a response | Every key that decoded, and every child, sound or marked |
+| A nested resource whose full URI an earlier resource took, and each resource enclosing it | In its parent's `endpoints`, but not in `Raml.endpoints`. A top-level one is absent, with every resource beneath it |
 | An operation a trait failed to apply to, and a resource a resource type failed to apply to; each resource enclosing either | Everything but that template's contribution. The `DirectiveRef` stays in `traits` or `resource_type`, with `resolved is None` if the name matched nothing |
-| A `securedBy:` entry whose scheme did not bind (P5) | `definition is None` |
+| A `uses:` entry whose library failed | The library as it stands, if it loaded; otherwise `link is None` |
+| A type declaration, `examples:` holder or definition whose `!include` finds a fragment that failed on an earlier include | Linked to the fragment as it stands; nothing is reported again |
+| A `securedBy:` entry whose scheme did not bind, or whose parameters failed (P5) | `definition is None` if the name bound nothing; a scheme that bound keeps `definition` when its `scopes` failed |
 | A shape whose kind P7 could not settle, and each shape the failure passed through | An `UnknownShape`; one whose kind P7 settled but whose declaration facets failed keeps its kind, as a declaration does |
 | An annotation application whose type P8 could not find | `defined_by is None` |
-| A shape whose merge P9 rejected, and each shape enclosing it | Its declared, unmerged form, not flagged unwrapped (docs/07 § 6) |
+| A shape whose merge P9 rejected, and each shape enclosing or inheriting from it | Its declared, unmerged form, not flagged unwrapped (docs/07 § 6) |
 
-Anything else that fails is absent (docs/11 § 2). On success, `broken` is
-empty. `tests/partial/`, run with `pytest --mutations`, explores this
-contract over mutations of every valid TCK document and of the fixtures
-(docs/14 § 3).
+Anything else that fails to build is absent (docs/11 § 2). A failure in a
+check that builds nothing, the discriminator declaration check or P10, marks
+nothing: the entity it names is whole, and only the returned error reports
+it. On success, `broken` is empty. `tests/partial/`, run with
+`pytest --mutations`, explores this contract over mutations of every valid
+TCK document and of the fixtures (docs/14 § 3).
 
 An Overlay or Extension may be the entry document. The returned `Raml` holds
 the target tree of its `extends` chain: `entry_point` is the root API's
@@ -94,7 +111,7 @@ returns RAML text ([20](20-join.md) § 8). It is not part of `fastraml.__all__`.
 | Option | Effect |
 |---|---|
 | `unwrap` | Flatten type inheritance and mark recursive shapes. |
-| `validate` | Check declarations and validate examples, defaults, enums, custom facets, and annotations. It privately unwraps copies when `unwrap` is false. |
+| `validate` | Check declarations and validate examples, defaults, enums, custom facets, and annotations. It privately unwraps copies when `unwrap` is false; they are not added to `Raml.shapes` (docs/10 § 1). |
 | `retain_source` | Retain source nodes, texts, and shape source information for source-aware consumers. |
 | `retain_text` | Retain each file's text only, which the occurrence index needs ([16](16-graph.md) § 9). Implied by `retain_source`. |
 | `workspace_root` | Set the file-access sandbox root and the base for RAML-absolute includes. Defaults to the entry file directory. |

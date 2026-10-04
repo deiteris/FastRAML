@@ -14,7 +14,9 @@ path)` raises for a nonconforming value; public `validate(value)` returns a
 `fragment_typedefs`, validates examples, defaults, custom facets, and annotation
 applications, and accumulates failures. If `ParseOptions(validate=True)` is used
 without `unwrap=True`, P10 clones and unwraps private shape graphs; the caller's
-declared model remains unflattened. Public value validation asserts that its root
+declared model remains unflattened. The copies keep the declarations' ids, so
+none of their shapes is added to `Raml.shapes`, and a merge one rejects is
+reported by P10 and marks nothing in `Raml.broken`. Public value validation asserts that its root
 shape is already unwrapped.
 
 ## 2. Declaration consistency

@@ -360,8 +360,11 @@ properties:
 
 The root API is never decoded on its own, and no extension document body is
 decoded on its own, so invariant I3 holds. `parse_lenient` re-raises a failure
-to load the chain when the failure's outermost frame is located at the entry
-URI ([11](11-diagnostics.md) § 2).
+to load the chain (`extends` missing, not a string, or not resolvable) when
+the failure's outermost frame is located at the entry URI
+([11](11-diagnostics.md) § 2). A syntax error in the entry document's own YAML
+is not one: it is returned, with `entry_point` `None` ([13](13-public-api.md)
+§ 1).
 
 ## 7. Deliberate deviations
 

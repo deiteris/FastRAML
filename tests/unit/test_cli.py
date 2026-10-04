@@ -12,12 +12,15 @@ import json
 import re
 import subprocess
 import sys
-from pathlib import Path
 
 import pytest
 import yaml
 
 from fastraml.cli import EXIT_INVALID, EXIT_OK, main
+from tests.sources import PACKAGE
+
+#: The skills the CLI serves, wherever the tests run from.
+SKILLDATA = PACKAGE / 'skilldata'
 
 API = '#%RAML 1.0\ntitle: Demo\n'
 GOOD = API + 'types:\n  T:\n    type: string\n    minLength: 2\n/things:\n  get:\n'
@@ -1219,7 +1222,7 @@ class TestSkillsVerb:
         rather than listed here: a hardcoded list passes while a new guide goes
         unmentioned, which is exactly how `lint` was missed.
         """
-        root = Path('fastraml/skilldata')
+        root = SKILLDATA
         referenced = set()
         for guide in sorted(root.glob('*/SKILL.md')):
             referenced |= set(re.findall(r'fastraml skills get ([a-z-]+)', guide.read_text(encoding='utf-8')))
@@ -1235,7 +1238,7 @@ class TestSkillsVerb:
         it — and a guide that still cites one teaches an agent a command that
         exits 1. Both guides went stale that way at once.
         """
-        root = Path('fastraml/skilldata')
+        root = SKILLDATA
         text = '\n'.join(guide.read_text(encoding='utf-8') for guide in sorted(root.glob('**/*.md')))
 
         assert main(['query', '--list']) == EXIT_OK
@@ -1255,8 +1258,8 @@ class TestSkillsVerb:
         assert main(['skills', 'list']) == EXIT_OK
         served = {line.split()[0] for line in capsys.readouterr().out.splitlines() if line and not line.startswith(' ')}
         served.discard('Read')
-        stub = Path('fastraml/skilldata/fastraml/SKILL.md').read_text(encoding='utf-8')
-        core = Path('fastraml/skilldata/core/SKILL.md').read_text(encoding='utf-8')
+        stub = (SKILLDATA / 'fastraml/SKILL.md').read_text(encoding='utf-8')
+        core = (SKILLDATA / 'core/SKILL.md').read_text(encoding='utf-8')
         unreachable = {name for name in served if f'skills get {name}' not in stub + core}
         assert unreachable == set(), unreachable
 
@@ -1290,7 +1293,7 @@ class TestSkillsVerb:
         nor for `views/backward/`, the package behind it. It still has to *name*
         the verb, or an agent that finds the guide cannot run anything.
         """
-        root = Path('fastraml/skilldata')
+        root = SKILLDATA
         source = (root / 'backward' / 'SKILL.md').read_text(encoding='utf-8')
         front = yaml.safe_load(source.split('---')[1])
         assert 'backward compatibility' in front['description']
@@ -1306,8 +1309,8 @@ class TestSkillsVerb:
         assert {'breaking', 'review', 'compatible', 'cosmetic'} <= set(re.findall(r'`([a-z]+)`', rendered))
 
     def test_core_teaches_the_backward_report_and_its_impacts(self):
-        core = Path('fastraml/skilldata/core/SKILL.md').read_text(encoding='utf-8')
-        commands = Path('fastraml/skilldata/core/references/commands.md').read_text(encoding='utf-8')
+        core = (SKILLDATA / 'core/SKILL.md').read_text(encoding='utf-8')
+        commands = (SKILLDATA / 'core/references/commands.md').read_text(encoding='utf-8')
         assert 'source-file addresses' in core
         assert '`breaking`, `review`, `compatible`, `cosmetic`' in commands
 
@@ -1452,5 +1455,5 @@ class TestSkillsInstall:
         from fastraml.cli.skills import _skill_root
 
         served = (_skill_root() / 'fastraml' / 'SKILL.md').read_text(encoding='utf-8')
-        committed = Path('skills/fastraml/SKILL.md').read_text(encoding='utf-8')
+        committed = (PACKAGE.parent / 'skills/fastraml/SKILL.md').read_text(encoding='utf-8')
         assert served == committed, 'skills/fastraml/SKILL.md is stale against fastraml/skilldata/fastraml/SKILL.md'

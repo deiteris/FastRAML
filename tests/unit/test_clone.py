@@ -197,15 +197,10 @@ class TestNoDeepcopy:
         # back-pointer, the compiled patterns and the YAML nodes. Asserted over
         # the import graph rather than by grepping, which would trip over the
         # several docstrings that name it in order to rule it out.
-        from tests.sources import imports, module_name, sources
+        from tests.sources import offenders
 
-        offenders = [
-            f'{module_name(path)}:{found.line} imports {found.module}'
-            for path in sources('fastraml')
-            for found in imports(path)
-            if found.module == 'copy' or found.module.startswith('copy.')
-        ]
-        assert not offenders, '\n'.join(offenders)
+        found = offenders(('fastraml',), 'copy')
+        assert not found, '\n'.join(found)
 
 
 @pytest.mark.parametrize(

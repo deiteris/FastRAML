@@ -198,23 +198,9 @@ accepted, including `displayName`, `description`, `default`, `required`,
 current parser behavior; it is broader than the intended wrapper-facet subset
 expressed by the RAML restriction.
 
-JSON Schema types are accepted in type expressions and properties. Where JSON
-is not allowed they are rejected (*spec section Using XML and JSON Schema*),
-after unwrap, a union with a JSON Schema member counting as one:
-
-- in a header, query parameter, URI or base URI parameter: `JSON schema in a
-  parameter`, with the parameter's name and binding; in a query string: `JSON
-  schema in a query string`;
-- in a body whose media type does not allow JSON: `JSON schema for a media type
-  that is not JSON`, with the media type. JSON is allowed by `application/json`,
-  any `+json` suffix, `application/*` and `*/*`, compared without parameters
-  and case-insensitively. A body written without a media type was instantiated
-  once per default media type (docs/08 § 6.3), and each instance is judged by
-  its own: with `mediaType: [application/json, application/xml]`, the XML one
-  fails.
-
-This runs in P10, over the effective model, so a trait or resource type that
-carries one is reported where it is applied. A JSON Schema type may be aliased, but RAML inheritance can only
+JSON Schema types are accepted in type expressions, properties, and parameter
+declarations, and in a body of any media type; the spec forbids both a parameter and a non-JSON body
+(docs/01 § 4.5). A JSON Schema type may be aliased, but RAML inheritance can only
 merge an identical schema; attempts to specialize it with RAML constraints fail.
 
 `JsonShape.as_schema()` returns a cached self-contained schema view with external

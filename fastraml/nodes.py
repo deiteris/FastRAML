@@ -16,6 +16,7 @@ from fractions import Fraction
 from typing import TYPE_CHECKING, ClassVar, Final
 
 from fastraml.parser.directives import DirectiveRef, SecurityScheme
+from fastraml.parser.documentation import DocumentationItem
 from fastraml.parser.endpoints import Body, EndPoint, Operation, Request, Response
 from fastraml.parser.fragments import APIFragment, Fragment
 from fastraml.parser.resourcetypes import ResourceTypeDefinition
@@ -32,6 +33,7 @@ if TYPE_CHECKING:
 __all__ = [
     'ApiNode',
     'DeclaredNode',
+    'DocumentationNode',
     'EndPointNode',
     'Entity',
     'GraphNode',
@@ -72,6 +74,7 @@ type Entity = (
     | Operation
     | EndPoint
     | Fragment
+    | DocumentationItem
     | TraitDefinition
     | ResourceTypeDefinition
     | SecuritySchemeDefinition
@@ -370,6 +373,25 @@ class UnitNode(GraphNode[Fragment]):
     @property
     def attributes(self) -> dict[str, Literal_]:
         return {'name': self.name}
+
+
+@dataclass(slots=True, eq=False)
+class DocumentationNode(GraphNode[DocumentationItem]):
+    """One `documentation:` item of the API.
+
+    Nothing in RAML points at one. A description link does (docs/16 § 11),
+    which is what gives it an address, and so a node.
+    """
+
+    kind: ClassVar[str] = 'Documentation'
+
+    @property
+    def name(self) -> str:
+        return _text(self.entity.title) or ''
+
+    @property
+    def attributes(self) -> dict[str, Literal_]:
+        return {'name': self.name} | _where(self.entity.location, self.entity.key_pos, self.root)
 
 
 # -- declarations a name can reach ---------------------------------------------

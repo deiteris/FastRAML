@@ -35,6 +35,10 @@ dependencies = [
     # two agree by construction rather than by a maintained override table.
     # See docs/08 § 5.
     "pluralizer>=2.0",
+    # The links in descriptions (docs/16 § 11). The port of the parser the
+    # viewer renders with, so the two agree on what a link is. Imported on
+    # first use: prose with no `[` never loads it.
+    "markdown-it-py>=3",
 ]
 
 [project.optional-dependencies]

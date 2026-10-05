@@ -752,6 +752,7 @@ class TestNameIsTheCheapPathToTheSameAnswer:
         reached |= {node.kinds[0] for node in declaring.nodes.values()}
         assert reached >= {
             'Api',
+            'Documentation',
             'EndPoint',
             'Operation',
             'Parameter',
@@ -771,6 +772,26 @@ class TestNameIsTheCheapPathToTheSameAnswer:
         payloads = [graph.nodes[iri] for iri in iris(graph, 'Payload')]
         assert payloads
         assert all(node.name == '' for node in payloads)
+
+
+class TestDocumentationItems:
+    """docs/16 § 11.1: a description link can name a documentation item, so
+    it is a node, addressed by position.
+    """
+
+    DOCUMENTED = (
+        '#%RAML 1.0\ntitle: t\ndocumentation:\n  - title: Intro\n    content: a\n  - title: Intro\n    content: b\n'
+    )
+
+    def test_each_item_is_a_node_the_api_points_at_by_position(self, workspace):
+        graph = build_graph(workspace.document(self.DOCUMENTED, ParseOptions(unwrap=True)))
+        api = f'{DEFAULT_BASE}#/web-api'
+        items = [edge.object for edge in graph.out(api) if edge.predicate == 'documentation']
+        assert items == [f'{api}/documentation/0', f'{api}/documentation/1']
+        assert [(graph.nodes[iri].kinds[0], graph.nodes[iri].name) for iri in items] == [
+            ('Documentation', 'Intro'),
+            ('Documentation', 'Intro'),
+        ]
 
 
 class TestAttributesAreDerivedNotStored:

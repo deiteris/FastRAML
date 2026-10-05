@@ -54,7 +54,7 @@ in `Raml.stopped_at` (`Stage` in `registry.py`; docs/13 § 1):
 | Security and annotations | `parser/security.py`, `parser/annotations.py`, `parser/directives.py` | [09](09-security-and-annotations.md) |
 | Type system | `types/` | [05](05-type-model.md) through [10](10-validation.md) |
 | JSON Schema types: the kind, compilation and registry, projection to RAML, `allOf` intersection, bundling | `types/jsonschema_.py`, `types/schema_compile.py`, `types/schema_view.py`, `types/schema_projection.py`, `types/schema_intersection.py`, `types/schema_bundle.py` | [10](10-validation.md) |
-| Read-only projections | `views/`, including graph, tree, rendering, queries, compatibility, bindings, JSON Schema, OpenAPI, value samples, occurrences, authorship, and linting | [16](16-graph.md), [18](18-linting.md) |
+| Read-only projections | `views/`, including graph, tree, rendering, queries, compatibility, bindings, JSON Schema, OpenAPI, value samples, occurrences, authorship, description links, and linting | [16](16-graph.md), [18](18-linting.md) |
 | Graph node classes | `nodes.py` | [16](16-graph.md) |
 | Joining API documents | `join/` | [20](20-join.md) |
 | Language service | `service/` | [21](21-language-service.md) |

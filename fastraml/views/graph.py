@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, Any, Final, NamedTuple
 from fastraml.gctuning import tuned_gc
 from fastraml.nodes import (
     ApiNode,
+    DocumentationNode,
     EndPointNode,
     Entity,
     GraphNode,
@@ -57,6 +58,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
 
     from fastraml.parser.directives import DirectiveRef, SecurityScheme
+    from fastraml.parser.documentation import DocumentationItem
     from fastraml.parser.endpoints import Body, Request, Response
     from fastraml.parser.fragments import APIFragment, Fragment
     from fastraml.parser.resourcetypes import ResourceTypeDefinition
@@ -673,6 +675,9 @@ class _GraphSink:
 
     def api(self, iri: str, fragment: APIFragment) -> None:
         self._add(ApiNode(iri, fragment, self.root))
+
+    def documentation(self, iri: str, item: DocumentationItem) -> None:
+        self._add(DocumentationNode(iri, item, self.root))
 
     def type_(self, iri: str, base: BaseShape, shape_kind: str) -> None:
         self._add(TypeNode(iri, base, self.root, shape_kind))

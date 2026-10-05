@@ -15,9 +15,9 @@ identically-named siblings keeps the bare address depends on visit order. That
 is why assignment is one walk rather than a formula each emitter applies.
 
 **Everything referenceable gets an address, and nothing else does.** A thing
-needs one exactly when something can point at it; examples, defaults and
-documentation prose are pointed at by nothing and are placed by containment
-instead (`docs/16` § 6.1).
+needs one exactly when something can point at it; examples and defaults are
+pointed at by nothing and are placed by containment instead (`docs/16` § 6.1).
+A documentation item is pointed at by description links (`docs/16` § 11).
 
 Nothing here decides a RAML rule. It runs after P10 and imports the model
 rather than being imported by it.
@@ -86,6 +86,7 @@ def typed_declarations(raml: Raml) -> Iterator[tuple[str, str, str, BaseShape]]:
 if TYPE_CHECKING:
     from fastraml.parser.annotations import DomainExtension
     from fastraml.parser.directives import DirectiveRef
+    from fastraml.parser.documentation import DocumentationItem
     from fastraml.parser.endpoints import Body, EndPoint, Operation, Request, Response
     from fastraml.parser.fragments import Fragment
     from fastraml.parser.resourcetypes import ResourceTypeDefinition
@@ -149,6 +150,7 @@ class Sink(Protocol):
 
     def unit(self, iri: str, fragment: Fragment) -> None: ...
     def api(self, iri: str, fragment: APIFragment) -> None: ...
+    def documentation(self, iri: str, item: DocumentationItem) -> None: ...
     def type_(self, iri: str, base: BaseShape, shape_kind: str) -> None: ...
     def property_(self, iri: str, prop: Property) -> None: ...
     def pattern_property(self, iri: str, prop: PatternProperty) -> None: ...
@@ -191,6 +193,7 @@ class _NullSink:
 
     def unit(self, iri: str, fragment: Fragment) -> None: ...
     def api(self, iri: str, fragment: APIFragment) -> None: ...
+    def documentation(self, iri: str, item: DocumentationItem) -> None: ...
     def type_(self, iri: str, base: BaseShape, shape_kind: str) -> None: ...
     def property_(self, iri: str, prop: Property) -> None: ...
     def pattern_property(self, iri: str, prop: PatternProperty) -> None: ...
@@ -403,6 +406,12 @@ class Walk:
         api = f'{self.base}#/web-api'
         self.sink.api(api, entry)
         self.edge(api, 'unit', self.unit(entry.location))
+        for index, item in enumerate(entry.documentation):
+            # By position: two items may share a title. What points at one is
+            # a description link (docs/16 § 11).
+            child = self.assign(item.id, f'{api}/documentation/{index}')
+            self.sink.documentation(child, item)
+            self.edge(api, 'documentation', child)
         for name, param in entry.base_uri_parameters.items():
             child = self.parameter(f'{api}/parameter/baseUri/{self.segment(name)}', param)
             self.edge(api, 'parameter', child)

@@ -70,9 +70,9 @@ package root; its value remains provisional before 1.0.
 
 Graph nodes hold references to model entities. Node attributes translate model
 values into graph vocabulary; they are derived on access. Edges express semantic
-relationships, including declaration ownership, endpoint containment, request
-and response payloads, parameter bindings, type structure, template use,
-security use, and annotation use.
+relationships, including declaration ownership, endpoint containment, the
+API's documentation items, request and response payloads, parameter bindings,
+type structure, template use, security use, and annotation use.
 
 The exported edge closures are part of the API:
 
@@ -515,9 +515,91 @@ Every reader here goes through that one test. It compares spans as numbers,
 not through `Position.spanning` and `contains`: it runs for every member of
 every type, and building a `Position` for each cost the outline a third.
 
-## 11. Verification
+## 11. Description links
+
+`fastraml.views.doclinks` resolves links from prose to what the document
+declares, as rustdoc resolves intra-doc links. Prose is every `description:`
+and a documentation item's `content:`. A link is a CommonMark reference link
+whose label the prose does not define:
+
+```markdown
+Returns the [`Book`] priced in [`lib.Money`]; [list them][GET /books] first.
+Read [Getting started] before you call it.
+```
+
+`DocLinks(raml, addresses).links(facet, owner)` gives each label of one text
+once, in the order written, with its outcome: `resolved`, `unresolved`,
+`ambiguous`, or `out-of-scope`. `prose_of(entity)` lists the texts an entity
+carries.
+
+### 11.1 Names
+
+A label is read as a name after backticks and backslash escapes are removed
+and whitespace is collapsed:
+
+| Label | Names |
+|---|---|
+| `/books/{isbn}` | a resource, by its full path |
+| `GET /books/{isbn}` | a method; the verb in any case |
+| `Book`, `lib.Money` | a type, as a `type:` written in the same file names it |
+| `oauth2`, `lib.oauth2` | a security scheme, as a `securedBy:` names it |
+| `(rateLimit)` | an annotation type, as an application names it |
+| `Getting started` | a documentation item, by its title |
+
+A `kind@` prefix restricts a name to one namespace: `type@`, `annotationType@`,
+`securityScheme@` and `documentation@`.
+
+**Scope.** A name resolves in the namespace of the file that wrote the
+prose, through the lookup a `type:` there uses: the file's own declarations and
+its `uses:` aliases (docs/04 § 2). A description that a subtype inherits or a
+trait contributes keeps the file that wrote it. Where that file has no
+namespace of its own, as with a headerless include, the owner's is used.
+Resources, methods and documentation items belong to the API. Prose in a
+library cannot name them, because a library does not know which API uses it;
+such a link is `out-of-scope`.
+
+**One target.** CommonMark matches labels without regard to case, so every
+spelling of one label in a text must name the same target. A label that names
+more than one, such as a type and a security scheme that are both called
+`oauth`, or `[User]` and `[user]` naming two types, is `ambiguous` and links to
+neither. A `kind@` prefix picks one.
+
+A target is a resource, method, type, annotation type, security scheme or
+documentation item the walk addressed. Responses, properties, traits, resource
+types and built-in types are not targets yet. A documentation item is addressed
+by position, `fastraml://id#/web-api/documentation/N`, because two items may
+share a title. In the graph it is a `Documentation` node, which the API points
+at with a `documentation` edge.
+
+### 11.2 Which brackets are links
+
+Every reference label the prose does not define is looked up. Prose uses
+brackets for other things too, so the label's form decides what happens:
+
+- A bare label, such as `[Getting started]`, `[optional]` or `[x]`, becomes a
+  link when it names exactly one target. Otherwise it stays text and nothing
+  is reported.
+- A label with backticks, `` [`Book`] ``, or the label of a full reference,
+  `[the book][Book]`, is an explicit link. Lint reports one that does not
+  resolve (docs/18 § 2).
+
+An inline link, such as `[text](/books)`, is a URL and is never looked up. A
+relative URL in prose can contain `/`, so it cannot be told from a name. A
+label the prose defines, such as `[Book]: https://example.com`, is the author's
+own link. Labels in code spans and code blocks are not links. These are
+CommonMark's rules: the prose is parsed by markdown-it-py, configured as the
+viewer configures markdown-it.
+
+### 11.3 Cost
+
+Prose with no `[` is not parsed. A text is parsed once per scope, however many
+entities share it, and each name is looked up once per scope. The parser is
+imported on first use.
+
+## 12. Verification
 
 - View boundary: `tests/unit/test_views.py`
+- Description links: `tests/unit/test_doclinks.py`
 - Graph and tree behavior: `tests/unit/test_graph.py`, `tests/unit/test_cli.py`
 - Occurrence index: `tests/unit/test_occurrences.py`; the law over the corpora, `tests/unit/test_occurrence_law.py`
 - Tree bindings: `tests/unit/test_bindings.py`, `tests/unit/test_conformance.py`

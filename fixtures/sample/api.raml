@@ -28,7 +28,7 @@ documentation:
       see **[Authentication]** below.
   - title: Authentication
     content: |
-      The API speaks OAuth 2.0. Send the caller to `/oauth/authorize`, exchange
+      The API speaks [OAuth 2.0][`oauth2`]. Send the caller to `/oauth/authorize`, exchange
       the code at `/oauth/token`, and put the result in an `Authorization`
       header:
 
@@ -42,7 +42,7 @@ documentation:
       what the open padlock on that method means.
   - title: Pagination
     content: |
-      Collections are paged with `offset` and `limit`. `limit` defaults to 20
+      Collections use [`common.Page`] with `offset` and `limit`. `limit` defaults to 20
       and is capped at 100; asking for more is not an error, it is quietly
       reduced.
 
@@ -58,7 +58,7 @@ documentation:
       * `401` — no token, or one that has expired.
       * `422` — the body was well-formed but matched no member of a union.
       * `500` — ours. Retry with backoff; it is safe for every method here
-        except `POST /books`, which is not idempotent.
+        except [`POST /books`], which is not idempotent.
 uses:
   common: !include common.raml
   # Outside this document's directory, so the path to it ascends.

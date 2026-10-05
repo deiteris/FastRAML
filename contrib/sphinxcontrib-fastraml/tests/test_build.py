@@ -531,7 +531,9 @@ def test_a_description_links_what_the_document_declares(build):
 
     The sample's root links a documentation item by title, `GET /books` links
     the `Book` its resource type contributes as `[`<<item>>`]`, and a method
-    and a documentation item link `GET /books/{isbn}`.
+    and a documentation item link `GET /books/{isbn}`. The documentation items
+    link a scheme (`oauth2`), a library type (`common.Page`), a method
+    (`POST /books`) and another item (`Authentication`).
     """
     built = build({'index': 'Home\n====\n', 'reference': REFERENCE})
     assert built.warnings == []
@@ -542,6 +544,10 @@ def test_a_description_links_what_the_document_declares(build):
         ('raml-books-documentation-item-Getting-started', 'Getting started'),
         ('raml-books-type-sample-api.raml-Book', 'Book'),
         ('raml-books-method-GET-books-isbn', 'GET /books/{isbn}'),
+        ('raml-books-documentation-item-Authentication', 'Authentication'),
+        ('raml-books-security-scheme-sample-api.raml-oauth2', 'OAuth 2.0'),
+        ('raml-books-type-sample-common.raml-Page', 'common.Page'),
+        ('raml-books-method-POST-books', 'POST /books'),
     }
 
 

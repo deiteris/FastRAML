@@ -27,6 +27,7 @@ from fastraml.views.lint.rules.ijson import IJsonBinary, IJsonDateTime, IJsonInt
 from fastraml.views.lint.rules.media import DuplicateMediaType, JsonCharset
 from fastraml.views.lint.rules.operations import MeaninglessRequestBody, UnsecuredOperation
 from fastraml.views.lint.rules.problems import ProblemMediaType, ProblemMemberTypes, ProblemStatus
+from fastraml.views.lint.rules.prose import BrokenDocLink
 from fastraml.views.lint.rules.schema import (
     DeprecatedSchemas,
     DiscriminatorWithoutSubtypes,
@@ -201,4 +202,7 @@ def builtin_registry() -> Registry:
     )
     for rule in style_rules:
         registry.add(rule, sets=('style',))
+    # Checks fastRAML's own link convention (docs/16 § 11), so it is enabled
+    # only by a project that writes links that way.
+    registry.add(BrokenDocLink(), sets=('documentation',))
     return registry

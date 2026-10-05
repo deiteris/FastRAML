@@ -1781,3 +1781,85 @@ class TestMediaTypes:
         from fastraml.views.lint.mediatypes import is_json
 
         assert is_json(media_type) is expected
+
+
+class TestBrokenDocLink:
+    """docs/18 § 2 and docs/16 § 11: explicit links in prose that do not resolve."""
+
+    LIBRARY = (
+        '#%RAML 1.0 Library\ntypes:\n  Money:\n    type: number\n    description: See [`GET /books`].\n'
+        'traits:\n  priced:\n    description: Priced in [`Nope`].\n'
+    )
+
+    @staticmethod
+    def findings(workspace, source, config=None):
+        workspace({'lib.raml': TestBrokenDocLink.LIBRARY})
+        raml = workspace.document(source, ParseOptions(unwrap=True, validate=False, retain_source=True))
+        config = config or Config(extends=('documentation',))
+        return [
+            finding for finding in Linter(builtin_registry(), config).run(raml) if finding.rule == 'broken-doc-link'
+        ]
+
+    @pytest.mark.parametrize(
+        ('description', 'message', 'info'),
+        [
+            ('A [`Nope`].', 'link names nothing', {'link': '`Nope`'}),
+            ('A [the nope][Nope].', 'link names nothing', {'link': 'Nope'}),
+            (
+                'An [`oauth`].',
+                'link names more than one target',
+                {
+                    'link': '`oauth`',
+                    'targets': [
+                        'fastraml://id#/declarations/types/oauth',
+                        'fastraml://id#/declarations/securitySchemes/oauth',
+                    ],
+                },
+            ),
+        ],
+        ids=['backticks', 'full-reference', 'ambiguous'],
+    )
+    def test_an_explicit_link_that_does_not_resolve_is_reported(self, workspace, description, message, info):
+        source = (
+            f'#%RAML 1.0\ntitle: t\ndescription: {description}\n'
+            'securitySchemes:\n  oauth:\n    type: Pass Through\ntypes:\n  oauth: string\n'
+        )
+        findings = self.findings(workspace, source)
+        assert [(finding.message, finding.info, finding.position.line) for finding in findings] == [(message, info, 3)]
+
+    @pytest.mark.parametrize('description', ['A [`oauth`] is fine.', 'An [optional] word.', 'A [Nope][].'])
+    def test_a_resolved_or_bare_label_is_silent(self, workspace, description):
+        source = (
+            f'#%RAML 1.0\ntitle: t\ndescription: {description}\nsecuritySchemes:\n  oauth:\n    type: Pass Through\n'
+        )
+        assert self.findings(workspace, source) == []
+
+    def test_library_prose_naming_an_api_resource_is_out_of_scope(self, workspace):
+        source = '#%RAML 1.0\ntitle: t\nuses:\n  lib: lib.raml\ntypes:\n  Price: lib.Money\n/books:\n  get:\n'
+        findings = self.findings(workspace, source)
+        assert [(finding.message, finding.info, finding.location.rsplit('/', 1)[-1]) for finding in findings] == [
+            ('library prose links into an API', {'link': '`GET /books`'}, 'lib.raml')
+        ]
+
+    def test_a_contributed_description_is_reported_once_where_it_was_written(self, workspace):
+        source = '#%RAML 1.0\ntitle: t\nuses:\n  lib: lib.raml\n/a:\n  get:\n    is: [lib.priced]\n/b:\n  get:\n    is: [lib.priced]\n'
+        findings = [finding for finding in self.findings(workspace, source) if finding.info['link'] == '`Nope`']
+        assert [(finding.location.rsplit('/', 1)[-1], finding.position.line) for finding in findings] == [
+            ('lib.raml', 8)
+        ]
+
+    def test_an_inherited_description_is_reported_once_where_it_was_written(self, workspace):
+        source = (
+            '#%RAML 1.0\ntitle: t\ntypes:\n  Base:\n    type: object\n    description: A [`Nope`].\n'
+            '  A:\n    type: Base\n  B:\n    type: Base\n'
+        )
+        assert [finding.position.line for finding in self.findings(workspace, source)] == [6]
+
+    def test_a_documentation_item_is_checked(self, workspace):
+        source = '#%RAML 1.0\ntitle: t\ndocumentation:\n  - title: Intro\n    content: See [`Nope`].\n'
+        assert [finding.position.line for finding in self.findings(workspace, source)] == [5]
+
+    def test_only_the_documentation_ruleset_enables_it(self, workspace):
+        source = builtin_registry().get('broken-doc-link').meta.bad
+        assert self.findings(workspace, source, Config()) == []
+        assert len(self.findings(workspace, source)) == 1

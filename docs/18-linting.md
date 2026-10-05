@@ -45,6 +45,7 @@ Built-in rulesets are:
 | `problem-details` | RFC 9457 problem-details contracts | disabled |
 | `i-json` | RFC 7493 interoperable JSON profile | disabled |
 | `style` | built-in review and notation rules | disabled |
+| `documentation` | links in descriptions (docs/16 § 11) | disabled |
 | `all` | all built-ins and activated plugin rules | disabled |
 
 The current rule registry is `fastraml/views/lint/rules/__init__.py`. Do not copy
@@ -77,6 +78,18 @@ included (`/definitions/A`), so two subschemas of one file are told apart,
 and `''` for a whole file or an inline schema. It is reported once per schema, however many
 types include or inherit it: for a schema file at that file, without a
 position, and for an inline schema at its declaration.
+
+`broken-doc-link` warns at an explicit link in prose that does not resolve to
+one target: `` [`Book`] `` or `[the book][Book]` (docs/16 § 11.2). Its message
+key says why: `link names nothing`, `link names more than one target` (with the
+candidate addresses in `info['targets']`), or `library prose links into an
+API`. `info['link']` is the label as written. A bare `[label]` is never
+reported. A finding is placed on the `description:` or `content:` key that
+wrote the text, once per label. Placing it on a line inside a block scalar
+would put a suppression directive inside the prose. An inherited or
+contributed description is reported once, at the place that wrote it. The
+rule is a style rule in the `documentation` ruleset, because it checks
+fastRAML's own convention rather than RAML.
 
 ### 2.1 Rule shapes
 

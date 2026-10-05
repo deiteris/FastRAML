@@ -548,7 +548,9 @@ and whitespace is collapsed:
 | `Getting started` | a documentation item, by its title |
 
 A `kind@` prefix restricts a name to one namespace: `type@`, `annotationType@`,
-`securityScheme@` and `documentation@`.
+`securityScheme@` and `documentation@`. The name after it may be qualified,
+`` [`type@lib.Money`] ``. The separator is `@`; `type:lib.Money` is a name no
+declaration has.
 
 **Scope.** A name resolves in the namespace of the file that wrote the
 prose, through the lookup a `type:` there uses: the file's own declarations and

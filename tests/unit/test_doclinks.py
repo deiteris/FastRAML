@@ -118,6 +118,21 @@ class TestOneTarget:
         link = _links(workspace, f'See [{written}].', api=self.API_WITH_TWIN)[written]
         assert (link.outcome, link.target.kind) == (Outcome.RESOLVED, kind)
 
+    TWIN_LIBRARY = LIBRARY + 'securitySchemes:\n  oauth:\n    type: Pass Through\n  Money:\n    type: Pass Through\n'
+
+    @pytest.mark.parametrize(
+        ('written', 'kind'),
+        [('`type@lib.Money`', Kind.TYPE), ('`securityScheme@lib.Money`', Kind.SECURITY_SCHEME)],
+        ids=['type', 'scheme'],
+    )
+    def test_a_kind_prefix_takes_a_qualified_name(self, workspace, written, kind):
+        links = _links(workspace, f'See [{written}] and [`lib.Money`].', files={'lib.raml': self.TWIN_LIBRARY})
+        assert (links[written].outcome, links[written].target.kind) == (Outcome.RESOLVED, kind)
+        assert links['`lib.Money`'].outcome is Outcome.AMBIGUOUS
+
+    def test_a_colon_is_not_a_kind_prefix(self, workspace):
+        assert _links(workspace, 'See [`type:lib.Money`].')['`type:lib.Money`'].outcome is Outcome.UNRESOLVED
+
     def test_two_spellings_of_one_label_naming_two_types_are_ambiguous(self, workspace):
         api = API.replace('types:\n  Book:', 'types:\n  book: string\n  Book:')
         link = _links(workspace, 'A [`Book`] is not a [`book`].', api=api)['`Book`']

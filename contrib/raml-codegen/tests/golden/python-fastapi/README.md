@@ -2,7 +2,7 @@
 
 Bookstore API v2, as a FastAPI server to implement.
 
-A worked example exercising every construct the tree carries — including **Markdown** in a description, which is what the RAML spec says every `description:` is. See [Getting started](#) for the `{tenant}` you will need.
+A worked example exercising every construct the tree carries — including **Markdown** in a description, which is what the RAML spec says every `description:` is. See [Getting started] for the `{tenant}` you will need.
 
 Generated from a RAML 1.0 definition by `raml-codegen`. `bookstore_server/`
 is regenerated; `impl.py` is not.

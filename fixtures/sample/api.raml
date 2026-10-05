@@ -14,7 +14,7 @@ description: |
   **Markdown** in a description, which is what the RAML spec says every
   `description:` is.
 
-  See [Getting started](#) for the `{tenant}` you will need.
+  See [Getting started] for the `{tenant}` you will need.
 documentation:
   - title: Getting started
     content: |
@@ -38,7 +38,7 @@ documentation:
       list and retrieve; `write:books` is needed to add one; `admin:catalogue`
       is for tools, not for applications.
 
-      `GET /books/{isbn}` may also be called with no token at all, which is
+      [`GET /books/{isbn}`] may also be called with no token at all, which is
       what the open padlock on that method means.
   - title: Pagination
     content: |
@@ -467,7 +467,7 @@ resourceTypes:
   collection:
     get:
       displayName: List <<item>>s
-      description: Returns a page of <<item>> records.
+      description: Returns a page of [`<<item>>`] records.
       is: [paged]
       responses:
         200:
@@ -482,7 +482,7 @@ securedBy: [oauth2]
   post:
     securedBy: [oauth2: { scopes: [write:books, read:reviews, write:reviews, admin:catalogue] }, basic]
     displayName: Add a book
-    description: Adds one book to the catalogue and returns it with its identifier.
+    description: Adds one book to the catalogue and returns it; [`GET /books/{isbn}`] reads it back.
     (deprecated): use PUT
     # Two media types for one body: the same schema, accepted either way.
     body:

@@ -15,7 +15,10 @@
       "HTTP",
       "HTTPS"
     ],
-    "description": "A worked example exercising every construct the tree carries \u2014 including\n**Markdown** in a description, which is what the RAML spec says every\n`description:` is.\n\nSee [Getting started](#) for the `{tenant}` you will need.\n",
+    "description": "A worked example exercising every construct the tree carries \u2014 including\n**Markdown** in a description, which is what the RAML spec says every\n`description:` is.\n\nSee [Getting started] for the `{tenant}` you will need.\n",
+    "doc_links": {
+      "GETTING STARTED": "fastraml://id#/web-api/documentation/0"
+    },
     "base_uri_parameters": {
       "tenant": {
         "binding": "uri",
@@ -39,7 +42,10 @@
       {
         "id": "fastraml://id#/web-api/documentation/1",
         "title": "Authentication",
-        "content": "The API speaks OAuth 2.0. Send the caller to `/oauth/authorize`, exchange\nthe code at `/oauth/token`, and put the result in an `Authorization`\nheader:\n\n    Authorization: Bearer <token>\n\nAsk for the narrowest scopes that will do. `read:books` is enough to\nlist and retrieve; `write:books` is needed to add one; `admin:catalogue`\nis for tools, not for applications.\n\n`GET /books/{isbn}` may also be called with no token at all, which is\nwhat the open padlock on that method means.\n"
+        "content": "The API speaks OAuth 2.0. Send the caller to `/oauth/authorize`, exchange\nthe code at `/oauth/token`, and put the result in an `Authorization`\nheader:\n\n    Authorization: Bearer <token>\n\nAsk for the narrowest scopes that will do. `read:books` is enough to\nlist and retrieve; `write:books` is needed to add one; `admin:catalogue`\nis for tools, not for applications.\n\n[`GET /books/{isbn}`] may also be called with no token at all, which is\nwhat the open padlock on that method means.\n",
+        "doc_links": {
+          "`GET /BOOKS/{ISBN}`": "fastraml://id#/web-api/endpoint/%2Fbooks%2F%7Bisbn%7D/supportedOperation/get"
+        }
       },
       {
         "id": "fastraml://id#/web-api/documentation/2",
@@ -2216,7 +2222,10 @@
               "description": "The body did not match `Book` \u2014 see the schema above. The response\ncarries no envelope; the status code is the whole of it.\n"
             }
           },
-          "description": "Adds one book to the catalogue and returns it with its identifier.",
+          "description": "Adds one book to the catalogue and returns it; [`GET /books/{isbn}`] reads it back.",
+          "doc_links": {
+            "`GET /BOOKS/{ISBN}`": "fastraml://id#/web-api/endpoint/%2Fbooks%2F%7Bisbn%7D/supportedOperation/get"
+          },
           "display_name": "Add a book",
           "secured_by": [
             {
@@ -2610,7 +2619,10 @@
               }
             }
           },
-          "description": "Returns a page of Book records.",
+          "description": "Returns a page of [`Book`] records.",
+          "doc_links": {
+            "`BOOK`": "fastraml://id#/declarations/types/Book"
+          },
           "display_name": "List Books",
           "secured_by": [
             {

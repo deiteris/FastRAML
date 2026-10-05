@@ -75,7 +75,7 @@ class BooksApi(abc.ABC):
     ) -> Book:
         r"""Add a book
 
-        Adds one book to the catalogue and returns it with its identifier.
+        Adds one book to the catalogue and returns it; [`GET /books/{isbn}`] reads it back.
 
         Args:
             body (Book): sent as application/json.
@@ -100,7 +100,7 @@ class BooksApi(abc.ABC):
     ) -> list[Book]:
         r"""List Books
 
-        Returns a page of Book records.
+        Returns a page of [`Book`] records.
 
         Args:
             credential (Credential): the credential the caller sent.
@@ -172,7 +172,7 @@ def router(implementation: BooksApi) -> APIRouter:
         '/books',
         status_code=201,
         summary='Add a book',
-        description='Adds one book to the catalogue and returns it with its identifier.',
+        description='Adds one book to the catalogue and returns it; [`GET /books/{isbn}`] reads it back.',
         responses={201: {'description': 'Created', 'headers': {'Location': {'required': True, 'schema': {'type': 'string'}}}}, 400: {'description': 'The body did not match `Book` — see the schema above. The response carries no envelope; the status code is the whole of it.'}},
     )
     async def post_books(
@@ -190,7 +190,7 @@ def router(implementation: BooksApi) -> APIRouter:
         '/books',
         status_code=200,
         summary='List Books',
-        description='Returns a page of Book records.',
+        description='Returns a page of [`Book`] records.',
     )
     async def get_books(
         credential: Annotated[Credential, Depends(requires(security.OAUTH2))],

@@ -114,6 +114,7 @@ BENCHES: tuple[Bench, ...] = (
     Bench(
         'annotation-targets', lambda root, scale: corpus.write_annotation_targets(root, family_count=_at(250, scale))
     ),
+    Bench('doc-links', lambda root, scale: corpus.write_doc_links(root, resource_count=_at(250, scale))),
 )
 
 _BY_NAME = {bench.name: bench for bench in BENCHES}
@@ -140,7 +141,13 @@ def run_one(bench: str, config: str, entry: Path, repeat: int) -> Measurement:
     """Measure one configuration. Runs in the subprocess, not the driver."""
     from fastraml import ParseOptions, parse_from_path  # noqa: PLC0415 - see module docstring
 
-    if config == 'unwrap' and bench in {'schema-export', 'raml-schema', 'datatype-fragments', 'projections'}:
+    if config == 'unwrap' and bench in {
+        'schema-export',
+        'raml-schema',
+        'datatype-fragments',
+        'projections',
+        'doc-links',
+    }:
         return _measure_view(bench, entry, repeat)
     if config == 'service':
         return _measure_edit(bench, entry, repeat)
@@ -195,6 +202,21 @@ def _measure_view(bench: str, entry: Path, repeat: int) -> Measurement:
             return graph, build_tree(raml, addresses=graph.addresses), positions_of(raml)
 
         return measure(bench, 'unwrap', project, repeat=repeat)
+
+    if bench == 'doc-links':
+        from fastraml.views.graph import build_graph  # noqa: PLC0415 - feature workload only
+        from fastraml.views.lint import Config, Linter, builtin_registry  # noqa: PLC0415 - feature workload only
+        from fastraml.views.tree import build_tree  # noqa: PLC0415 - feature workload only
+
+        # Both readers of the links: the tree sends them, lint checks them.
+        linter = Linter(builtin_registry(), Config(extends=('documentation',)))
+
+        def link() -> object:
+            raml = parse_from_path(entry, ParseOptions(unwrap=True))
+            graph = build_graph(raml)
+            return graph, build_tree(raml, addresses=graph.addresses), linter.run(raml, graph=graph)
+
+        return measure(bench, 'unwrap', link, repeat=repeat)
 
     if bench == 'schema-export':
         from fastraml.views.raml import to_raml  # noqa: PLC0415 - feature workload only
@@ -376,6 +398,7 @@ LINEARITY_CONFIGS: dict[str, str] = {
     'raml-schema': 'unwrap',
     'projections': 'unwrap',
     'datatype-fragments': 'unwrap',
+    'doc-links': 'unwrap',
 }
 
 

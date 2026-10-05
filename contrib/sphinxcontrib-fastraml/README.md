@@ -260,6 +260,13 @@ entry shows what a caller must actually send.
   such as Sphinx roles, is not understood in them. Other tools read the same
   RAML file, and a role there would show up as literal text in all of them.
   So links go from your prose to the API, never from the API to your prose.
+- **A description can link within the API** in fastraml's own syntax, which
+  is plain Markdown: `` [`Book`] ``, `[list them][GET /books]` or
+  `[Getting started]` (fastraml's `docs/16-graph.md` § 11). fastraml resolves
+  each name where the description was written, and the link goes to the
+  item's entry, as a role's would. An item no page renders is left as text and
+  reported once by `raml_warn_unrendered`. In any other renderer the label
+  reads as bracketed text.
 
 ## Not yet
 

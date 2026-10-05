@@ -23,6 +23,17 @@ XML Schema external types are unsupported ([01](01-scope-and-coverage.md) § 3).
 Extensions and Libraries as inputs, and renaming to resolve a conflict, are not
 covered (docs/20 § 11).
 
+**Description links ([16](16-graph.md) § 11).** Resolved for lint, the tree,
+the viewer and the Sphinx extension. Deferred:
+
+- Language service navigation from a link in a description: definition, hover
+  and references through a new occurrence role. It needs a link's exact span,
+  and the composer keeps no scalar style, so an offset into a block, folded or
+  escaped scalar cannot be mapped to a column yet (docs/11 § 3).
+- Responses, properties, traits, resource types and built-in types as
+  targets. The viewer has no page for most of them.
+- `fastraml convert openapi` copies a description verbatim, links included.
+
 **Unwrap results depend on declaration order within a type cycle (known
 bug).** P9 walks types depth-first, so inside a cycle it can reach a type
 whose merge has not finished, and an alias, subtype or union member reached

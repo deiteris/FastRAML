@@ -58,7 +58,7 @@ export function Responses({
               {!own.has(code) && borrowed && (
                 <From label={borrowed.label} title={borrowed.title} secured={borrowed.secured} />
               )}
-              <Prose>{response.description}</Prose>
+              <Prose links={response.doc_links}>{response.description}</Prose>
               <Annotations applied={response.annotations} index={index} />
               <ParameterTable title="Headers" parameters={response.headers} index={index} />
               <Bodies title="Body" bodies={response.bodies} index={index} />

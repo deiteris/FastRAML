@@ -30,7 +30,7 @@ def create_app(implementation: Api, **options: Any) -> FastAPI:
     application = FastAPI(
         title=TITLE,
         version=VERSION,
-        description='A worked example exercising every construct the tree carries — including **Markdown** in a description, which is what the RAML spec says every `description:` is. See [Getting started](#) for the `{tenant}` you will need.',
+        description='A worked example exercising every construct the tree carries — including **Markdown** in a description, which is what the RAML spec says every `description:` is. See [Getting started] for the `{tenant}` you will need.',
         **options,
     )
     application.include_router(create_router(implementation))

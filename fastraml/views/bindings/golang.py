@@ -132,6 +132,7 @@ _NILABLE: Final = frozenset(
         'PropertiesByName',
         'PatternPropertiesByPattern',
         'FacetValuesByName',
+        'DocLinks',
     }
 )
 

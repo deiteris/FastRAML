@@ -29,9 +29,28 @@
  * markdown-it and not `marked` + DOMPurify: the second needs a DOM, and the
  * checks here render to static markup in Node, so the sanitiser would be absent
  * in exactly the run that is supposed to catch its absence.
+ *
+ * ## Links to the document
+ *
+ * `` [`Book`] `` or `[list them][GET /books]` in a description names something
+ * the document declares, and fastRAML resolves it: a record's `doc_links` maps
+ * each such label to an address (docs/16-graph.md § 11). Nothing here resolves a
+ * name. The labels go into markdown-it's reference table before parsing, as if
+ * the author had written `[Book]: <route>`, so markdown-it makes them links by
+ * its own rules -- never in a code span. A label that resolved to nothing is
+ * absent, and stays text. markdown-it keeps the first definition of a label, so
+ * one put here would beat the author's own `[Book]: …`; the tree never sends a
+ * label the description defines, which is what keeps the author's link theirs.
+ *
+ * Each href is the route as the host's router spells it (`useHref`), and a click
+ * navigates through the router, since the viewer may sit inside a host's.
  */
 
 import MarkdownIt from 'markdown-it';
+import { createContext, useContext, useMemo, type MouseEvent } from 'react';
+import { useHref, useNavigate } from 'react-router';
+import type { Index } from '../model';
+import type { DocLinks } from '../tree';
 import { highlightCode } from './highlighting';
 
 const md = new MarkdownIt({
@@ -63,10 +82,51 @@ md.renderer.rules.link_open = (tokens, at, options, env, self) => {
   return openLink(tokens, at, options, env, self);
 };
 
-/** A description, with its paragraphs, lists and code blocks. */
-export function Prose({ children }: { children?: string }) {
+/** The index a description's link addresses are turned into routes through. `Viewer` provides it. */
+export const LinkIndex = createContext<Index | null>(null);
+
+interface Reference {
+  href: string;
+  title: string;
+}
+
+/**
+ * markdown-it's environment for one description: its links, as reference
+ * definitions, and the click handler that sends one through the router.
+ *
+ * An address the index has no page for is left out, so its label stays text
+ * rather than becoming a link to nowhere.
+ */
+function useLinks(links: DocLinks | undefined): { env: { references: Record<string, Reference> }; onClick: (event: MouseEvent) => void } {
+  const index = useContext(LinkIndex);
+  const navigate = useNavigate();
+  // What the router writes in front of a route: `#/` under a hash router, the
+  // basename under another.
+  const root = useHref('/');
+  const base = root.endsWith('/') ? root : `${root}/`;
+  const references = useMemo(() => {
+    const found: Record<string, Reference> = {};
+    for (const [label, address] of Object.entries(links ?? {})) {
+      const entry = index?.get(address);
+      if (entry) found[label] = { href: base + entry.href.slice(1), title: '' };
+    }
+    return found;
+  }, [links, index, base]);
+  const onClick = (event: MouseEvent) => {
+    const href = event.target instanceof Element ? event.target.closest('a')?.getAttribute('href') : null;
+    const internal = href != null && Object.values(references).some((reference) => reference.href === href);
+    if (!internal || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    navigate(`/${href.slice(base.length)}`);
+  };
+  return { env: { references }, onClick };
+}
+
+/** A description, with its paragraphs, lists and code blocks, and its links to the document. */
+export function Prose({ children, links }: { children?: string; links?: DocLinks }) {
+  const { env, onClick } = useLinks(links);
   if (!children || children.trim() === '') return null;
-  return <div className="prose" dangerouslySetInnerHTML={{ __html: md.render(children) }} />;
+  return <div className="prose" onClick={onClick} dangerouslySetInnerHTML={{ __html: md.render(children, env) }} />;
 }
 
 /**
@@ -82,10 +142,11 @@ export function Prose({ children }: { children?: string }) {
  * than long -- it emits no block elements at all, so a list came out as its
  * source, asterisks and all, run together with the paragraph above it.
  */
-export function ProseInline({ className, children }: { className?: string; children?: string }) {
+export function ProseInline({ className, children, links }: { className?: string; children?: string; links?: DocLinks }) {
+  const { env, onClick } = useLinks(links);
   const gloss = children === undefined ? '' : firstParagraph(children);
   if (gloss === '') return null;
-  return <span className={className} dangerouslySetInnerHTML={{ __html: md.renderInline(gloss) }} />;
+  return <span className={className} onClick={onClick} dangerouslySetInnerHTML={{ __html: md.renderInline(gloss, env) }} />;
 }
 
 /**

@@ -327,8 +327,10 @@ class Steps(Writer):
     def explained(self, base: BaseShape) -> list[Node]:
         """An input's meaning in place: its description, constraints and allowed values."""
         own = target(base)
+        written = text(own.description)
+        links = self.doc_links(own.description, own) if written else None
         return [
-            *markdown(text(own.description) or self.described_by_type(own), self.document),
+            *markdown(written or self.described_by_type(own), self.document, links),
             *constraint_line(constraints(own), unit_of(own)),
             *one_of([plain(member) for member in own.enum or []]),
         ]

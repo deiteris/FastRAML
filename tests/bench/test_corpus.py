@@ -47,6 +47,7 @@ WRITERS = {
     'template-scopes': lambda root: corpus.write_template_scopes(root, resource_count=3),
     'reference-namespaces': lambda root: corpus.write_reference_namespaces(root, resource_count=3),
     'annotation-targets': lambda root: corpus.write_annotation_targets(root, family_count=3),
+    'doc-links': lambda root: corpus.write_doc_links(root, resource_count=3),
 }
 
 
@@ -249,6 +250,46 @@ class TestFeatureCorporaReachTheirCode:
             assert identifier.validate('123e4567-e89b-12d3-a456-426614174000\n') is not None
         assert declared['Record'].shape.as_shape().shape.properties['code'].base.enum is None
         assert declared['Base'].shape.as_shape().type == 'any'
+
+    @pytest.mark.parametrize('count', [2, 4])
+    def test_doc_links_parses_each_text_once_and_reaches_every_outcome(self, tmp_path, monkeypatch, count):
+        from bench.__main__ import run_one
+        from fastraml.views.doclinks import DocLinks, Kind, Outcome
+
+        parsed: dict[int, list[str]] = {}
+        # Held, so no two resolvers share an `id` by one outliving the other.
+        resolvers = []
+        found = []
+        original = DocLinks._parse
+
+        def counting(self, text, scope):
+            links = original(self, text, scope)
+            resolvers.append(self)
+            parsed.setdefault(id(self), []).append(text)
+            found.extend(links)
+            return links
+
+        monkeypatch.setattr(DocLinks, '_parse', counting)
+        entry = corpus.write_doc_links(tmp_path, resource_count=count)
+        run_one('doc-links', 'parse', entry, repeat=1)
+        assert not parsed, 'parse must not time the links'
+        run_one('doc-links', 'unwrap', entry, repeat=1)
+        # Per resolver, each text once: the inherited description and the
+        # trait's are each one text however many entities carry them, and
+        # prose with no `[` is not parsed. Four shared texts, four per item.
+        assert parsed
+        for texts in parsed.values():
+            assert len(texts) == len(set(texts)) == 4 + 4 * count
+        assert {link.target.kind for link in found if link.target is not None} == {
+            Kind.TYPE,
+            Kind.METHOD,
+            Kind.ENDPOINT,
+            Kind.DOCUMENTATION,
+        }
+        assert {(link.written, link.outcome, link.explicit) for link in found if link.target is None} == {
+            ('`Nope`', Outcome.UNRESOLVED, True),
+            ('optional', Outcome.UNRESOLVED, False),
+        }
 
     @pytest.mark.parametrize('count', [2, 4])
     def test_annotation_targets_reaches_each_restriction_and_scalar_path(self, tmp_path, monkeypatch, count):

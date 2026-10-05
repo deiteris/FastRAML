@@ -29,10 +29,12 @@ from typing import TYPE_CHECKING, Final
 
 from fastraml.datanode import DataNode, ValueNode
 from fastraml.facet_names import FACET_ANNOTATION_TYPES, FACET_TYPES
+from fastraml.parser.fragments import APIFragment
 from fastraml.types.base import BaseShape, Parameter, PatternProperty, Property, ScalarFacet, copyable_slots
 from fastraml.types.examples import Example, Examples
 from fastraml.types.jsonschema_ import JsonShape
 from fastraml.types.values import decimal_digits, decimal_text
+from fastraml.views.doclinks import DocLinks, Outcome
 from fastraml.views.walk import DEFAULT_BASE, Addresses, address, file_key, typed_declarations, workspace_of
 from fastraml.yamlnode import Node, NodeKind
 
@@ -41,11 +43,13 @@ if TYPE_CHECKING:
 
     from fastraml.parser.annotations import DomainExtension
     from fastraml.parser.directives import SecurityScheme
+    from fastraml.parser.documentation import DocumentationItem
     from fastraml.parser.endpoints import Body, EndPoint, Operation, Request, Response
     from fastraml.parser.fragments import Fragment
     from fastraml.parser.security import SecuritySchemeDefinition, SecuritySchemeDescription
     from fastraml.positions import Position
     from fastraml.registry import Raml
+    from fastraml.views.doclinks import Owner
 
 __all__ = ['Json', 'build_tree', 'positions_of']
 
@@ -111,7 +115,7 @@ def build_tree(raml: Raml, *, addresses: Addresses | None = None, base: str = DE
     """
     if addresses is None:
         addresses = address(raml, base=base)
-    return _Projector(addresses, _declared(raml)).model(raml)
+    return _Projector(addresses, _declared(raml), DocLinks(raml, addresses)).model(raml)
 
 
 def _declared(raml: Raml) -> frozenset[int]:
@@ -201,11 +205,12 @@ def _as_scientific(digits: int, scale: int) -> str:
 class _Projector:
     """One projection, holding the addresses every reference is written with."""
 
-    __slots__ = ('addresses', 'declared')
+    __slots__ = ('addresses', 'declared', 'links')
 
-    def __init__(self, addresses: Addresses, declared: frozenset[int]) -> None:
+    def __init__(self, addresses: Addresses, declared: frozenset[int], links: DocLinks) -> None:
         self.addresses = addresses
         self.declared = declared
+        self.links = links
 
     # -- references -----------------------------------------------------------
 
@@ -236,6 +241,19 @@ class _Projector:
         of ignoring a key and hanging.
         """
         return {'type': 'recursive', 'name': base.name, 'head': {'$ref': self.at(base.id)}}
+
+    def doc_links(self, prose: ScalarFacet[str] | None, owner: Owner) -> dict[str, Json]:
+        """What `prose` links, by the label a renderer's reference table is keyed by.
+
+        Resolved links only (docs/16 § 11.4). A link that names nothing is left
+        out rather than sent as `None`: the renderer then leaves its brackets as
+        text, which is what any other renderer of the same prose shows.
+        """
+        return {
+            link.label: link.targets[0].address
+            for link in self.links.links(prose, owner)
+            if link.outcome is Outcome.RESOLVED
+        }
 
     def reference(self, base: BaseShape, seen: frozenset[int]) -> Json:
         """A supertype or alias target: `$ref` when it is a declaration, inline
@@ -309,6 +327,9 @@ class _Projector:
             value = getattr(declared, field, None)
             if value is not None:
                 out[field] = self.value(value, frozenset())
+        links = self.doc_links(declared.description, definition)
+        if links:
+            out['doc_links'] = links
         settings = declared.settings
         if settings is not None:
             # `values` holds the scalars and `lists` the sequences, so both have
@@ -394,6 +415,9 @@ class _Projector:
             value = getattr(base, field, None)
             if value is not None:
                 out[field] = self.value(value, seen)
+        links = self.doc_links(base.description, base)
+        if links:
+            out['doc_links'] = links
         for field in ('default', 'example', 'examples', 'enum', 'xml', 'allowed_targets'):
             value = getattr(base, field, None)
             if value is not None:
@@ -511,6 +535,9 @@ class _Projector:
             value = getattr(example, field, None)
             if value is not None:
                 out[field] = self.value(value, seen)
+        links = self.doc_links(example.description, example)
+        if links:
+            out['doc_links'] = links
         if example.annotations:
             out['annotations'] = self.applied_to(example.annotations)
         return out
@@ -568,6 +595,10 @@ class _Projector:
             value = getattr(fragment, field, None)
             if value is not None:
                 out[field] = self.value(value, frozenset())
+        if isinstance(fragment, APIFragment):
+            links = self.doc_links(fragment.description, fragment)
+            if links:
+                out['doc_links'] = links
         declared = getattr(fragment, 'base_uri_parameters', None)
         if declared:
             # `{tenant}` in the base URI is a value every caller has to supply,
@@ -575,15 +606,24 @@ class _Projector:
             out['base_uri_parameters'] = {name: self.value(param, frozenset()) for name, param in declared.items()}
         items = getattr(fragment, 'documentation', None)
         if items:
-            out['documentation'] = [
-                {'title': self.value(item.title, frozenset()), 'content': self.value(item.content, frozenset())}
-                for item in items
-            ]
+            out['documentation'] = [self.documentation_item(item) for item in items]
         if secured_by:
             out['secured_by'] = self.schemes(secured_by)
         annotations = getattr(fragment, 'annotations', None)
         if annotations:
             out['annotations'] = self.applied_to(annotations)
+        return out
+
+    def documentation_item(self, item: DocumentationItem) -> Json:
+        """One `documentation:` entry, at the address a description link names it by."""
+        out: dict[str, Json] = {
+            'id': self.at(item.id),
+            'title': self.value(item.title, frozenset()),
+            'content': self.value(item.content, frozenset()),
+        }
+        links = self.doc_links(item.content, item)
+        if links:
+            out['doc_links'] = links
         return out
 
     def endpoint(self, endpoint: EndPoint) -> Json:
@@ -597,6 +637,9 @@ class _Projector:
             value = getattr(endpoint, field, None)
             if value is not None:
                 out[field] = self.value(value, frozenset())
+        links = self.doc_links(endpoint.description, endpoint)
+        if links:
+            out['doc_links'] = links
         if endpoint.uri_parameters:
             out['uri_parameters'] = {
                 name: self.value(param, frozenset()) for name, param in endpoint.uri_parameters.items()
@@ -618,6 +661,9 @@ class _Projector:
         }
         if operation.description is not None:
             out['description'] = self.value(operation.description, frozenset())
+        links = self.doc_links(operation.description, operation)
+        if links:
+            out['doc_links'] = links
         if operation.display_name is not None:
             out['display_name'] = self.value(operation.display_name, frozenset())
         if operation.protocols:
@@ -650,6 +696,9 @@ class _Projector:
         out: dict[str, Json] = {}
         if response.description is not None:
             out['description'] = self.value(response.description, frozenset())
+        links = self.doc_links(response.description, response)
+        if links:
+            out['doc_links'] = links
         if response.headers:
             out['headers'] = {name: self.value(param, frozenset()) for name, param in response.headers.items()}
         if response.bodies:

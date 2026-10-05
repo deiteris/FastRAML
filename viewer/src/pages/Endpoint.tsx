@@ -35,7 +35,7 @@ export function EndpointPage({ document, index }: Props) {
         <Url api={document.entry_point} path={full} />
       </h1>
       {endpoint.display_name && <h2 className="display-name">{endpoint.display_name}</h2>}
-      <Prose>{endpoint.description}</Prose>
+      <Prose links={endpoint.doc_links}>{endpoint.description}</Prose>
       <SecuredByList schemes={endpoint.secured_by} index={index} />
       <Annotations applied={endpoint.annotations} index={index} />
 
@@ -58,7 +58,9 @@ export function EndpointPage({ document, index }: Props) {
                 <Link to={`/endpoints/${encodeURIComponent(full)}/${method}`} className="method-link">
                   <Verb method={method} />
                   {/* A description is Markdown, and may run to pages: its first
-                      paragraph, rendered, or the row read as source. */}
+                      paragraph, rendered, or the row read as source. Without
+                      its links: the row is a link already, and a link cannot
+                      hold another. */}
                   {operation.display_name || !firstParagraph(operation.description ?? '') ? (
                     <span className="method-name">{operation.display_name ?? full}</span>
                   ) : (

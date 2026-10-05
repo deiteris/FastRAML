@@ -3,7 +3,7 @@
 
 A worked example exercising every construct the tree carries — including **Markdown** in a description, which is what the RAML spec says every `description:` is.
 
-See [Getting started](#) for the `{tenant}` you will need.
+See [Getting started] for the `{tenant}` you will need.
 """
 
 from __future__ import annotations

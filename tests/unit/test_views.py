@@ -35,10 +35,13 @@ _VIEWS = (
     'lint',
     'occurrences',
     'authored',
+    'doclinks',
 )
 
 #: The modules every view may import (docs/16 § 1).
-_SUBSTRATES = frozenset({'fastraml.views.walk', 'fastraml.views.graph', 'fastraml.views.severity'})
+_SUBSTRATES = frozenset(
+    {'fastraml.views.walk', 'fastraml.views.graph', 'fastraml.views.severity', 'fastraml.views.doclinks'}
+)
 
 
 def _view_crossings(importer: str, imported: list[str]) -> list[str]:
@@ -157,11 +160,12 @@ class TestThePackageCostsNothingToImport:
 
     def test_only_the_substrates_are_shared_between_views(self):
         """A view importing another *view* would mean a second traversal or a
-        second vocabulary. Three modules are substrate rather than view and may
+        second vocabulary. Four modules are substrate rather than view and may
         be shared: `walk` (one addressing traversal, docs/16 § 2), `graph`
-        (what the later views read), and `severity` (the ranking arithmetic
+        (what the later views read), `severity` (the ranking arithmetic
         `backward` and `lint` both need, docs/18 § 1 — they grade on different
-        axes and share only the comparisons).
+        axes and share only the comparisons), and `doclinks` (one reading of
+        the links in prose, docs/16 § 11).
 
         A view that is a package may import *itself*: splitting one view across
         five files is not five views, and `backward` says so thirteen times over

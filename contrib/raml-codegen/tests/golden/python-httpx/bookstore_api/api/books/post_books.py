@@ -92,7 +92,7 @@ def sync_detailed(
 ) -> Response[Book]:
     r"""Add a book
 
-    Adds one book to the catalogue and returns it with its identifier.
+    Adds one book to the catalogue and returns it; [`GET /books/{isbn}`] reads it back.
 
     Args:
         body (Book): sent as application/json.
@@ -123,7 +123,7 @@ def sync(
 ) -> Book | None:
     r"""Add a book
 
-    Adds one book to the catalogue and returns it with its identifier.
+    Adds one book to the catalogue and returns it; [`GET /books/{isbn}`] reads it back.
 
     Args:
         body (Book): sent as application/json.
@@ -154,7 +154,7 @@ async def asyncio_detailed(
 ) -> Response[Book]:
     r"""Add a book
 
-    Adds one book to the catalogue and returns it with its identifier.
+    Adds one book to the catalogue and returns it; [`GET /books/{isbn}`] reads it back.
 
     Args:
         body (Book): sent as application/json.
@@ -185,7 +185,7 @@ async def asyncio(
 ) -> Book | None:
     r"""Add a book
 
-    Adds one book to the catalogue and returns it with its identifier.
+    Adds one book to the catalogue and returns it; [`GET /books/{isbn}`] reads it back.
 
     Args:
         body (Book): sent as application/json.

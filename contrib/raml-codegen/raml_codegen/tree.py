@@ -59,6 +59,8 @@ DeclarationName: TypeAlias = str
 EndpointPath: TypeAlias = str
 StatusCode: TypeAlias = str
 MediaType: TypeAlias = str
+#: A Markdown link label as CommonMark matches it: case-folded, whitespace collapsed.
+LinkLabel: TypeAlias = str
 
 #: A link. Its sole key is the test -- an expanded shape carries `id` as well.
 #: The functional form, because `$ref` is not a Python identifier.
@@ -73,13 +75,17 @@ EndpointsByPath: TypeAlias = 'dict[EndpointPath, Endpoint]'
 OperationsByMethod: TypeAlias = 'dict[HttpMethod, Operation]'
 ResponsesByStatus: TypeAlias = 'dict[StatusCode, Response]'
 BodiesByMediaType: TypeAlias = 'dict[MediaType, ShapeNode | None]'
+#: What a record's prose links, by label (docs/16-graph.md § 11.4).
+DocLinks: TypeAlias = 'dict[LinkLabel, Address]'
 SecuritySetting: TypeAlias = 'str | list[str]'
 SecuritySettings: TypeAlias = 'dict[str, SecuritySetting]'
 
 
 class DocumentationItem(TypedDict):
+    id: Address
     title: str
     content: str
+    doc_links: NotRequired['DocLinks']
 
 
 class Property(TypedDict):
@@ -162,6 +168,7 @@ class ShapeBase(TypedDict):
 
     id: Address | None
     name: str | None
+    doc_links: NotRequired['DocLinks']
     inherits: NotRequired['list[ShapeNode]']
     alias: NotRequired['ShapeNode']
     custom_facets: NotRequired['dict[str, Json]']
@@ -324,12 +331,14 @@ class EntryPoint(TypedDict):
     protocols: NotRequired[list[Protocol]]
     usage: NotRequired[str]
     description: NotRequired[str]
+    doc_links: NotRequired['DocLinks']
 
 
 class SecurityScheme(TypedDict):
     id: Address | None
     name: str
     type: SecuritySchemeType
+    doc_links: NotRequired['DocLinks']
     described_by: NotRequired['DescribedBy']
     annotations: NotRequired['list[Applied]']
     display_name: NotRequired[str]
@@ -348,6 +357,7 @@ class Endpoint(TypedDict):
     id: Address | None
     operations: 'OperationsByMethod'
     secured_by: 'list[SecuredBy]'
+    doc_links: NotRequired['DocLinks']
     uri_parameters: NotRequired[dict[str, Parameter]]
     annotations: NotRequired['list[Applied]']
     display_name: NotRequired[str]
@@ -358,6 +368,7 @@ class Operation(TypedDict):
     id: Address | None
     responses: 'ResponsesByStatus'
     description: NotRequired[str]
+    doc_links: NotRequired['DocLinks']
     display_name: NotRequired[str]
     protocols: NotRequired[list[Protocol]]
     secured_by: NotRequired['list[SecuredBy]']
@@ -370,6 +381,7 @@ class Operation(TypedDict):
 
 class Response(TypedDict):
     description: NotRequired[str]
+    doc_links: NotRequired['DocLinks']
     headers: NotRequired[dict[str, Parameter]]
     bodies: NotRequired['BodiesByMediaType']
     annotations: NotRequired['list[Applied]']
@@ -398,6 +410,7 @@ class DocumentAnnotation(TypedDict):
 
 class Example(TypedDict):
     value: 'Json'
+    doc_links: NotRequired['DocLinks']
     annotations: NotRequired['list[Applied]']
     display_name: NotRequired[str]
     description: NotRequired[str]
@@ -490,6 +503,7 @@ __all__ = [
     'DateTimeShape',
     'DeclarationName',
     'DescribedBy',
+    'DocLinks',
     'Document',
     'DocumentAnnotation',
     'DocumentationItem',
@@ -506,6 +520,7 @@ __all__ = [
     'Json',
     'JsonObject',
     'JsonShape',
+    'LinkLabel',
     'MediaType',
     'NilShape',
     'NumberShape',

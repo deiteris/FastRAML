@@ -28,7 +28,7 @@ export function Overview({ document, index }: Props) {
           <Chip key={protocol}>{protocol}</Chip>
         ))}
       </div>
-      <Prose>{api.description}</Prose>
+      <Prose links={api.doc_links}>{api.description}</Prose>
       <Prose>{api.usage}</Prose>
 
       <KeyValues

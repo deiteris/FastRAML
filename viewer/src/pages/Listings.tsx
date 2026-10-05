@@ -39,7 +39,7 @@ function DeclarationList({ document, index, of, title }: Props & { of: 'types' |
                   <TypeName shape={value} index={index} />
                 </td>
                 <td className="property-description">
-                  <ProseInline>{value.description}</ProseInline>
+                  <ProseInline links={value.doc_links}>{value.description}</ProseInline>
                 </td>
               </tr>
             );
@@ -74,7 +74,7 @@ export function SecurityList({ document, index }: Props) {
                   <Chip tone="type">{value.type}</Chip>
                 </td>
                 <td className="property-description">
-                  <ProseInline>{value.description}</ProseInline>
+                  <ProseInline links={value.doc_links}>{value.description}</ProseInline>
                 </td>
               </tr>
             );

@@ -92,7 +92,7 @@ def sync_detailed(
 ) -> Response[list[Book]]:
     r"""List Books
 
-    Returns a page of Book records.
+    Returns a page of [`Book`] records.
 
     Args:
         offset (int): Default: 0.
@@ -125,7 +125,7 @@ def sync(
 ) -> list[Book] | None:
     r"""List Books
 
-    Returns a page of Book records.
+    Returns a page of [`Book`] records.
 
     Args:
         offset (int): Default: 0.
@@ -158,7 +158,7 @@ async def asyncio_detailed(
 ) -> Response[list[Book]]:
     r"""List Books
 
-    Returns a page of Book records.
+    Returns a page of [`Book`] records.
 
     Args:
         offset (int): Default: 0.
@@ -191,7 +191,7 @@ async def asyncio(
 ) -> list[Book] | None:
     r"""List Books
 
-    Returns a page of Book records.
+    Returns a page of [`Book`] records.
 
     Args:
         offset (int): Default: 0.

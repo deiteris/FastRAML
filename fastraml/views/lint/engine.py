@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Final, Protocol, cast
 from fastraml.gctuning import tuned_gc
 from fastraml.nodes import (
     ApiNode,
+    DocumentationNode,
     EndPointNode,
     GraphNode,
     OperationNode,
@@ -568,6 +569,7 @@ type Rule = VisitorRule | DocumentRule
 _NODE_ROLES: Final[dict[type[GraphNode[Any]], str]] = {
     UnitNode: 'unit',
     ApiNode: 'api',
+    DocumentationNode: 'documentation',
     TypeNode: 'type_',
     PropertyNode: 'property_',
     PatternPropertyNode: 'pattern_property',

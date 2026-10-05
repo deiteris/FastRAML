@@ -76,7 +76,7 @@ export function SecurityChoice({
                 </Link>
               )}
             </div>
-            <Prose>{declared?.description}</Prose>
+            <Prose links={declared?.doc_links}>{declared?.description}</Prose>
             {/* `null` is "not narrowed" and `[]` is "narrowed to nothing"; the
                 two are different and the emitter keeps them apart. */}
             {scheme && scheme.scopes !== null && (

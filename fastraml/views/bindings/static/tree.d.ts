@@ -47,6 +47,8 @@ export type DeclarationName = string;
 export type EndpointPath = string;
 export type StatusCode = string;
 export type MediaType = string;
+/** A Markdown link label as CommonMark matches it: case-folded, whitespace collapsed. */
+export type LinkLabel = string;
 
 /** A link. Its sole key is the test -- an expanded shape carries `id` as well. */
 export interface Ref {
@@ -62,12 +64,16 @@ export type EndpointsByPath = Record<EndpointPath, Endpoint>;
 export type OperationsByMethod = Partial<Record<HttpMethod, Operation>>;
 export type ResponsesByStatus = Record<StatusCode, Response>;
 export type BodiesByMediaType = Record<MediaType, ShapeNode | null>;
+/** What a record's prose links, by label (docs/16-graph.md § 11.4). */
+export type DocLinks = Record<LinkLabel, Address>;
 export type SecuritySetting = string | string[];
 export type SecuritySettings = Record<string, SecuritySetting>;
 
 export interface DocumentationItem {
+  id: Address;
   title: string;
   content: string;
+  doc_links?: DocLinks;
 }
 
 export interface Property {

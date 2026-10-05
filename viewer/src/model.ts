@@ -60,7 +60,7 @@ export { isRecursion as isRecursive } from './walk';
 
 /* -- the index ---------------------------------------------------------------- */
 
-export type Section = 'type' | 'annotationType' | 'securityScheme' | 'endpoint' | 'operation';
+export type Section = 'type' | 'annotationType' | 'securityScheme' | 'endpoint' | 'operation' | 'documentation';
 
 export interface Entry {
   address: Address;
@@ -75,7 +75,8 @@ export interface Entry {
 /**
  * Every addressable thing that has a page, by address.
  *
- * Declarations only. A nested anonymous shape has an address too and no page of
+ * Declarations, resources, methods and documentation items: what a `$ref` or a
+ * description link can name. A nested anonymous shape has an address too and no page of
  * its own -- it is rendered where it sits. A `$ref` only ever names a
  * declaration, which is the rule the emitter applies in `reference`, so a
  * lookup that misses here is a genuinely dangling reference and is shown as one
@@ -109,6 +110,11 @@ export class Index {
       for (const [method, operation] of methodsOf(endpoint)) {
         this.add(operation.id, `${method} ${path}`, 'operation', undefined, operationHref(path, method));
       }
+    }
+    // By position, as the tree addresses them: two may share a title. A
+    // description links one by its title (docs/16-graph.md § 11).
+    for (const [at, item] of (document.entry_point?.documentation ?? []).entries()) {
+      this.add(item.id, item.title, 'documentation', undefined, `/documentation/${at}`);
     }
   }
 

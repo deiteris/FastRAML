@@ -664,7 +664,10 @@ class TestWhatADocumentationViewNeeds:
         assert declared['tenant']['type']['description'] == 'which tenant'
 
     def test_documentation_items_are_projected(self, doc):
-        assert doc['entry_point']['documentation'] == [{'title': 'Getting started', 'content': 'Read this first.'}]
+        # Addressed by position, for the description links that name one (docs/16 § 11.4).
+        assert doc['entry_point']['documentation'] == [
+            {'id': 'fastraml://id#/web-api/documentation/0', 'title': 'Getting started', 'content': 'Read this first.'}
+        ]
 
     def test_a_resource_carries_its_own_prose(self, doc):
         """An operation had `displayName` and `description` and its resource had
@@ -1177,3 +1180,73 @@ class TestADeclaredFacetSaysWhatASubtypeMustSupply:
         # The two halves are separate keys: what is demanded, and what is given.
         assert metadata['Money']['custom_facets'] == {'onlyIn': 'EU'}
         assert 'declared_facets' not in metadata['Money']
+
+
+class TestDocLinks:
+    """docs/16 § 11.4: a record whose prose resolves links carries them, by label."""
+
+    LINKED = """#%RAML 1.0
+title: t
+description: The [`Book`] API. See [Intro].
+documentation:
+  - title: Intro
+    content: Start at [`GET /books`].
+securitySchemes:
+  token:
+    type: Pass Through
+    description: Guards [`/books`].
+types:
+  Book:
+    type: object
+    description: |
+      Secured by [`token`]; [`Nope`] is not a name, and [Book] is the author's.
+
+      [Book]: https://example.com/book
+    example:
+      description: A [`Book`].
+      value: {}
+/books:
+  description: Every [`Book`].
+  get:
+    description: Lists [`Book`]s.
+    responses:
+      200:
+        description: The [`Book`]s.
+"""
+
+    BOOK = 'fastraml://id#/declarations/types/Book'
+
+    @pytest.fixture
+    def tree(self, workspace):
+        return build_tree(workspace.document(self.LINKED, ParseOptions(unwrap=True)))
+
+    def test_each_record_with_prose_carries_its_resolved_links(self, tree):
+        entry = tree['entry_point']
+        book = tree['types']['api.raml']['Book']
+        operation = tree['endpoints']['/books']['operations']['get']
+        assert {
+            'entry point': entry['doc_links'],
+            'documentation item': entry['documentation'][0]['doc_links'],
+            'security scheme': tree['security_schemes']['api.raml']['token']['doc_links'],
+            'type': book['doc_links'],
+            'example': book['example']['doc_links'],
+            'endpoint': tree['endpoints']['/books']['doc_links'],
+            'operation': operation['doc_links'],
+            'response': operation['responses']['200']['doc_links'],
+        } == {
+            'entry point': {'`BOOK`': self.BOOK, 'INTRO': 'fastraml://id#/web-api/documentation/0'},
+            'documentation item': {'`GET /BOOKS`': 'fastraml://id#/web-api/endpoint/%2Fbooks/supportedOperation/get'},
+            'security scheme': {'`/BOOKS`': 'fastraml://id#/web-api/endpoint/%2Fbooks'},
+            # `Nope` names nothing and `[Book]` is the author's own link: neither is sent.
+            'type': {'`TOKEN`': 'fastraml://id#/declarations/securitySchemes/token'},
+            'example': {'`BOOK`': self.BOOK},
+            'endpoint': {'`BOOK`': self.BOOK},
+            'operation': {'`BOOK`': self.BOOK},
+            'response': {'`BOOK`': self.BOOK},
+        }
+
+    def test_a_record_whose_prose_links_nothing_carries_no_key(self, workspace):
+        tree = build_tree(
+            workspace.document('#%RAML 1.0\ntitle: t\ndescription: No [`Nope`].\n', ParseOptions(unwrap=True))
+        )
+        assert 'doc_links' not in tree['entry_point']

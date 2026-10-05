@@ -152,6 +152,7 @@ type (
 	EndpointPath    = string
 	StatusCode      = string
 	MediaType       = string
+	LinkLabel       = string
 )
 
 // The maps whose keys are data: a file, a declaration name, a path, a method, a
@@ -172,6 +173,7 @@ type (
 	PropertiesByName                 = *orderedmap.OrderedMap[string, Property]
 	PatternPropertiesByPattern       = *orderedmap.OrderedMap[string, PatternProperty]
 	FacetValuesByName                = *orderedmap.OrderedMap[string, Json]
+	DocLinks                         = *orderedmap.OrderedMap[LinkLabel, Address]
 )
 
 // Ref is a link. Its sole key is the test -- an expanded shape carries `id` as
@@ -326,8 +328,10 @@ func shapeOf(kind ShapeType) (Shape, error) {
 
 // DocumentationItem is one entry of the root `documentation:` list.
 type DocumentationItem struct {
-	Title   string `json:"title"`
-	Content string `json:"content"`
+	ID       Address  `json:"id"`
+	Title    string   `json:"title"`
+	Content  string   `json:"content"`
+	DocLinks DocLinks `json:"doc_links,omitzero"`
 }
 
 // Property is one declared property of an object type, or one declared custom facet.

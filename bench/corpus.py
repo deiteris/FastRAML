@@ -1161,3 +1161,61 @@ def write_include_content(root: Path, *, resource_count: int = 250) -> Path:
     files['api.raml'] = '\n'.join(lines) + '\n'
     _write(root, files)
     return root / 'api.raml'
+
+
+def write_doc_links(root: Path, *, resource_count: int = 250) -> Path:
+    """Descriptions that link, for the resolver the tree and lint share (docs/16 § 11).
+
+    Every path through it: each kind of target, a library name, a label that
+    names nothing, a bare label, a label in a code span, prose with no `[` at
+    all, a description every subtype inherits and one a trait contributes to
+    every method, and a library's own prose.
+    """
+    files = {
+        'lib.raml': '#%RAML 1.0 Library\ntypes:\n  Money:\n    type: number\n'
+        '    description: An amount of [`Money`], in minor units.\n'
+    }
+    lines = [
+        '#%RAML 1.0',
+        'title: Doc links',
+        'uses:',
+        '  lib: lib.raml',
+        'documentation:',
+        '  - title: Getting started',
+        '    content: Read [`Base`] first.',
+        'traits:',
+        '  paged:',
+        '    description: Pages of [`lib.Money`]; see [Getting started].',
+        'types:',
+        '  Base:',
+        '    type: object',
+        '    description: The [`Base`] of every [`lib.Money`] amount; [`Nope`] names nothing.',
+    ]
+    for index in range(resource_count):
+        lines += [
+            f'  Item{index}:',
+            '    type: Base',
+            f'    description: An [`Item{index}`] in [`lib.Money`], listed by [`GET /items{index}`]; `[code]`, [optional].',
+            '    properties:',
+            '      price:',
+            '        type: lib.Money',
+            f'        description: What [`Item{index}`] costs.',
+            '      label:',
+            '        type: string',
+            '        description: Prose with no link in it.',
+            f'  Sub{index}:',
+            f'    type: Item{index}',
+        ]
+    for index in range(resource_count):
+        lines += [
+            f'/items{index}:',
+            f'  description: Every [`Item{index}`]; see [the first page][GET /items{index}].',
+            '  get:',
+            '    is: [paged]',
+            '    responses:',
+            '      200:',
+            f'        description: The [`Item{index}`]s at [`/items{index}`], each a [`Base`].',
+        ]
+    files['api.raml'] = '\n'.join(lines) + '\n'
+    _write(root, files)
+    return root / 'api.raml'

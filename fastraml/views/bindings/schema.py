@@ -412,6 +412,9 @@ _RESPONSES: Final = Structural(
 #: The alias carries the element's nullability -- `dict[MediaType, ShapeNode | None]`.
 #: A body key with no type is a body the author declared and gave no shape.
 _BODIES: Final = Structural(Holds.SHAPE_NODE, container=Container.MAP, key='MediaType', alias='BodiesByMediaType')
+#: The links a record's prose resolves, by the label a Markdown reference table
+#: is keyed by (docs/16 § 11.4).
+_DOC_LINKS: Final = Structural(Holds.SCALAR, 'Address', container=Container.MAP, key='LinkLabel', alias='DocLinks')
 
 #: Every fixed record and what each key holds. The one hand-written table the
 #: contract needs, and the reason it is here rather than in a backend: three
@@ -458,6 +461,7 @@ _STRUCTURE: Final[dict[str, dict[str, Structural]]] = {
         'protocols': Structural(Holds.VOCABULARY, 'Protocol', container=Container.LIST),
         'usage': _STR,
         'description': _STR,
+        'doc_links': _DOC_LINKS,
         'base_uri_parameters': _PARAMETERS,
         'documentation': Structural(Holds.RECORD, 'DocumentationItem', container=Container.LIST),
         #: `securedBy:` at the root. Every endpoint declaring none carries the
@@ -472,6 +476,7 @@ _STRUCTURE: Final[dict[str, dict[str, Structural]]] = {
         'type': Structural(Holds.SCALAR, 'SecuritySchemeType', alias='SecuritySchemeType'),
         'display_name': _STR,
         'description': _STR,
+        'doc_links': _DOC_LINKS,
         'settings': Structural(Holds.JSON, container=Container.MAP, alias='SecuritySettings'),
         'described_by': Structural(Holds.RECORD, 'DescribedBy'),
         'annotations': _APPLIED,
@@ -490,6 +495,7 @@ _STRUCTURE: Final[dict[str, dict[str, Structural]]] = {
         'secured_by': _SECURED,
         'display_name': _STR,
         'description': _STR,
+        'doc_links': _DOC_LINKS,
         'uri_parameters': _PARAMETERS,
         'annotations': _APPLIED,
     },
@@ -497,6 +503,7 @@ _STRUCTURE: Final[dict[str, dict[str, Structural]]] = {
         'id': _ID,
         'responses': _RESPONSES,
         'description': _STR,
+        'doc_links': _DOC_LINKS,
         'display_name': _STR,
         'protocols': Structural(Holds.VOCABULARY, 'Protocol', container=Container.LIST),
         'secured_by': _SECURED,
@@ -508,6 +515,7 @@ _STRUCTURE: Final[dict[str, dict[str, Structural]]] = {
     },
     'Response': {
         'description': _STR,
+        'doc_links': _DOC_LINKS,
         'headers': _PARAMETERS,
         'bodies': _BODIES,
         'annotations': _APPLIED,
@@ -534,6 +542,7 @@ _STRUCTURE: Final[dict[str, dict[str, Structural]]] = {
         'value': _JSON,
         'display_name': _STR,
         'description': _STR,
+        'doc_links': _DOC_LINKS,
         'strict': _BOOL,
         'annotations': _APPLIED,
     },
@@ -544,6 +553,7 @@ _STRUCTURE: Final[dict[str, dict[str, Structural]]] = {
         'type': Structural(Holds.VOCABULARY, 'ShapeType'),
         'display_name': _STR,
         'description': _STR,
+        'doc_links': _DOC_LINKS,
         'required': _BOOL,
         'default': _JSON,
         'example': Structural(Holds.RECORD, 'Example'),
@@ -571,7 +581,12 @@ _STRUCTURE: Final[dict[str, dict[str, Structural]]] = {
         'head': Structural(Holds.REF),
     },
     # -- the records each `static/` half declares ------------------------------
-    'DocumentationItem': {'title': _STR, 'content': _STR},
+    'DocumentationItem': {
+        'id': Structural(Holds.SCALAR, 'Address'),
+        'title': _STR,
+        'content': _STR,
+        'doc_links': _DOC_LINKS,
+    },
     'Property': {'required': _BOOL, 'type': _NODE},
     'PatternProperty': {'pattern': _STR, 'type': _NODE},
     'Parameter': {

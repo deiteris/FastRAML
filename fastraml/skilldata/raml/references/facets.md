@@ -15,7 +15,7 @@ the first table, which every type accepts.
 | `examples` | a map of name to example | Mutually exclusive with `example`. |
 | `enum` | an array of instances | The instance must equal one of them. |
 | `displayName` | string | For documentation only. |
-| `description` | string, GitHub-flavoured Markdown | |
+| `description` | string, GitHub-flavoured Markdown | May link by name to what the document declares, such as `` [`Book`] ``: see the raml guide's links section. |
 | `facets` | a map of facet name to declaration | Restrictions that **subtypes** must supply. |
 | `xml` | a map | XML serialisation. See below. |
 | `(annotationName)` | an instance of that annotation type | |

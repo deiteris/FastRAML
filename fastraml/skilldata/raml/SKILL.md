@@ -1,6 +1,6 @@
 ---
 name: raml
-description: Write and read RAML 1.0 itself - the language, not the fastraml CLI. Covers the document header and root nodes, the type system, the type RAML infers when you declare none, optional and nilable properties, type expressions and multiple inheritance, resources and URI parameters, methods, bodies and responses, traits and resource types with their parameters and merge order, the six security scheme types, annotations, and !include, typed fragments and libraries. Use when writing a .raml file from scratch, adding a type, endpoint, trait or security scheme to one, turning an OpenAPI document or a set of models into RAML, reviewing RAML someone else wrote, or working out why a parser rejects a construct that looks correct. Triggers include "write a RAML spec for this", "add an endpoint to this RAML", "how do I express X in RAML", "is this RAML right". To run the fastraml CLI over a document that already exists, read the core guide instead.
+description: Write and read RAML 1.0 itself - the language, not the fastraml CLI. Covers the document header and root nodes, the type system, the type RAML infers when you declare none, optional and nilable properties, type expressions and multiple inheritance, resources and URI parameters, methods, bodies and responses, traits and resource types with their parameters and merge order, the six security scheme types, annotations, !include, typed fragments and libraries, and links from a description to what it names. Use when writing a .raml file from scratch, adding a type, endpoint, trait or security scheme to one, turning an OpenAPI document or a set of models into RAML, reviewing RAML someone else wrote, or working out why a parser rejects a construct that looks correct. Triggers include "write a RAML spec for this", "add an endpoint to this RAML", "how do I express X in RAML", "is this RAML right". To run the fastraml CLI over a document that already exists, read the core guide instead.
 license: MIT
 allowed-tools: Bash(fastraml:*) Read
 ---
@@ -557,6 +557,53 @@ types:
 The namespace is local to the file that wrote the `uses:` node, and **it does
 not chain**. If `files` itself uses `file-type`, then `files.file-type.File` is
 invalid here; import the inner library under its own name.
+
+## Links in descriptions
+
+A `description:` and a documentation item's `content:` can link to what the
+document declares by name, the way rustdoc links from a doc comment. This is
+fastraml's convention, not part of RAML. `fastraml serve` and the Sphinx
+extension render these as links. Any other tool shows the label as bracketed
+text, so the prose still reads.
+
+```yaml
+description: |
+  Returns a [`Book`] priced in [`common.Money`]; [list them][GET /books] first.
+  Read [Getting started] before you call it.
+```
+
+| Write | Links to |
+| --- | --- |
+| `` [`/books/{isbn}`] `` | a resource, by its full path |
+| `` [`GET /books/{isbn}`] `` | a method; the verb in any case |
+| `` [`Book`] ``, `` [`common.Money`] `` | a type, named as a `type:` in the same file names it |
+| `` [`oauth2`] `` | a security scheme |
+| `` [`(rateLimit)`] `` | an annotation type |
+| `[Getting started]` | a documentation item, by its title |
+| `[your text][Book]` | any of the above, with your own link text |
+
+- **Write the name in backticks, or as the label of `[text][Name]`.** That marks
+  it as a link, and the `documentation` lint ruleset reports one that names
+  nothing. A bare `[Name]` becomes a link only when it names exactly one thing,
+  and is never reported: prose uses brackets for other reasons.
+- **A name resolves in the file that wrote the description**: that file's
+  declarations and its `uses:` aliases. A description that a subtype inherits
+  or a trait contributes keeps that file. So a resource type's
+  `` [`<<item>>`] `` links each resource's own type.
+- **Library prose cannot link a resource, method or documentation item.** A
+  library does not know which API will use it.
+- **A name that is both a type and a security scheme links to neither.** Prefix
+  it with `type@`, `securityScheme@`, `annotationType@` or `documentation@`:
+  `` [`securityScheme@oauth2`] ``.
+- **`[text](/books)` is an ordinary URL** and is never resolved. A label you
+  define yourself, such as `[Book]: https://example.com/book`, stays your link.
+- **Responses, properties, traits and resource types cannot be linked yet.**
+
+Check the links you wrote:
+
+```bash
+fastraml lint -w . api.raml --format text --ruleset documentation
+```
 
 ## Five ways to write RAML that is wrong
 

@@ -31,7 +31,8 @@ class BrokenDocLink:
         summary='a link in a description names nothing, or more than one thing',
         rationale=(
             'A description links a declaration, resource, method or documentation item by name, as '
-            '[`Book`] or [the books][GET /books] (docs/16 § 11). A link that names nothing renders as its '
+            '[`Book`] or [the books][GET /books], resolved in the file that wrote it. A prefix such as '
+            'type@ or securityScheme@ picks one of two things with the same name. A link that names nothing renders as its '
             'bracketed text; one that names two things links to neither; and one that a library writes to '
             'an API resource names nothing in the next API that uses the library. A bare [label] is not '
             'reported, because prose uses brackets for other things too.'

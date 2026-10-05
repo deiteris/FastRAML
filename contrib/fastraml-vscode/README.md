@@ -63,6 +63,8 @@ and [theme color reference](https://code.visualstudio.com/api/references/theme-c
 
 ## Build
 
+Packaging needs Node.js 22 or later, which `@vscode/vsce` 4 requires.
+
 ```bash
 npm install
 npm install --prefix webview

@@ -21,6 +21,12 @@ EXIT_OK = 0
 EXIT_INVALID = 1
 
 
+def fail(message: object) -> int:
+    """Report why a command failed, on stderr, and the exit code that says so."""
+    print(message, file=sys.stderr)
+    return EXIT_INVALID
+
+
 def emit_document(args: argparse.Namespace, text: str, dropped: Iterable[str] = ()) -> int:
     """Write an export to FILE with `-o`, or to stdout without it, then warn
     of each thing the export `dropped`.
@@ -90,19 +96,27 @@ def _workspace_hint(error: RamlError) -> str:
     return ''
 
 
-def parse_or_report(args: argparse.Namespace, path: str | None = None, *, retain_text: bool = False) -> Raml | None:
+def parse_or_report(
+    args: argparse.Namespace,
+    path: str | None = None,
+    *,
+    validate: bool = False,
+    retain_source: bool = False,
+    retain_text: bool = False,
+) -> Raml | None:
     """Parse without projecting, for a verb that needs no graph, or report
-    why not.
+    why not. The options are `parse_options`'.
 
-    Validation is off, as for every reading verb, so a document with a bad
-    example remains navigable (docs/13 § 5).
+    Validation is off by default, as for every reading verb, so a document
+    with a bad example remains navigable (docs/13 § 5).
     """
     from fastraml.errors import RamlError  # noqa: PLC0415 - reading commands only
     from fastraml.parser.entry import parse_from_path  # noqa: PLC0415
 
     path = path or args.files[0]
+    options = parse_options(args, validate=validate, retain_source=retain_source, retain_text=retain_text)
     try:
-        return parse_from_path(path, parse_options(args, validate=False, retain_text=retain_text))
+        return parse_from_path(path, options)
     except RamlError as err:
         report_invalid(path, err)
         return None
@@ -134,9 +148,14 @@ def parse_options(
             retain_text=retain_text,
             workspace_root=args.workspace_root or configured.workspace_root,
             file_loader=FileLoader() if args.no_workspace_guard else None,
-            http_client=new_http_client() if args.remote or configured.remote else None,
+            http_client=remote_client(args),
         )
     )
+
+
+def remote_client(args: argparse.Namespace) -> Any:
+    """An HTTP client where `-r` or the configuration allows remote includes, else `None`."""
+    return new_http_client() if args.remote or args.fastraml_config.parser.remote else None
 
 
 def new_http_client() -> Any:

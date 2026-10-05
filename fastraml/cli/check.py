@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING
 
-from fastraml.cli.common import EXIT_INVALID, EXIT_OK, parse_options, report_invalid
+from fastraml.cli.common import EXIT_INVALID, EXIT_OK, parse_options, parse_or_report, report_invalid
 
 if TYPE_CHECKING:
     import argparse
@@ -54,15 +54,10 @@ def _validate(args: argparse.Namespace) -> int:
 def _info(args: argparse.Namespace) -> int:
     import time  # noqa: PLC0415 - version and catalogue commands do not parse
 
-    from fastraml.errors import RamlError  # noqa: PLC0415
-    from fastraml.parser.entry import parse_from_path  # noqa: PLC0415
-
     path = args.files[0]
     started = time.perf_counter()
-    try:
-        raml = parse_from_path(path, parse_options(args))
-    except RamlError as err:
-        report_invalid(path, err)
+    raml = parse_or_report(args, path, validate=True)
+    if raml is None:
         return EXIT_INVALID
     _report(raml, (time.perf_counter() - started) * 1e3, path=path)
     return EXIT_OK

@@ -35,11 +35,10 @@ when one of its verbs runs.
 
 from __future__ import annotations
 
-import sys
 from typing import TYPE_CHECKING
 
 from fastraml.cli.arguments import COMMANDS, build_parser
-from fastraml.cli.common import EXIT_INVALID, EXIT_OK
+from fastraml.cli.common import EXIT_INVALID, EXIT_OK, fail
 
 if TYPE_CHECKING:
     from argparse import Namespace
@@ -56,8 +55,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         try:
             args.fastraml_config = load_config(args.config)
         except (OSError, TypeError, ValueError) as err:
-            print(f'config: {err}', file=sys.stderr)
-            return EXIT_INVALID
+            return fail(f'config: {err}')
     return _handler(args.command)(args)
 
 

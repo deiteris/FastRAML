@@ -7,7 +7,7 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING
 
-from fastraml.cli.common import EXIT_INVALID, EXIT_OK, new_http_client, parse_or_report
+from fastraml.cli.common import EXIT_INVALID, EXIT_OK, fail, parse_or_report, remote_client
 
 if TYPE_CHECKING:
     import argparse
@@ -29,14 +29,12 @@ def _serve(args: argparse.Namespace) -> int:
     try:
         from fastraml_viewer import serve as serve_viewer  # noqa: PLC0415 - optional: fastraml[serve]
     except ImportError:
-        print('serve needs the viewer: install fastraml-viewer (fastraml[serve])', file=sys.stderr)
-        return EXIT_INVALID
+        return fail('serve needs the viewer: install fastraml-viewer (fastraml[serve])')
 
     try:
         server = serve_viewer(build_tree(raml), host=args.host, port=args.port)
     except OSError as err:
-        print(f'serve: {err}', file=sys.stderr)
-        return EXIT_INVALID
+        return fail(f'serve: {err}')
     print(f'viewer: http://{args.host}:{server.server_address[1]}/  (Ctrl-C to stop)', file=sys.stderr)
     try:
         server.serve_forever()
@@ -54,17 +52,13 @@ def _lsp(args: argparse.Namespace) -> int:
     try:
         from fastraml.service.lsp import RamlServer  # noqa: PLC0415 - optional: fastraml[lsp]
     except ImportError:
-        print('lsp needs pygls: pip install "fastraml[lsp]"', file=sys.stderr)
-        return EXIT_INVALID
+        return fail('lsp needs pygls: pip install "fastraml[lsp]"')
     from fastraml.gctuning import tuned_gc  # noqa: PLC0415
 
-    config = args.fastraml_config
-    http_client = new_http_client() if args.remote or config.parser.remote else None
     try:
-        server = RamlServer(config, http_client)
+        server = RamlServer(args.fastraml_config, remote_client(args))
     except ValueError as err:
-        print(f'lint config: {err}', file=sys.stderr)
-        return EXIT_INVALID
+        return fail(f'lint config: {err}')
     with tuned_gc():
         server.start_io()
     return EXIT_OK

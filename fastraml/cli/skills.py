@@ -6,7 +6,7 @@ import sys
 from typing import TYPE_CHECKING, Any, Final, NamedTuple
 
 from fastraml.cli.arguments import SKILL_DIR
-from fastraml.cli.common import EXIT_INVALID, EXIT_OK
+from fastraml.cli.common import EXIT_OK, fail
 
 if TYPE_CHECKING:
     import argparse
@@ -41,13 +41,17 @@ def _skills(args: argparse.Namespace) -> int:
     guides = _guides()
     if not guides:
         # Reachable only from a broken install -- the data ships in the wheel.
-        print(f'no guides found in {_skill_root()}', file=sys.stderr)
-        return EXIT_INVALID
+        return fail(f'no guides found in {_skill_root()}')
     if args.action == 'list':
         return _skills_list(guides, json_mode=args.json)
+    names = (args.names or [_STUB]) if args.action == 'install' else args.names
+    missing = [name for name in names if name not in guides]
+    if missing:
+        # Named, not guessed, as in `navigate._resolve`.
+        return fail(f'no such guide: {", ".join(missing)}; try {", ".join(guides)}')
     if args.action == 'install':
-        return _skills_install(guides, args.names or [_STUB], args)
-    return _skills_get(guides, args.names, full=args.full, json_mode=args.json)
+        return _skills_install(guides, names, args)
+    return _skills_get(guides, names, full=args.full, json_mode=args.json)
 
 
 def _skills_install(guides: dict[str, _Guide], names: Sequence[str], args: argparse.Namespace) -> int:
@@ -56,18 +60,12 @@ def _skills_install(guides: dict[str, _Guide], names: Sequence[str], args: argpa
     Refuses to overwrite without `--force`: the user may have edited an
     installed skill.
     """
-    missing = [name for name in names if name not in guides]
-    if missing:
-        print(f'no such guide: {", ".join(missing)}; try {", ".join(guides)}', file=sys.stderr)
-        return EXIT_INVALID
-
     root = _install_root(args)
     written = []
     for name in names:
         destination = root / name / 'SKILL.md'
         if destination.exists() and not args.force:
-            print(f'{destination} exists; pass --force to replace it', file=sys.stderr)
-            return EXIT_INVALID
+            return fail(f'{destination} exists; pass --force to replace it')
         written.append((destination, guides[name].path.read_text(encoding='utf-8')))
 
     # All collision checks and reads happen first, so a refusal writes nothing.
@@ -157,13 +155,7 @@ def _skills_list(guides: dict[str, _Guide], *, json_mode: bool) -> int:
 
 def _skills_get(guides: dict[str, _Guide], names: Sequence[str], *, full: bool, json_mode: bool) -> int:
     if not names:
-        print(f'skills get needs a name: {", ".join(guides)}', file=sys.stderr)
-        return EXIT_INVALID
-    missing = [name for name in names if name not in guides]
-    if missing:
-        # Named, not guessed, as in `navigate._resolve`.
-        print(f'no such guide: {", ".join(missing)}; try {", ".join(guides)}', file=sys.stderr)
-        return EXIT_INVALID
+        return fail(f'skills get needs a name: {", ".join(guides)}')
 
     wanted = [guides[name] for name in names]
     if json_mode:

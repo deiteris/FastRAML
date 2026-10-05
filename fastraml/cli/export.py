@@ -4,10 +4,9 @@ JSON Schema or RAML.
 
 from __future__ import annotations
 
-import sys
 from typing import TYPE_CHECKING
 
-from fastraml.cli.common import EXIT_INVALID, build_or_report, emit_document, parse_options, parse_or_report
+from fastraml.cli.common import EXIT_INVALID, build_or_report, emit_document, fail, parse_options, parse_or_report
 
 if TYPE_CHECKING:
     import argparse
@@ -88,20 +87,16 @@ def _convert_jsonschema(args: argparse.Namespace) -> int:
         return EXIT_INVALID
     if isinstance(raml.entry_point, DataTypeFragment):
         if args.name is not None:
-            print('convert jsonschema: a DataType fragment does not take TYPE', file=sys.stderr)
-            return EXIT_INVALID
+            return fail('convert jsonschema: a DataType fragment does not take TYPE')
         base = raml.entry_point.shape
     elif isinstance(raml.entry_point, (APIFragment, Library)):
         if args.name is None:
-            print('convert jsonschema: TYPE is required for an API or Library', file=sys.stderr)
-            return EXIT_INVALID
+            return fail('convert jsonschema: TYPE is required for an API or Library')
         base = raml.types_in(raml.location).get(args.name)
     else:
-        print('convert jsonschema: expected an API, Library, or DataType', file=sys.stderr)
-        return EXIT_INVALID
+        return fail('convert jsonschema: expected an API, Library, or DataType')
     if base is None:
-        print(f'convert jsonschema: no type {args.name!r} in {args.files[0]}', file=sys.stderr)
-        return EXIT_INVALID
+        return fail(f'convert jsonschema: no type {args.name!r} in {args.files[0]}')
     document, dropped = to_json_schema(base)
     return emit_document(args, json.dumps(document, indent=2, ensure_ascii=False) + '\n', dropped)
 
@@ -119,8 +114,7 @@ def _convert_raml(args: argparse.Namespace) -> int:
 
     path = Path(args.file).absolute()
     if path.suffix.lower() != '.json':
-        print(f'{args.file}: expected a .json schema', file=sys.stderr)
-        return EXIT_INVALID
+        return fail(f'{args.file}: expected a .json schema')
     source = f'#%RAML 1.0 DataType\ntype: !include {json.dumps(path.name)}\n'
     try:
         parsed = parse_from_string(
@@ -128,14 +122,11 @@ def _convert_raml(args: argparse.Namespace) -> int:
         )
         entry = parsed.entry_point
         if not isinstance(entry, DataTypeFragment) or entry.shape is None:
-            print(f'{args.file}: expected a JSON Schema DataType', file=sys.stderr)
-            return EXIT_INVALID
+            return fail(f'{args.file}: expected a JSON Schema DataType')
         schema = entry.shape.shape
         if not isinstance(schema, JsonShape):
-            print(f'{args.file}: expected a JSON Schema type', file=sys.stderr)
-            return EXIT_INVALID
+            return fail(f'{args.file}: expected a JSON Schema type')
         text = to_raml(schema, name=path.stem)
     except (RamlError, ValueError) as err:
-        print(f'{args.file}: {err}', file=sys.stderr)
-        return EXIT_INVALID
+        return fail(f'{args.file}: {err}')
     return emit_document(args, text)

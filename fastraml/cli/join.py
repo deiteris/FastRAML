@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING
 
-from fastraml.cli.common import EXIT_INVALID, emit_document, parse_options
+from fastraml.cli.common import emit_document, fail, parse_options
 
 if TYPE_CHECKING:
     import argparse
@@ -23,8 +23,7 @@ def _join(args: argparse.Namespace) -> int:
     from fastraml.yamlnode import compose  # noqa: PLC0415
 
     if len(args.files) < 2:  # noqa: PLR2004 - a join of one document is a copy
-        print('join: at least two INPUT files are required', file=sys.stderr)
-        return EXIT_INVALID
+        return fail('join: at least two INPUT files are required')
 
     def uri_of(path: str) -> str:
         return path_to_file_uri(Path(path).absolute())
@@ -34,8 +33,7 @@ def _join(args: argparse.Namespace) -> int:
     for item in configured.inputs:
         if item.base_uri is None:
             if item.base_uri_parameters is not None:
-                print(f'join: {item.path}: baseUriParameters needs a baseUri beside it', file=sys.stderr)
-                return EXIT_INVALID
+                return fail(f'join: {item.path}: baseUriParameters needs a baseUri beside it')
             continue
         parameters = None
         if item.base_uri_parameters is not None:
@@ -46,8 +44,7 @@ def _join(args: argparse.Namespace) -> int:
     for raw in args.base_uri:
         path, separator, uri = raw.partition('=')
         if not separator or not path or not uri:
-            print(f'join: --base-uri takes INPUT=URI, not {raw!r}', file=sys.stderr)
-            return EXIT_INVALID
+            return fail(f'join: --base-uri takes INPUT=URI, not {raw!r}')
         overrides[uri_of(path)] = BaseUriOverride(uri)
 
     options = JoinOptions(
@@ -62,6 +59,5 @@ def _join(args: argparse.Namespace) -> int:
         text = join(args.files, options)
     except RamlError as err:
         print('join: failed', file=sys.stderr)
-        print(err, file=sys.stderr)
-        return EXIT_INVALID
+        return fail(err)
     return emit_document(args, text)

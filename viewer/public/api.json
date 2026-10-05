@@ -37,7 +37,10 @@
       {
         "id": "fastraml://id#/web-api/documentation/0",
         "title": "Getting started",
-        "content": "Every request goes to your own tenant, so the first thing to settle is\nthe `{tenant}` in the base URI: it is the subdomain you were given at\nsign-up, and it is not optional.\n\n    curl https://acme.books.example.com/v2/books\n\nReads of the catalogue are open. Anything that writes needs a token \u2014\nsee **Authentication** below.\n"
+        "content": "Every request goes to your own tenant, so the first thing to settle is\nthe `{tenant}` in the base URI: it is the subdomain you were given at\nsign-up, and it is not optional.\n\n    curl https://acme.books.example.com/v2/books\n\nReads of the catalogue are open. Anything that writes needs a token \u2014\nsee **[Authentication]** below.\n",
+        "doc_links": {
+          "AUTHENTICATION": "fastraml://id#/web-api/documentation/1"
+        }
       },
       {
         "id": "fastraml://id#/web-api/documentation/1",

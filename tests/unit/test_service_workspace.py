@@ -20,7 +20,7 @@ from fastraml.registry import Raml
 from fastraml.service.workspace import _HEAD_BYTES, BOM, Workspace, _head, canonical
 from fastraml.uris import path_to_file_uri
 from fastraml.yamlnode import decode_source, read_head
-from tests.diagnostics import traces
+from tests.diagnostics import leaves, traces
 from tests.unit.conftest import write_files
 
 if TYPE_CHECKING:
@@ -217,7 +217,9 @@ class TestSnapshots:
         workspace.open(outside, LIBRARY, 1)
         snapshot = workspace.snapshot(f'{folder}/api.raml')
         assert snapshot.error is not None
-        assert any('outside the workspace root' in frame.message for frame in traces(snapshot.error))
+        assert [(t.message, t.info['path']) for t in leaves(snapshot.error)] == [
+            ('path is outside the workspace root', str(tmp_path / 'lib.raml'))
+        ]
 
     def test_a_file_that_appears_refreshes_a_snapshot_that_wanted_it(self, tmp_path):
         workspace, folder = _workspace(tmp_path, {'api.raml': API + 'uses:\n  lib: lib.raml\n'})

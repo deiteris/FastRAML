@@ -17,7 +17,7 @@ from fastraml.registry import Raml
 from fastraml.types.examples import examples_of
 from fastraml.types.shape import make_shape
 from fastraml.yamlnode import compose, pairs
-from tests.diagnostics import keys
+from tests.diagnostics import keys, leaves
 
 #: Several tests here carry their value on an annotation key, which accepts
 #: anything. P8 binds every application to a declaration, so they are declared.
@@ -319,7 +319,7 @@ class TestAnnotatedScalar:
     def test_a_missing_value_key_is_an_error(self, workspace):
         with pytest.raises(RamlError) as caught:
             workspace.document(API + 'description:\n  (only): 1\n')
-        assert 'missing value key in annotated scalar' in caught.value.messages()[0]
+        assert [(t.message, t.info) for t in leaves(caught.value)] == [('missing value key in annotated scalar', {})]
 
     def test_any_other_key_is_an_error(self, workspace):
         with pytest.raises(RamlError) as caught:
@@ -359,4 +359,4 @@ class TestFacetIncludes:
         key, value = next(iter(pairs(root)))
         with pytest.raises(RamlError) as caught:
             make_string_facet(raml, key, value, 'file:///a.raml')
-        assert 'expected scalar or mapping node' in caught.value.messages()[0]
+        assert [(t.message, t.info) for t in leaves(caught.value)] == [('expected scalar or mapping node', {})]

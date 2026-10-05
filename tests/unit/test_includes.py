@@ -13,6 +13,7 @@ from fastraml import ParseOptions, RamlError, parse_from_path, path_to_file_uri
 from fastraml.parser.includes import resolve_include, resolve_ref_uri
 from fastraml.registry import Raml
 from fastraml.yamlnode import TAG_INCLUDE, TAG_STR, Node, NodeKind
+from tests.diagnostics import leaves
 from tests.unit.conftest import CountingLoader
 
 if TYPE_CHECKING:
@@ -219,7 +220,9 @@ class TestCachingAndLimits:
         with pytest.raises(RamlError) as caught:
             parse_from_path(root / 'api.raml', ParseOptions(file_loader=loader, max_include_size=64))
 
-        assert 'include file exceeds size limit' in caught.value.messages()[0]
+        assert [(t.message, t.info) for t in leaves(caught.value)] == [
+            ('include file exceeds size limit', {'path': path_to_file_uri(root / 'big.yaml'), 'limit': 64})
+        ]
         limits = [limit for uri, limit in loader.calls if uri.endswith('big.yaml')]
         assert limits == [64], 'the loader must be asked for limit + 1 bytes, not for the whole file'
 
@@ -311,7 +314,9 @@ class TestATemplateParameterIsNotAPath:
         root = workspace({'api.raml': API + 'uses:\n  lib: <<version>>.raml\n'})
         with pytest.raises(RamlError) as caught:
             parse_from_path(root / 'api.raml', ParseOptions(file_loader=self.Serving(root, workspace)))
-        assert any('must not contain a template parameter' in m for m in caught.value.messages())
+        assert [(t.message, t.info) for t in leaves(caught.value)] == [
+            ('path must not contain a template parameter', {'path': '<<version>>.raml'})
+        ]
 
     def test_the_position_is_the_argument_and_not_the_document(self, workspace):
         root = workspace({'api.raml': API + 'types:\n  T: !include <<version>>.raml\n'})

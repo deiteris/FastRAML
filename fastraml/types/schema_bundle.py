@@ -124,7 +124,10 @@ def _definition_aliases(context: _Bundling, document: Any) -> dict[str, Any]:
 
 
 def _bundle_root(context: _Bundling, document: Any) -> Any:
-    """Bundle one document, expanding its claimed definition aliases in place."""
+    """Bundle one document, expanding its claimed definition aliases in place.
+
+    A `$ref` at its root is rewritten as one anywhere below it is.
+    """
     if not isinstance(document, dict):
         return _bundle_node(context, document)
     aliases = _definition_aliases(context, document)
@@ -142,6 +145,8 @@ def _bundle_root(context: _Bundling, document: Any) -> Any:
                 else _bundle_node(context, node)
                 for name, node in value.items()
             }
+        elif key == '$ref' and (local := _rewritten(context, value)) is not None:
+            bundled[key] = local
         else:
             bundled[key] = _bundle_member(context, key, value)
     return bundled
@@ -157,16 +162,23 @@ def _bundle_node(context: _Bundling, node: Any) -> Any:
         return [_bundle_node(context, item) for item in node]
     if not isinstance(node, dict):
         return node
-    reference = node.get('$ref')
-    if not isinstance(reference, str) or (context.root and reference.startswith('#')):
-        return {key: _bundle_member(context, key, value) for key, value in node.items()}
-    local = _pull(context, reference)
+    local = _rewritten(context, node.get('$ref'))
     if local is None:
         return {key: _bundle_member(context, key, value) for key, value in node.items()}
     # `$ref` first, where the author wrote it, and its siblings after: draft 2019
     # onward gives a schema beside a `$ref` meaning, so they are not dropped.
     rest = {key: _bundle_member(context, key, value) for key, value in node.items() if key != '$ref'}
     return {'$ref': local, **rest}
+
+
+def _rewritten(context: _Bundling, reference: Any) -> str | None:
+    """The local reference that replaces `reference`, or `None` where it stands
+    as written: not a reference, a pointer into the bundled document itself,
+    or one that does not resolve (`_pull`).
+    """
+    if not isinstance(reference, str) or (context.root and reference.startswith('#')):
+        return None
+    return _pull(context, reference)
 
 
 def _bundle_member(context: _Bundling, key: str, value: Any) -> Any:

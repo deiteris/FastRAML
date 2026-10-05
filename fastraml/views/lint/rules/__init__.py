@@ -202,7 +202,7 @@ def builtin_registry() -> Registry:
     )
     for rule in style_rules:
         registry.add(rule, sets=('style',))
-    # Checks fastRAML's own link convention (docs/16 § 11), so it is enabled
-    # only by a project that writes links that way.
-    registry.add(BrokenDocLink(), sets=('documentation',))
+    # Checks fastRAML's own link convention (docs/16 § 11), not RAML, yet it is
+    # recommended: a description's bracket that names nothing renders as text.
+    registry.add(BrokenDocLink(), sets=('documentation', 'recommended'))
     return registry

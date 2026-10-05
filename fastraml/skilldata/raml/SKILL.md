@@ -602,7 +602,7 @@ description: |
 Check the links you wrote:
 
 ```bash
-fastraml lint -w . api.raml --format text --ruleset documentation
+fastraml lint -w . api.raml --format text
 ```
 
 ## Five ways to write RAML that is wrong

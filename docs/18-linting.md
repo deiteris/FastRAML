@@ -38,14 +38,14 @@ Built-in rulesets are:
 
 | Ruleset | Contents | Default |
 |---|---|---|
-| `recommended` | the built-in `spec` rules and the remote-fragment portability warning | enabled |
+| `recommended` | the built-in `spec` rules, the remote-fragment portability warning and `broken-doc-link` | enabled |
 | `spec` | rules derived from RAML semantics | enabled through `recommended` |
 | `security` | rules derived from published security guidance | disabled |
 | `http` | HTTP semantics from RFC 9110 and related media/URI standards | disabled |
 | `problem-details` | RFC 9457 problem-details contracts | disabled |
 | `i-json` | RFC 7493 interoperable JSON profile | disabled |
 | `style` | built-in review and notation rules | disabled |
-| `documentation` | links in descriptions (docs/16 § 11) | disabled |
+| `documentation` | links in descriptions (docs/16 § 11) | enabled through `recommended` |
 | `all` | all built-ins and activated plugin rules | disabled |
 
 The current rule registry is `fastraml/views/lint/rules/__init__.py`. Do not copy
@@ -89,7 +89,8 @@ wrote the text, once per label. Placing it on a line inside a block scalar
 would put a suppression directive inside the prose. An inherited or
 contributed description is reported once, at the place that wrote it. The
 rule is a style rule in the `documentation` ruleset, because it checks
-fastRAML's own convention rather than RAML.
+fastRAML's own convention rather than RAML. It is also in `recommended`, so
+it warns by default; a bracket that names nothing renders as plain text.
 
 ### 2.1 Rule shapes
 

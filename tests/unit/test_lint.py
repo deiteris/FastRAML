@@ -1859,7 +1859,7 @@ class TestBrokenDocLink:
         source = '#%RAML 1.0\ntitle: t\ndocumentation:\n  - title: Intro\n    content: See [`Nope`].\n'
         assert [finding.position.line for finding in self.findings(workspace, source)] == [5]
 
-    def test_only_the_documentation_ruleset_enables_it(self, workspace):
+    def test_the_default_configuration_enables_it(self, workspace):
         source = builtin_registry().get('broken-doc-link').meta.bad
-        assert self.findings(workspace, source, Config()) == []
-        assert len(self.findings(workspace, source)) == 1
+        assert len(self.findings(workspace, source, Config())) == 1
+        assert self.findings(workspace, source, Config(extends=('style',))) == []

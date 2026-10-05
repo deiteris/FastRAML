@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from os import utime
 
 from sphinxcontrib.fastraml import apis, check_rendered
@@ -523,3 +524,29 @@ def test_model_values_read_as_the_author_wrote_them(build):
     assert 'At least 0 , a multiple of 0.01 .' in text
     # An alias names what it aliases, and shares everything with it (docs/07 § 3).
     assert 'AnythingAlias = Anything' in text
+
+
+def test_a_description_links_what_the_document_declares(build):
+    """fastraml resolves a description's `[`Book`]` and `[Getting started]` (its docs/16 § 11); each lands on its entry.
+
+    The sample's root links a documentation item by title, `GET /books` links
+    the `Book` its resource type contributes as `[`<<item>>`]`, and a method
+    and a documentation item link `GET /books/{isbn}`.
+    """
+    built = build({'index': 'Home\n====\n', 'reference': REFERENCE})
+    assert built.warnings == []
+    linked = re.findall(
+        r'href="#(raml-[^"]+)"[^>]*><span class="xref raml raml-[a-z-]+">(.*?)</span></a>', built.body('reference')
+    )
+    assert {(anchor, re.sub(r'<[^>]+>', '', written)) for anchor, written in linked} == {
+        ('raml-books-documentation-item-Getting-started', 'Getting started'),
+        ('raml-books-type-sample-api.raml-Book', 'Book'),
+        ('raml-books-method-GET-books-isbn', 'GET /books/{isbn}'),
+    }
+
+
+def test_a_description_link_to_what_no_page_renders_is_its_text(build):
+    built = build({'index': 'Home\n====\n\n.. raml:overview::\n'})
+    body = built.body('index')
+    assert 'See <span class="xref raml raml-documentation-item">Getting started</span> for' in body
+    assert 'Getting-started' not in body

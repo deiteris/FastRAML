@@ -23,6 +23,7 @@ properties into it and repeating them would bury the addition.
 from __future__ import annotations
 
 import json
+from functools import partial
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -57,6 +58,7 @@ if TYPE_CHECKING:
         Parameter,
         Property,
         Response,
+        ScalarFacet,
         SecurityScheme,
         SecuritySchemeDefinition,
     )
@@ -64,6 +66,7 @@ if TYPE_CHECKING:
 
     from .apis import Api
     from .catalogue import Catalogue, Declared, Kind
+    from .markdown import Linker
 
 Detail = Literal['summary', 'request', 'full']
 Register = Literal['indexed', 'target', 'none']
@@ -93,7 +96,8 @@ class Writer:
         signature: list[Node] = [addnodes.desc_name(self.catalogue.title, self.catalogue.title)]
         signature.extend(addnodes.desc_annotation('', f' {version}') for version in self.catalogue.value('version'))
         out, content = self.entry('api', '', signature, self.catalogue.title)
-        content.extend(markdown(text(entry.description) if entry else None, self.document))
+        if entry is not None:
+            content.extend(markdown(text(entry.description), self.document, self.doc_links(entry.description, entry)))
         content.extend(
             fields(
                 [
@@ -123,7 +127,7 @@ class Writer:
             section += nodes.title(title, title)
             if title not in duplicates:
                 self.target('documentation-item', title, section, title)
-            markdown_sections(text(item.content), self.document, section)
+            markdown_sections(text(item.content), self.document, section, self.doc_links(item.content, item))
             out.append(section)
         return out
 
@@ -141,7 +145,9 @@ class Writer:
         endpoint = self.catalogue.endpoints[path]
         out, content = self.entry('endpoint', path, [addnodes.desc_name(path, path)], path)
         content.extend(self.named(text(endpoint.display_name), path))
-        content.extend(markdown(text(endpoint.description), self.document))
+        content.extend(
+            markdown(text(endpoint.description), self.document, self.doc_links(endpoint.description, endpoint))
+        )
         content.extend(
             fields(
                 [
@@ -177,7 +183,9 @@ class Writer:
         ]
         out, content = self.entry('method', key, signature, key)
         content.extend(self.named(text(operation.display_name), method))
-        content.extend(markdown(text(operation.description), self.document))
+        content.extend(
+            markdown(text(operation.description), self.document, self.doc_links(operation.description, operation))
+        )
         endpoint = self.catalogue.endpoints[path]
         request = operation.request
         bodies = [self.body(media, body) for media, body in (request.bodies if request else {}).items()]
@@ -213,7 +221,9 @@ class Writer:
             signature.append(addnodes.desc_annotation('', f' {phrase}'))
         key = f'{method} {status}'
         out, content = self.entry('response', key, signature, key, register='target' if method else 'none')
-        content.extend(markdown(text(response.description), self.document))
+        content.extend(
+            markdown(text(response.description), self.document, self.doc_links(response.description, response))
+        )
         bodies = [self.body(media, body) for media, body in response.bodies.items()]
         content.extend(
             fields(
@@ -260,7 +270,9 @@ class Writer:
         signature.extend([addnodes.desc_sig_punctuation('', ' : '), *self.shape_label(declared)])
         out, content = self.entry(kind, key, signature, label)
         content.extend(self.named(text(declared.display_name), key.partition('#')[2]))
-        content.extend(markdown(text(declared.description), self.document))
+        content.extend(
+            markdown(text(declared.description), self.document, self.doc_links(declared.description, declared))
+        )
         if kind == 'annotation-type':
             targets = [str(where) for where in declared.allowed_targets or []]
             content.extend(fields([('Applies to', _words(targets))]))
@@ -296,7 +308,7 @@ class Writer:
         signature: list[Node] = [addnodes.desc_name(label, label), addnodes.desc_annotation('', f' {scheme.type}')]
         out, content = self.entry('security-scheme', key, signature, label)
         content.extend(self.named(text(scheme.display_name), declared.name))
-        content.extend(markdown(text(scheme.description), self.document))
+        content.extend(markdown(text(scheme.description), self.document, self.doc_links(scheme.description, declared)))
         settings: list[list[Node]] = []
         if scheme.settings is not None:
             written: dict[str, list[str]] = {
@@ -402,7 +414,8 @@ class Writer:
         description = text(base.description)
         if any(text(parent.description) == description for parent in beneath):
             description = None
-        return [*markdown(description, self.document), *self.details(base, beneath=beneath)]
+        links = self.doc_links(base.description, base) if description is not None else None
+        return [*markdown(description, self.document, links), *self.details(base, beneath=beneath)]
 
     def details(
         self, base: BaseShape, *, properties: bool = True, beneath: list[BaseShape] | None = None
@@ -487,7 +500,7 @@ class Writer:
         out: list[Node] = []
         for title, example in found:
             out.append(nodes.rubric(title, title))
-            out.extend(markdown(text(example.description), self.document))
+            out.extend(markdown(text(example.description), self.document, self.doc_links(example.description, example)))
             out.append(_code(plain(example.data)))
         return out
 
@@ -595,13 +608,36 @@ class Writer:
 
     def xref(self, kind: Kind, key: str, text: str) -> Node:
         """A link the extension writes: plain text, unwarned, when nothing renders its target."""
+        return self.link_to(kind, key, nodes.literal(text, text, classes=['xref', 'raml', f'raml-{kind}']))
+
+    def link_to(self, kind: Kind, key: str, content: Element) -> Node:
+        """`content`, linking to one item: unwarned when nothing renders it.
+
+        `raml_warn_unrendered` names such an item once, rather than at every
+        place that links to it (`domain.py`).
+        """
         ref = addnodes.pending_xref(
             '', refdomain='raml', reftype=kind, reftarget=key, refexplicit=True, refwarn=False, refdoc=self.env.docname
         )
         ref['raml:api'] = self.api.name
         self.domain.note_link(kind, self.api.name, key, self.env.docname)
-        ref += nodes.literal(text, text, classes=['xref', 'raml', f'raml-{kind}'])
+        ref += content
         return ref
+
+    def doc_links(self, prose: ScalarFacet[str] | None, owner: object) -> dict[str, Linker]:
+        """The links in one description (fastraml's docs/16 § 11), each as the cross-reference it becomes.
+
+        The link keeps the text the author wrote for it, code formatting and
+        all, in one node: Sphinx keeps only a reference's first child when its
+        target is not rendered.
+        """
+        return {
+            label: partial(self._doc_link, kind, key)
+            for label, (kind, key) in self.catalogue.links(prose, owner).items()
+        }
+
+    def _doc_link(self, kind: Kind, key: str, written: list[Node]) -> Node:
+        return self.link_to(kind, key, nodes.inline('', '', *written, classes=['xref', 'raml', f'raml-{kind}']))
 
     def named(self, display_name: str | None, name: str) -> list[Node]:
         """A `displayName`, when it says more than the name it is displayed for."""

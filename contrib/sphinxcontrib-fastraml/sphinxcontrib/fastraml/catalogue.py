@@ -32,10 +32,10 @@ is one level under `/books` whether the RAML declared it nested or not.
 from __future__ import annotations
 
 from collections import Counter
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 from urllib.parse import unquote
 
-from fastraml import APIFragment, BaseShape, ObjectShape, bound_base_uri
+from fastraml import APIFragment, BaseShape, DocLinks, ObjectShape, address, bound_base_uri
 
 from .model import target, text, texts
 
@@ -49,6 +49,7 @@ if TYPE_CHECKING:
         Parameter,
         Raml,
         Response,
+        ScalarFacet,
         SecurityScheme,
         SecuritySchemeDefinition,
     )
@@ -74,7 +75,7 @@ METHODS: frozenset[str] = frozenset(('delete', 'get', 'head', 'options', 'patch'
 class Catalogue:
     """One API's effective model, read for what can be named."""
 
-    __slots__ = ('_declarations', '_declared_at', '_workspace', 'raml', 'root_file')
+    __slots__ = ('_declarations', '_declared_at', '_links', '_methods', '_workspace', 'raml', 'root_file')
 
     def __init__(self, raml: Raml) -> None:
         self.raml = raml
@@ -92,6 +93,9 @@ class Catalogue:
         for kind in DECLARED:
             for key, node in self._declarations[kind].items():
                 self._declared_at.setdefault(node.id, (kind, key))
+        #: Built on the first description that holds a `[`; see `links`.
+        self._links: DocLinks | None = None
+        self._methods: dict[int, str] | None = None
 
     def file(self, uri: str) -> str:
         """A file as the views name it: relative to the workspace root, as a path.
@@ -276,6 +280,47 @@ class Catalogue:
         if kind == 'documentation-item':
             return self.documentation_item(key) is not None
         return key in self.base_uri_parameters()
+
+    # -- links in prose ----------------------------------------------------------
+
+    def links(self, prose: ScalarFacet[str] | None, owner: Any) -> dict[str, tuple[Kind, str]]:
+        """What `prose` links, by the label CommonMark matches: each target's kind and key.
+
+        fastraml resolves the names (its docs/16 § 11): a description reads
+        `` [`Book`] `` or `[list them][GET /books]` in the scope of the file
+        that wrote it. This only says where each target is rendered. A target
+        with no key here -- a documentation item whose title another shares --
+        is left out, and its label stays text.
+        """
+        if prose is None or '[' not in prose.value:
+            return {}
+        if self._links is None:
+            self._links = DocLinks(self.raml, address(self.raml))
+        out: dict[str, tuple[Kind, str]] = {}
+        for link in self._links.links(prose, owner):
+            found = link.target
+            named = None if found is None else self._named(str(found.kind), found.entity)
+            if named is not None:
+                out[link.label] = named
+        return out
+
+    def _named(self, kind: str, entity: Any) -> tuple[Kind, str] | None:
+        """The kind and key a link target is rendered under."""
+        if kind in DECLARED:
+            return self.declared_at(entity.id)
+        if kind == 'endpoint':
+            return 'endpoint', entity.full_uri
+        if kind == 'method':
+            if self._methods is None:
+                self._methods = {
+                    operation.id: f'{method.upper()} {path}'
+                    for path, endpoint in self.endpoints.items()
+                    for method, operation in endpoint.operations.items()
+                }
+            key = self._methods.get(entity.id)
+            return None if key is None else ('method', key)
+        title = text(entity.title)
+        return None if title is None or title in self.duplicate_titles() else ('documentation-item', title)
 
     def addressable(self) -> Iterator[tuple[Kind, str]]:
         """What a complete reference renders: the root namespace, and nothing below it.

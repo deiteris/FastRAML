@@ -128,6 +128,8 @@ from fastraml.views.backward import rule_for as rule_for
 from fastraml.views.backward import side_of as side_of
 from fastraml.views.backward import side_of_rule as side_of_rule
 from fastraml.views.base_uri import bound_base_uri as bound_base_uri
+from fastraml.views.doclinks import DocLink as DocLink
+from fastraml.views.doclinks import DocLinks as DocLinks
 from fastraml.views.graph import RAML_NS as RAML_NS
 from fastraml.views.graph import Edge as Edge
 from fastraml.views.graph import Graph as Graph
@@ -177,6 +179,8 @@ __all__ = (  # noqa: RUF022 - plain sorted, matching the package
     'DateTimeOnlyShape',
     'DateTimeShape',
     'Direction',
+    'DocLink',
+    'DocLinks',
     'DocumentationItem',
     'DocumentationItemFragment',
     'DomainExtension',

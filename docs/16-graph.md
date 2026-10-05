@@ -530,7 +530,8 @@ Read [Getting started] before you call it.
 `DocLinks(raml, addresses).links(facet, owner)` gives each label of one text
 once, in the order written, with its outcome: `resolved`, `unresolved`,
 `ambiguous`, or `out-of-scope`. `prose_of(entity)` lists the texts an entity
-carries.
+carries. `DocLinks` and `DocLink` are exported from `fastraml`, for a consumer
+that renders the model itself, as `sphinxcontrib-fastraml` does.
 
 ### 11.1 Names
 

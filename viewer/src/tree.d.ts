@@ -47,6 +47,8 @@ export type DeclarationName = string;
 export type EndpointPath = string;
 export type StatusCode = string;
 export type MediaType = string;
+/** A Markdown link label as CommonMark matches it: case-folded, whitespace collapsed. */
+export type LinkLabel = string;
 
 /** A link. Its sole key is the test -- an expanded shape carries `id` as well. */
 export interface Ref {
@@ -62,12 +64,16 @@ export type EndpointsByPath = Record<EndpointPath, Endpoint>;
 export type OperationsByMethod = Partial<Record<HttpMethod, Operation>>;
 export type ResponsesByStatus = Record<StatusCode, Response>;
 export type BodiesByMediaType = Record<MediaType, ShapeNode | null>;
+/** What a record's prose links, by label (docs/16-graph.md § 11.4). */
+export type DocLinks = Record<LinkLabel, Address>;
 export type SecuritySetting = string | string[];
 export type SecuritySettings = Record<string, SecuritySetting>;
 
 export interface DocumentationItem {
+  id: Address;
   title: string;
   content: string;
+  doc_links?: DocLinks;
 }
 
 export interface Property {
@@ -100,6 +106,7 @@ export type AnnotationTarget = 'API' | 'DocumentationItem' | 'Resource' | 'Metho
 export interface ShapeBase {
   id: Address | null;
   name: string | null;
+  doc_links?: DocLinks;
   inherits?: ShapeNode[];
   alias?: ShapeNode;
   custom_facets?: Record<string, Json>;
@@ -245,12 +252,14 @@ export interface EntryPoint {
   protocols?: Protocol[];
   usage?: string;
   description?: string;
+  doc_links?: DocLinks;
 }
 
 export interface SecurityScheme {
   id: Address | null;
   name: string;
   type: SecuritySchemeType;
+  doc_links?: DocLinks;
   described_by?: DescribedBy;
   annotations?: Applied[];
   display_name?: string;
@@ -269,6 +278,7 @@ export interface Endpoint {
   id: Address | null;
   operations: OperationsByMethod;
   secured_by: SecuredBy[];
+  doc_links?: DocLinks;
   uri_parameters?: Record<string, Parameter>;
   annotations?: Applied[];
   display_name?: string;
@@ -279,6 +289,7 @@ export interface Operation {
   id: Address | null;
   responses: ResponsesByStatus;
   description?: string;
+  doc_links?: DocLinks;
   display_name?: string;
   protocols?: Protocol[];
   secured_by?: SecuredBy[];
@@ -291,6 +302,7 @@ export interface Operation {
 
 export interface Response {
   description?: string;
+  doc_links?: DocLinks;
   headers?: Record<string, Parameter>;
   bodies?: BodiesByMediaType;
   annotations?: Applied[];
@@ -319,6 +331,7 @@ export interface DocumentAnnotation {
 
 export interface Example {
   value: Json;
+  doc_links?: DocLinks;
   annotations?: Applied[];
   display_name?: string;
   description?: string;

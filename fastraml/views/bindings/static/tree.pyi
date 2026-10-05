@@ -59,6 +59,8 @@ DeclarationName: TypeAlias = str
 EndpointPath: TypeAlias = str
 StatusCode: TypeAlias = str
 MediaType: TypeAlias = str
+#: A Markdown link label as CommonMark matches it: case-folded, whitespace collapsed.
+LinkLabel: TypeAlias = str
 
 #: A link. Its sole key is the test -- an expanded shape carries `id` as well.
 #: The functional form, because `$ref` is not a Python identifier.
@@ -73,13 +75,17 @@ EndpointsByPath: TypeAlias = 'dict[EndpointPath, Endpoint]'
 OperationsByMethod: TypeAlias = 'dict[HttpMethod, Operation]'
 ResponsesByStatus: TypeAlias = 'dict[StatusCode, Response]'
 BodiesByMediaType: TypeAlias = 'dict[MediaType, ShapeNode | None]'
+#: What a record's prose links, by label (docs/16-graph.md § 11.4).
+DocLinks: TypeAlias = 'dict[LinkLabel, Address]'
 SecuritySetting: TypeAlias = 'str | list[str]'
 SecuritySettings: TypeAlias = 'dict[str, SecuritySetting]'
 
 
 class DocumentationItem(TypedDict):
+    id: Address
     title: str
     content: str
+    doc_links: NotRequired['DocLinks']
 
 
 class Property(TypedDict):

@@ -596,6 +596,19 @@ Prose with no `[` is not parsed. A text is parsed once per scope, however many
 entities share it, and each name is looked up once per scope. The parser is
 imported on first use.
 
+### 11.4 In the tree
+
+A record whose prose holds resolved links carries `doc_links`. Its keys are
+labels as CommonMark matches them (case-folded, whitespace collapsed), and its
+values are target addresses. The prose is the record's `description`, or its
+`content` for a documentation item, which also carries its `id`. A renderer
+puts each entry into its Markdown parser's reference table before parsing, as
+markdown-it's `env.references` with the address turned into a route. The
+prose's own definitions are not among them, so the author's link always wins.
+
+Another tool that renders the same prose shows an unresolved reference link as
+its bracketed text.
+
 ## 12. Verification
 
 - View boundary: `tests/unit/test_views.py`

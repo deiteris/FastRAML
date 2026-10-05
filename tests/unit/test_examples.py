@@ -15,11 +15,6 @@ from fastraml.yamlnode import Node, compose, pairs
 LOCATION = 'file:///a.raml'
 
 
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
 def pair_of(text: str) -> tuple[Node, Node]:
     """The key and value nodes of a one-key document."""
     return next(iter(pairs(compose(text, uri=LOCATION))))

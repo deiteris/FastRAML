@@ -21,6 +21,7 @@ import pytest
 from fastraml import ParseOptions, RamlError
 from fastraml.parser.facets import regex_engine
 from fastraml.registry import Raml
+from tests.diagnostics import messages
 from tests.unit.test_jsonschema import API, indent
 
 re2 = pytest.importorskip('re2', reason='the optional google-re2 package is not installed')
@@ -33,19 +34,11 @@ RE2 = ParseOptions(regex_engine='re2')
 BACKREFERENCE = '(a)\\1'
 
 
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
-def messages(error: RamlError) -> list[str]:
-    return [trace.message for chain in error.chains() for trace in chain]
-
-
 def schema_shape(workspace, schema: dict, **options):
     """The `JsonShape` of `T`, declared inline so the schema is its own."""
-    root = workspace({'api.raml': API + 'types:\n  T: |\n' + indent(json.dumps(schema))})
-    raml = workspace.parse(root / 'api.raml', ParseOptions(regex_engine='re2', **options))
+    raml = workspace.document(
+        API + 'types:\n  T: |\n' + indent(json.dumps(schema)), ParseOptions(regex_engine='re2', **options)
+    )
     return raml.types_in(raml.location)['T'].shape
 
 

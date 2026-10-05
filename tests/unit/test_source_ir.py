@@ -13,6 +13,7 @@ from fastraml import RamlError
 from fastraml.parser.source_ir import METHODS, make_source_endpoint
 from fastraml.registry import Raml
 from fastraml.yamlnode import compose, pairs
+from tests.diagnostics import traces
 
 LOCATION = 'file:///a.raml'
 
@@ -161,5 +162,5 @@ class TestErrors:
         # One malformed method must not hide the rest of the resource.
         with pytest.raises(RamlError) as caught:
             source('/users:\n  get: 1\n  post: 2\n')
-        methods = {trace.info.get('method') for chain in caught.value.chains() for trace in chain if trace.info}
+        methods = {trace.info.get('method') for trace in traces(caught.value) if trace.info}
         assert methods == {'get', 'post'}

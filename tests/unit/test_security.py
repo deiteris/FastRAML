@@ -13,6 +13,7 @@ import pytest
 
 from fastraml import ParseOptions, RamlError
 from fastraml.domains import DomainLocation
+from tests.diagnostics import infos, keys
 
 API = '#%RAML 1.0\ntitle: T\nmediaType: application/json\n'
 
@@ -29,28 +30,14 @@ OAUTH2 = (
 )
 
 
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
 def parse(workspace, body: str, **options):
-    root = workspace({'api.raml': API + body})
-    return workspace.parse(root / 'api.raml', ParseOptions(**options) if options else None)
+    return workspace.document(API + body, ParseOptions(**options) if options else None)
 
 
 def rejected(workspace, body: str) -> RamlError:
     with pytest.raises(RamlError) as caught:
         parse(workspace, body)
     return caught.value
-
-
-def keys(error: RamlError) -> list[str]:
-    return [trace.message for chain in error.chains() for trace in chain]
-
-
-def infos(error: RamlError) -> list[dict]:
-    return [trace.info for chain in error.chains() for trace in chain if trace.info]
 
 
 class TestSchemeType:

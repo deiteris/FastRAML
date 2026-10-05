@@ -17,6 +17,7 @@ from fastraml.types.base import facet_slots
 from fastraml.types.complex_ import UnionShape, UnknownShape
 from fastraml.types.shape import COMMON_FACETS, KIND_TO_CLASS, TYPE_SPECIFIC_FACETS, make_shape
 from fastraml.yamlnode import compose, pairs
+from tests.diagnostics import leaves
 
 LOCATION = 'file:///a.raml'
 
@@ -102,12 +103,14 @@ class TestCommonFacets:
     def test_example_and_examples_cannot_be_written_together(self):
         with pytest.raises(RamlError) as caught:
             shape('T:\n  type: string\n  example: a\n  examples:\n    one: b\n')
-        assert 'example and examples cannot be defined together' in caught.value.messages()[0]
+        assert [(t.message, t.info) for t in leaves(caught.value)] == [
+            ('example and examples cannot be defined together', {})
+        ]
 
     def test_type_and_schema_are_mutually_exclusive(self):
         with pytest.raises(RamlError) as caught:
             shape('T:\n  type: string\n  schema: string\n')
-        assert 'type and schema are mutually exclusive' in caught.value.messages()[0]
+        assert [(t.message, t.info) for t in leaves(caught.value)] == [('type and schema are mutually exclusive', {})]
 
     def test_the_declaration_keeps_its_position_and_file(self):
         base = shape('T:\n  type: string\n')
@@ -208,7 +211,9 @@ class TestCustomFacets:
     def test_a_facet_name_may_not_look_like_an_annotation(self):
         with pytest.raises(RamlError) as caught:
             shape('T:\n  type: string\n  facets:\n    (x): boolean\n')
-        assert "facet name must not begin with '('" in caught.value.messages()[0]
+        assert [(t.message, t.info) for t in leaves(caught.value)] == [
+            ("facet name must not begin with '('", {'facet': '(x)'})
+        ]
 
     def test_a_facet_may_not_shadow_a_built_in_one_of_its_kind(self):
         with pytest.raises(RamlError) as caught:
@@ -303,7 +308,9 @@ class TestJsonSchemaTypes:
         # participate in inheritance or specialization.
         with pytest.raises(RamlError) as caught:
             shape(f'T:\n  type: {JSON_TYPE!r}\n  minLength: 2\n')
-        assert 'cannot define facets on a JSON schema type' in caught.value.messages()[0]
+        assert [(t.message, t.info) for t in leaves(caught.value)] == [
+            ('cannot define facets on a JSON schema type', {'facet': 'minLength'})
+        ]
 
     def test_the_wrapper_facets_the_spec_allows_still_work(self):
         base = shape(f'T:\n  type: {JSON_TYPE!r}\n  description: d\n  example: {{}}\n')

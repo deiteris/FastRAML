@@ -17,15 +17,11 @@ from fastraml.registry import Raml
 from fastraml.types.examples import examples_of
 from fastraml.types.shape import make_shape
 from fastraml.yamlnode import compose, pairs
+from tests.diagnostics import keys, leaves
 
 #: Several tests here carry their value on an annotation key, which accepts
 #: anything. P8 binds every application to a declaration, so they are declared.
 API = '#%RAML 1.0\ntitle: T\nannotationTypes:\n  a: any\n  redirectable: any\n  only: any\n'
-
-
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
 
 
 def first_value(raml: Raml, text: str):
@@ -98,7 +94,7 @@ class TestAnExplicitBoolTagReadsTheCoreSchemaOnly:
     def test_a_non_core_spelling_is_not_a_boolean_facet_value(self):
         with pytest.raises(RamlError) as caught:
             self.required_of('T:\n  type: object\n  properties:\n    a:\n      required: !!bool yes\n')
-        assert [trace.message for chain in caught.value.chains() for trace in chain][-1] == 'expected a boolean value'
+        assert keys(caught.value)[-1] == 'expected a boolean value'
 
     @pytest.mark.parametrize('text', ['yes', 'no', 'on', 'y'])
     def test_a_non_core_spelling_keeps_its_text_as_data(self, text):
@@ -108,13 +104,14 @@ class TestAnExplicitBoolTagReadsTheCoreSchemaOnly:
         # A literal block keeps its final newline; `true\n` is not `true`.
         with pytest.raises(RamlError) as caught:
             self.required_of('T:\n  type: object\n  properties:\n    a:\n      required: !!bool |\n        true\n')
-        assert [trace.message for chain in caught.value.chains() for trace in chain][-1] == 'expected a boolean value'
+        assert keys(caught.value)[-1] == 'expected a boolean value'
         assert first_value(Raml(), 'v: !!bool |\n  true\n').raw == 'true\n'
 
     def test_a_non_core_example_fails_a_boolean_type(self, workspace):
-        root = workspace({'api.raml': API + 'types:\n  T:\n    type: boolean\n    example: !!bool yes\n'})
         with pytest.raises(RamlError) as caught:
-            workspace.parse(root / 'api.raml', ParseOptions(validate=True))
+            workspace.document(
+                API + 'types:\n  T:\n    type: boolean\n    example: !!bool yes\n', ParseOptions(validate=True)
+            )
         [chain] = caught.value.chains()
         assert [(trace.message, trace.info) for trace in chain] == [
             ('invalid example', {}),
@@ -315,21 +312,18 @@ class TestAnnotatedScalar:
         assert (node.value, extensions) == ('text', {})
 
     def test_the_map_form_yields_the_value_and_its_annotations(self, workspace):
-        root = workspace({'api.raml': API + 'description:\n  value: Some text\n  (redirectable): true\n'})
-        api = workspace.parse(root / 'api.raml').entry_point
+        api = workspace.document(API + 'description:\n  value: Some text\n  (redirectable): true\n').entry_point
         assert api.description.value == 'Some text'
         assert api.description.annotations['redirectable'].value.raw is True
 
     def test_a_missing_value_key_is_an_error(self, workspace):
-        root = workspace({'api.raml': API + 'description:\n  (only): 1\n'})
         with pytest.raises(RamlError) as caught:
-            workspace.parse(root / 'api.raml')
-        assert 'missing value key in annotated scalar' in caught.value.messages()[0]
+            workspace.document(API + 'description:\n  (only): 1\n')
+        assert [(t.message, t.info) for t in leaves(caught.value)] == [('missing value key in annotated scalar', {})]
 
     def test_any_other_key_is_an_error(self, workspace):
-        root = workspace({'api.raml': API + 'description:\n  value: text\n  other: 1\n'})
         with pytest.raises(RamlError) as caught:
-            workspace.parse(root / 'api.raml')
+            workspace.document(API + 'description:\n  value: text\n  other: 1\n')
         trace = next(iter(caught.value.chains()))[-1]
         assert trace.message == 'unknown field in annotated scalar'
         assert trace.info == {'field': 'other'}
@@ -337,18 +331,13 @@ class TestAnnotatedScalar:
     def test_the_form_works_at_every_scalar_facet_because_one_builder_serves_all(self, workspace):
         # title, description, version and baseUri all go through
         # make_scalar_facet, so supporting one supports all of them.
-        root = workspace(
-            {
-                'api.raml': (
-                    '#%RAML 1.0\n'
-                    'annotationTypes:\n  a: any\n  b: any\n  c: any\n'
-                    'title:\n  value: T\n  (a): 1\n'
-                    'version:\n  value: v1\n  (b): 2\n'
-                    'baseUri:\n  value: http://e.com\n  (c): 3\n'
-                )
-            }
-        )
-        api = workspace.parse(root / 'api.raml').entry_point
+        api = workspace.document(
+            '#%RAML 1.0\n'
+            'annotationTypes:\n  a: any\n  b: any\n  c: any\n'
+            'title:\n  value: T\n  (a): 1\n'
+            'version:\n  value: v1\n  (b): 2\n'
+            'baseUri:\n  value: http://e.com\n  (c): 3\n'
+        ).entry_point
         assert (api.title.value, api.version.value, api.base_uri.value) == ('T', 'v1', 'http://e.com')
         assert [set(facet.annotations) for facet in (api.title, api.version, api.base_uri)] == [
             {'a'},
@@ -370,4 +359,4 @@ class TestFacetIncludes:
         key, value = next(iter(pairs(root)))
         with pytest.raises(RamlError) as caught:
             make_string_facet(raml, key, value, 'file:///a.raml')
-        assert 'expected scalar or mapping node' in caught.value.messages()[0]
+        assert [(t.message, t.info) for t in leaves(caught.value)] == [('expected scalar or mapping node', {})]

@@ -519,7 +519,7 @@ class TestRuleExamples:
         findings = Linter(builtin_registry(), config).run(parsed(source, tmp_path))
         assert findings[0].info['reason'] == 'binary media requires a file shape'
 
-    def test_json_ref_siblings_name_the_schema_and_every_exact_path(self, memory_workspace):
+    def test_json_ref_siblings_name_the_schema_and_every_exact_path(self, workspace):
         schema = json.dumps(
             {
                 'definitions': {'Name': {'type': 'string'}},
@@ -534,8 +534,8 @@ class TestRuleExamples:
             '/a:\n  get:\n    responses:\n      200:\n        body:\n          application/json: T\n'
             '/b:\n  get:\n    responses:\n      200:\n        body:\n          application/json: T\n'
         )
-        root = memory_workspace({'api.raml': api, 'schema.json': schema})
-        raml = memory_workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, retain_source=True))
+        root = workspace({'api.raml': api, 'schema.json': schema})
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, retain_source=True))
         config = Config(extends=(), rules=(RuleSetting(id='json-ref-siblings'),))
         findings = Linter(builtin_registry(), config).run(raml)
         assert {finding.info['schemaPath'] for finding in findings} == {
@@ -546,14 +546,14 @@ class TestRuleExamples:
         assert all(finding.location.endswith('/schema.json') for finding in findings)
         assert all(not finding.position.is_known for finding in findings)
 
-    def test_raml_source_spelling_rules_ignore_external_json_schema_syntax(self, memory_workspace):
-        root = memory_workspace(
+    def test_raml_source_spelling_rules_ignore_external_json_schema_syntax(self, workspace):
+        root = workspace(
             {
                 'api.raml': '#%RAML 1.0\ntitle: t\ntypes:\n  External: !include schema.json\n',
                 'schema.json': '{"type": "string"}',
             }
         )
-        raml = memory_workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, retain_source=True))
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, retain_source=True))
         config = Config(extends=(), rules=(RuleSetting(id='prefer-inline-alias'),))
         assert not Linter(builtin_registry(), config).run(raml)
 
@@ -661,8 +661,8 @@ class TestRuleExamples:
         config = Config(extends=(), rules=(RuleSetting(id='missing-description'),))
         assert not Linter(builtin_registry(), config).run(parsed(source, tmp_path))
 
-    def test_suppression_uses_an_included_files_location(self, memory_workspace):
-        root = memory_workspace(
+    def test_suppression_uses_an_included_files_location(self, workspace):
+        root = workspace(
             {
                 'api.raml': '#%RAML 1.0\ntitle: t\nuses:\n  lib: lib.raml\n',
                 'lib.raml': (
@@ -672,7 +672,7 @@ class TestRuleExamples:
                 ),
             }
         )
-        raml = memory_workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, retain_source=True))
+        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, retain_source=True))
         config = Config(extends=(), rules=(RuleSetting(id='optional-and-nil'),))
         assert not Linter(builtin_registry(), config).run(raml)
 
@@ -1349,15 +1349,15 @@ class TestLintCli:
         assert main(['lint', '--explain', 'https-only']) == EXIT_OK
         assert '- CWE-319\n' in capsys.readouterr().out
 
-    def test_default_warnings_do_not_fail_the_run(self, workspace, capsys):
-        root = workspace({'api.raml': '#%RAML 1.0\ntitle: t\nschemas:\n  U: string\n'})
+    def test_default_warnings_do_not_fail_the_run(self, disk_workspace, capsys):
+        root = disk_workspace({'api.raml': '#%RAML 1.0\ntitle: t\nschemas:\n  U: string\n'})
         assert main(['lint', str(root / 'api.raml')]) == EXIT_OK
         output = capsys.readouterr().out
         assert 'deprecated-schemas' in output
         assert 'WARN 0 errors, 1 warning and 1 info finding.' in output
 
-    def test_human_color_is_tty_only_and_can_be_disabled(self, workspace, capsys, monkeypatch):
-        root = workspace({'api.raml': '#%RAML 1.0\ntitle: t\nschemas:\n  U: string\n'})
+    def test_human_color_is_tty_only_and_can_be_disabled(self, disk_workspace, capsys, monkeypatch):
+        root = disk_workspace({'api.raml': '#%RAML 1.0\ntitle: t\nschemas:\n  U: string\n'})
         monkeypatch.delenv('NO_COLOR', raising=False)
         monkeypatch.setattr(sys.stdout, 'isatty', lambda: True)
         assert main(['lint', str(root / 'api.raml')]) == EXIT_OK
@@ -1370,16 +1370,16 @@ class TestLintCli:
         assert main(['lint', str(root / 'api.raml')]) == EXIT_OK
         assert '\x1b[' not in capsys.readouterr().out
 
-    def test_human_output_file_is_never_colored(self, workspace, tmp_path, capsys, monkeypatch):
-        root = workspace({'api.raml': '#%RAML 1.0\ntitle: t\nschemas:\n  U: string\n'})
+    def test_human_output_file_is_never_colored(self, disk_workspace, tmp_path, capsys, monkeypatch):
+        root = disk_workspace({'api.raml': '#%RAML 1.0\ntitle: t\nschemas:\n  U: string\n'})
         output = tmp_path / 'lint.txt'
         monkeypatch.setattr(sys.stdout, 'isatty', lambda: True)
         assert main(['lint', '-o', str(output), str(root / 'api.raml')]) == EXIT_OK
         assert capsys.readouterr().out == ''
         assert '\x1b[' not in output.read_text(encoding='utf-8')
 
-    def test_configured_errors_fail_and_json_is_structured(self, workspace, tmp_path, capsys):
-        root = workspace({'api.raml': '#%RAML 1.0\ntitle: t\ntypes:\n  U:\n    properties:\n      a?: string?\n'})
+    def test_configured_errors_fail_and_json_is_structured(self, disk_workspace, tmp_path, capsys):
+        root = disk_workspace({'api.raml': '#%RAML 1.0\ntitle: t\ntypes:\n  U:\n    properties:\n      a?: string?\n'})
         config = tmp_path / 'lint.yaml'
         config.write_text(
             'lint:\n  extends: []\n  rules:\n    - id: optional-and-nil\n      severity: error\n',
@@ -1430,8 +1430,8 @@ class TestLintCli:
     def test_clean_human_report_has_a_success_summary(self):
         assert render_findings([], 'human') == 'OK 0 errors, 0 warnings and 0 info findings.\n'
 
-    def test_every_file_is_attempted_after_a_parse_failure(self, workspace, capsys):
-        root = workspace(
+    def test_every_file_is_attempted_after_a_parse_failure(self, disk_workspace, capsys):
+        root = disk_workspace(
             {
                 'bad.raml': 'not RAML\n',
                 'lint.raml': '#%RAML 1.0\ntitle: t\ntypes:\n  U:\n    properties:\n      a?: string?\n',
@@ -1454,15 +1454,15 @@ class TestLintCli:
         assert header.split() == ['severity', 'rule', 'findings']
         assert total.split() == ['total', '0']
 
-    def test_cli_limits_output_and_reports_truncation(self, workspace, capsys):
-        root = workspace({'api.raml': '#%RAML 1.0\ntitle: t\ntypes:\n  A: string\n  B: string\n  C: string\n'})
+    def test_cli_limits_output_and_reports_truncation(self, disk_workspace, capsys):
+        root = disk_workspace({'api.raml': '#%RAML 1.0\ntitle: t\ntypes:\n  A: string\n  B: string\n  C: string\n'})
         assert main(['lint', '--max-findings', '1', '--max-findings-per-rule', '0', str(root / 'api.raml')]) == EXIT_OK
         output = capsys.readouterr().out
         assert output.count('unused-type') == 1
         assert '2 findings omitted (1 of 3 shown, most severe first)' in output
 
-    def test_truncated_text_ends_with_compact_complete_counts(self, workspace, capsys):
-        root = workspace({'api.raml': '#%RAML 1.0\ntitle: t\ntypes:\n  A: string\n  B: string\n  C: string\n'})
+    def test_truncated_text_ends_with_compact_complete_counts(self, disk_workspace, capsys):
+        root = disk_workspace({'api.raml': '#%RAML 1.0\ntitle: t\ntypes:\n  A: string\n  B: string\n  C: string\n'})
         assert (
             main(
                 [
@@ -1482,8 +1482,8 @@ class TestLintCli:
         assert lines[0].startswith('INFO unused-type file://')
         assert lines[-1] == 'SUMMARY error=0 warning=0 info=3 shown=1 total=3 omitted=2 truncated=true'
 
-    def test_cli_json_includes_complete_truncation_metadata(self, workspace, capsys):
-        root = workspace({'api.raml': '#%RAML 1.0\ntitle: t\ntypes:\n  A: string\n  B: string\n  C: string\n'})
+    def test_cli_json_includes_complete_truncation_metadata(self, disk_workspace, capsys):
+        root = disk_workspace({'api.raml': '#%RAML 1.0\ntitle: t\ntypes:\n  A: string\n  B: string\n  C: string\n'})
         assert main(['lint', '--max-findings-per-rule', '1', '--format', 'json', str(root / 'api.raml')]) == EXIT_OK
         output = json.loads(capsys.readouterr().out)
         assert output['total'] == 3
@@ -1493,11 +1493,11 @@ class TestLintCli:
         assert output['shownCounts']['info'] == 1
         assert output['omittedByRule'] == {'unused-type': 2}
 
-    def test_cli_truncation_never_hides_an_error_behind_info(self, workspace, capsys):
+    def test_cli_truncation_never_hides_an_error_behind_info(self, disk_workspace, capsys):
         """docs/18 § 5.1: the error exits 1, so it must also be among those shown."""
         declarations = ''.join(f'  T{index}: string\n' for index in range(5))
         source = f'#%RAML 1.0\ntitle: t\ntypes:\n{declarations}/a:\n  get:\n    body:\n      application/json: string\n'
-        root = workspace({'api.raml': source})
+        root = disk_workspace({'api.raml': source})
         arguments = ['lint', '--format', 'json', '--max-findings', '2', '--rule', 'meaningless-request-body=error']
         assert main([*arguments, str(root / 'api.raml')]) == EXIT_INVALID
         output = json.loads(capsys.readouterr().out)
@@ -1509,14 +1509,16 @@ class TestLintCli:
         ('arguments', 'code', 'status'),
         [([], EXIT_OK, 'WARN'), (['--fail-on', 'warning'], EXIT_INVALID, 'FAIL')],
     )
-    def test_fail_on_sets_the_exit_code_and_the_status_word_together(self, workspace, capsys, arguments, code, status):
-        root = workspace({'api.raml': '#%RAML 1.0\ntitle: t\nschemas:\n  U: string\n'})
+    def test_fail_on_sets_the_exit_code_and_the_status_word_together(
+        self, disk_workspace, capsys, arguments, code, status
+    ):
+        root = disk_workspace({'api.raml': '#%RAML 1.0\ntitle: t\nschemas:\n  U: string\n'})
         assert main(['lint', '--no-color', *arguments, str(root / 'api.raml')]) == code
         assert capsys.readouterr().out.splitlines()[-1].startswith(f'{status} 0 errors, 1 warning')
 
-    def test_status_word_fails_when_the_failing_findings_are_hidden(self, workspace, capsys):
+    def test_status_word_fails_when_the_failing_findings_are_hidden(self, disk_workspace, capsys):
         """docs/18 § 5.1: `--severity` hides the warning, `--fail-on` still fails on it."""
-        root = workspace({'api.raml': '#%RAML 1.0\ntitle: t\nschemas:\n  U: string\n'})
+        root = disk_workspace({'api.raml': '#%RAML 1.0\ntitle: t\nschemas:\n  U: string\n'})
         arguments = ['lint', '--no-color', '--severity', 'error', '--fail-on', 'warning', str(root / 'api.raml')]
         assert main(arguments) == EXIT_INVALID
         assert capsys.readouterr().out.splitlines()[-1].startswith('FAIL ')
@@ -1541,8 +1543,8 @@ class TestLintCli:
         header, row, total = render_findings(findings, 'summary').splitlines()
         assert row.index('1') == header.index('findings') == total.index('1')
 
-    def test_zero_disables_finding_limits(self, workspace, capsys):
-        root = workspace({'api.raml': '#%RAML 1.0\ntitle: t\ntypes:\n  A: string\n  B: string\n'})
+    def test_zero_disables_finding_limits(self, disk_workspace, capsys):
+        root = disk_workspace({'api.raml': '#%RAML 1.0\ntitle: t\ntypes:\n  A: string\n  B: string\n'})
         assert main(['lint', '--max-findings', '0', '--max-findings-per-rule', '0', str(root / 'api.raml')]) == EXIT_OK
         assert capsys.readouterr().out.count('unused-type') == 2
 
@@ -1550,8 +1552,8 @@ class TestLintCli:
         assert main(['lint', '--max-findings', '-1', 'api.raml']) == EXIT_INVALID
         assert 'must be non-negative' in capsys.readouterr().err
 
-    def test_cli_rule_enables_an_opt_in_rule(self, workspace, capsys):
-        root = workspace({'api.raml': '#%RAML 1.0\ntitle: t\n/users/{id}:\n  get:\n'})
+    def test_cli_rule_enables_an_opt_in_rule(self, disk_workspace, capsys):
+        root = disk_workspace({'api.raml': '#%RAML 1.0\ntitle: t\n/users/{id}:\n  get:\n'})
         assert (
             main(
                 [
@@ -1567,8 +1569,8 @@ class TestLintCli:
         )
         assert 'WARNING explicit-uri-parameter' in capsys.readouterr().out
 
-    def test_cli_rule_can_regrade_and_override_file_config(self, workspace, tmp_path, capsys):
-        root = workspace({'api.raml': '#%RAML 1.0\ntitle: t\n/users/{id}:\n  get:\n'})
+    def test_cli_rule_can_regrade_and_override_file_config(self, disk_workspace, tmp_path, capsys):
+        root = disk_workspace({'api.raml': '#%RAML 1.0\ntitle: t\n/users/{id}:\n  get:\n'})
         config = tmp_path / 'lint.yaml'
         config.write_text(
             'lint:\n  extends: []\n  rules:\n    - id: explicit-uri-parameter\n      severity: error\n',
@@ -1594,16 +1596,16 @@ class TestLintCli:
     #: `uri-path-characters` is in the opt-in `http` set; `unused-type` in `recommended`.
     SPACED = "#%RAML 1.0\ntitle: t\ntypes:\n  A: string\n'/order items':\n  get:\n"
 
-    def test_cli_ruleset_enables_an_opt_in_set_beside_the_default(self, workspace, capsys):
-        root = workspace({'api.raml': self.SPACED})
+    def test_cli_ruleset_enables_an_opt_in_set_beside_the_default(self, disk_workspace, capsys):
+        root = disk_workspace({'api.raml': self.SPACED})
         assert main(['lint', '--format', 'text', '--ruleset', 'http', str(root / 'api.raml')]) == EXIT_OK
         out = capsys.readouterr().out
         assert 'WARNING uri-path-characters' in out
         assert 'INFO unused-type' in out
 
-    def test_cli_ruleset_adds_to_file_config_whose_rules_still_apply(self, workspace, tmp_path, capsys):
+    def test_cli_ruleset_adds_to_file_config_whose_rules_still_apply(self, disk_workspace, tmp_path, capsys):
         """docs/18 § 3: `--ruleset` only extends; a configured rule-level disable still wins."""
-        root = workspace({'api.raml': self.SPACED})
+        root = disk_workspace({'api.raml': self.SPACED})
         config = tmp_path / 'lint.yaml'
         config.write_text(
             'lint:\n  extends: [http]\n  rules:\n    - id: unused-type\n      disabled: true\n',
@@ -1615,13 +1617,13 @@ class TestLintCli:
         assert 'WARNING uri-path-characters' in out
         assert 'unused-type' not in out
 
-    def test_cli_rule_can_disable_a_default_rule(self, workspace, capsys):
+    def test_cli_rule_can_disable_a_default_rule(self, disk_workspace, capsys):
         source = (
             '#%RAML 1.0\ntitle: t\ntypes:\n  User: |\n'
             '    {"definitions":{"Name":{"type":"string"}},'
             '"allOf":[{"$ref":"#/definitions/Name","maxLength":8}]}\n'
         )
-        root = workspace({'api.raml': source})
+        root = disk_workspace({'api.raml': source})
         assert main(['lint', '--format', 'text', '--rule', 'json-ref-siblings=off', str(root / 'api.raml')]) == EXIT_OK
         assert 'json-ref-siblings' not in capsys.readouterr().out
 
@@ -1754,8 +1756,8 @@ class TestMetrics:
         assert provider.calls == metrics.fanout_calls
         assert provider.findings == metrics.produced_findings
 
-    def test_metrics_go_to_stderr_leaving_stdout_parseable(self, workspace, capsys):
-        root = workspace({'api.raml': self.UNUSED})
+    def test_metrics_go_to_stderr_leaving_stdout_parseable(self, disk_workspace, capsys):
+        root = disk_workspace({'api.raml': self.UNUSED})
         assert main(['lint', '--metrics', '--format', 'json', str(root / 'api.raml')]) == EXIT_OK
         captured = capsys.readouterr()
         assert json.loads(captured.out)['findings']

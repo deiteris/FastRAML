@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from fastraml.errors import RamlError
 from fastraml.loaders import SafeFileLoader
 from fastraml.parser.entry import ParseOptions, parse_from_path, parse_lenient
 from fastraml.uris import file_uri_to_path, path_to_file_uri
@@ -17,7 +18,6 @@ from fastraml.uris import file_uri_to_path, path_to_file_uri
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from fastraml.errors import RamlError
     from fastraml.loaders import ResourceLoader
     from fastraml.registry import Raml
 
@@ -67,12 +67,34 @@ class MemoryWorkspace:
     def lenient(self, path: Path, options: ParseOptions | None = None) -> tuple[Raml, RamlError | None]:
         return parse_lenient(path, self._options(options))
 
+    def document(self, text: str, options: ParseOptions | None = None) -> Raml:
+        """Parse `text` as `api.raml`, beside whatever files the workspace holds."""
+        return self.parse(self({'api.raml': text}) / 'api.raml', options)
+
+    def lenient_document(self, text: str, options: ParseOptions | None = None) -> tuple[Raml, RamlError | None]:
+        """`document`, through `parse_lenient`."""
+        return self.lenient(self({'api.raml': text}) / 'api.raml', options)
+
+    def rejection(self, text: str, options: ParseOptions | None = None) -> RamlError | None:
+        """The error `document` raises, or `None` if it parses."""
+        try:
+            self.document(text, options)
+        except RamlError as err:
+            return err
+        return None
+
 
 @pytest.fixture
-def memory_workspace(request: pytest.FixtureRequest) -> MemoryWorkspace:
+def workspace(request: pytest.FixtureRequest) -> MemoryWorkspace:
     """Give each test an absolute URI base without creating a directory."""
     key = hashlib.blake2b(request.node.nodeid.encode(), digest_size=12).hexdigest()
     return MemoryWorkspace(request.config.rootpath / '.fastraml-virtual' / key)
+
+
+@pytest.fixture
+def memory_workspace(workspace: MemoryWorkspace) -> MemoryWorkspace:
+    """`workspace`, for a module where that name is a service `Workspace`."""
+    return workspace
 
 
 class CountingLoader:
@@ -99,8 +121,10 @@ class CountingLoader:
 
 
 @pytest.fixture
-def workspace(tmp_path: Path):
-    """Write a set of files under `tmp_path` and return the directory."""
+def disk_workspace(tmp_path: Path):
+    """Write a set of files under `tmp_path` and return the directory: for a
+    test of filesystem behaviour, or a caller that reads paths itself.
+    """
 
     def build(files: dict[str, str]) -> Path:
         return write_files(tmp_path, files)

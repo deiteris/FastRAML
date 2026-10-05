@@ -31,11 +31,6 @@ RUNAWAY = 60
 PARSER_STATE = frozenset({'id', 'type_expr'})
 
 
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
 class RunawayError(RecursionError):
     """The naive walk did not terminate."""
 
@@ -77,8 +72,7 @@ CYCLES = {
 
 
 def project(workspace, body: str) -> object:
-    root = workspace({'api.raml': '#%RAML 1.0\ntitle: T\n' + body})
-    return build_tree(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
+    return build_tree(workspace.document('#%RAML 1.0\ntitle: T\n' + body, ParseOptions(unwrap=True)))
 
 
 class TestANaiveWalkTerminates:

@@ -14,7 +14,7 @@ import typing
 
 import pytest
 
-from tests.sources import MODEL, imports, module_name, parse, sources
+from tests.sources import MODEL, NOT_MODEL, edges, module_name, offenders, parse, sources, within
 
 #: Functions that read a file or URL: every RAML input arrives through the
 #: parse's loader, never directly.
@@ -45,58 +45,42 @@ _DEFERRED = frozenset(
 )
 
 
-def _runtime(*roots: str) -> list[tuple[str, int, str, bool]]:
-    """(importer, line, imported module, deferred) for every `fastraml`
-    import under `roots` that runs.
-    """
-    return [
-        (module_name(path), found.line, found.module, found.deferred)
-        for path in sources(*roots)
-        for found in imports(path)
-        if not found.type_checking and found.module.startswith('fastraml.')
-    ]
-
-
 def _module(imported: str, of: frozenset[str] | set[str]) -> str | None:
     """The innermost module of `of` that `imported` names, or one of whose
     members it names.
     """
-    within = [module for module in of if imported == module or imported.startswith(f'{module}.')]
-    return max(within, key=len, default=None)
+    return max((module for module in of if within(imported, module)), key=len, default=None)
 
 
 def test_the_type_layer_imports_only_the_leaf_parser_modules():
-    offenders = [
-        f'{importer}:{line} imports {imported}'
-        for importer, line, imported, deferred in _runtime('fastraml/types')
-        if not deferred and imported.startswith('fastraml.parser.') and _module(imported, _PARSER_FOR_TYPES) is None
+    found = [
+        f'{importer}:{each.line} imports {each.module}'
+        for importer, each in edges('fastraml/types', runtime=True)
+        if not each.deferred
+        and each.module.startswith('fastraml.parser.')
+        and _module(each.module, _PARSER_FOR_TYPES) is None
     ]
-    assert not offenders, '\n'.join(offenders)
+    assert not found, '\n'.join(found)
 
 
 def test_the_leaf_parser_modules_import_nothing_of_the_package():
-    leaves = ('fastraml/parser/references.py', 'fastraml/parser/substitutions.py')
-    offenders = [f'{importer}:{line} imports {imported}' for importer, line, imported, _ in _runtime(*leaves)]
-    assert not offenders, '\n'.join(offenders)
+    found = offenders(('fastraml/parser/references.py', 'fastraml/parser/substitutions.py'), 'fastraml', runtime=True)
+    assert not found, '\n'.join(found)
 
 
 def test_the_deferred_imports_are_the_documented_ones():
     packages = {module_name(path) for path in sources('fastraml/parser', 'fastraml/types')}
     found = {
-        (importer, _module(imported, packages) or imported)
-        for importer, _, imported, deferred in _runtime('fastraml/parser', 'fastraml/types')
-        if deferred
+        (importer, _module(each.module, packages) or each.module)
+        for importer, each in edges('fastraml/parser', 'fastraml/types', runtime=True)
+        if each.deferred and each.module.startswith('fastraml.')
     }
     assert found == _DEFERRED
 
 
 def test_the_registry_imports_no_parser_or_type_module():
-    offenders = [
-        f'{importer}:{line} imports {imported}'
-        for importer, line, imported, _ in _runtime('fastraml/registry.py')
-        if imported.startswith(('fastraml.parser', 'fastraml.types'))
-    ]
-    assert not offenders, '\n'.join(offenders)
+    found = offenders(('fastraml/registry.py',), 'fastraml.parser', 'fastraml.types', runtime=True)
+    assert not found, '\n'.join(found)
 
 
 def _bound_names(tree: ast.Module) -> dict[str, str]:
@@ -312,9 +296,6 @@ def test_a_literal_pattern_is_not_flagged():
     assert _regex_calls(ast.parse('import re\nre.compile("a+")\nre.search(r"b", s)')) == []
 
 
-#: The packages outside the model: composition roots and consumers of it.
-_NOT_MODEL = ('fastraml.views', 'fastraml.service', 'fastraml.join', 'fastraml.cli', 'fastraml.skilldata')
-
 #: Classes that keep an instance `__dict__`, and why.
 _DICT_ALLOWED = frozenset(
     {
@@ -333,7 +314,7 @@ def _model_classes() -> list[type]:
     found: list[type] = []
     for path in sources('fastraml'):
         name = module_name(path)
-        if any(name == root or name.startswith(f'{root}.') for root in _NOT_MODEL):
+        if within(name, *NOT_MODEL):
             continue
         for _, cls in inspect.getmembers(importlib.import_module(name), inspect.isclass):
             if (

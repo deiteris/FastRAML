@@ -15,14 +15,8 @@ from fastraml.types.values import DATETIME_ONLY_PATTERN, RFC2616_PATTERN, TIME_O
 from fastraml.views.openapi import OAS3Schema
 
 
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
 def converted(workspace, body: str):
-    root = workspace({'api.raml': '#%RAML 1.0\n' + body})
-    raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
+    raml = workspace.document('#%RAML 1.0\n' + body, ParseOptions(unwrap=True))
     return to_openapi(raml)
 
 
@@ -208,15 +202,13 @@ types:
 )
 def test_use_site_constraints_agree_with_raml(workspace, parent, narrowing, values):
     """A named parent must not hide effective constraints at a body use site."""
-    root = workspace(
-        {
-            'api.raml': '#%RAML 1.0\ntitle: T\ntypes:\n'
-            f'  Parent: {parent}\n'
-            '/x:\n  get:\n    responses:\n      200:\n        body:\n          application/json:\n'
-            f'            type: Parent\n            {narrowing}\n'
-        }
+    raml = workspace.document(
+        '#%RAML 1.0\ntitle: T\ntypes:\n'
+        f'  Parent: {parent}\n'
+        '/x:\n  get:\n    responses:\n      200:\n        body:\n          application/json:\n'
+        f'            type: Parent\n            {narrowing}\n',
+        ParseOptions(unwrap=True),
     )
-    raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
     body = raml.endpoints['/x'].operations['get'].responses['200'].bodies['application/json'].shape
     document, dropped = to_openapi(raml)
     wire = document.to_dict()
@@ -396,15 +388,13 @@ def test_reference_defaults_keep_boolean_values_distinct_from_numbers(workspace,
 
 
 def test_narrowed_recursive_use_site_retains_its_head_reference(workspace):
-    root = workspace(
-        {
-            'api.raml': '#%RAML 1.0\ntitle: T\ntypes:\n'
-            '  Node:\n    properties:\n      name: {type: string, maxLength: 10}\n      next?: Node\n'
-            '/x:\n  post:\n    body:\n      application/json:\n        type: Node\n'
-            '        properties:\n          name: {type: string, maxLength: 3}\n'
-        }
+    raml = workspace.document(
+        '#%RAML 1.0\ntitle: T\ntypes:\n'
+        '  Node:\n    properties:\n      name: {type: string, maxLength: 10}\n      next?: Node\n'
+        '/x:\n  post:\n    body:\n      application/json:\n        type: Node\n'
+        '        properties:\n          name: {type: string, maxLength: 3}\n',
+        ParseOptions(unwrap=True),
     )
-    raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
     shape = raml.endpoints['/x'].operations['post'].request.bodies['application/json'].shape
     document, dropped = to_openapi(raml)
     wire = document.to_dict()
@@ -422,15 +412,13 @@ def test_narrowed_recursive_use_site_retains_its_head_reference(workspace):
 
 def test_a_narrowed_property_heading_a_cycle_gets_a_valid_component_key(workspace):
     """`next?` heads the cycle its own `next` closes; OpenAPI keys exclude `?`."""
-    root = workspace(
-        {
-            'api.raml': '#%RAML 1.0\ntitle: T\ntypes:\n'
-            '  Node:\n    properties:\n      name: {type: string, maxLength: 10}\n'
-            '      next?:\n        type: Node\n        properties:\n          name: {type: string, maxLength: 3}\n'
-            '/x:\n  get:\n    responses:\n      200:\n        body:\n          application/json: Node\n'
-        }
+    raml = workspace.document(
+        '#%RAML 1.0\ntitle: T\ntypes:\n'
+        '  Node:\n    properties:\n      name: {type: string, maxLength: 10}\n'
+        '      next?:\n        type: Node\n        properties:\n          name: {type: string, maxLength: 3}\n'
+        '/x:\n  get:\n    responses:\n      200:\n        body:\n          application/json: Node\n',
+        ParseOptions(unwrap=True),
     )
-    raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
     shape = raml.types_in(raml.location)['Node']
     document, dropped = to_openapi(raml)
     wire = document.to_dict()

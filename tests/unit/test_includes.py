@@ -13,6 +13,7 @@ from fastraml import ParseOptions, RamlError, parse_from_path, path_to_file_uri
 from fastraml.parser.includes import resolve_include, resolve_ref_uri
 from fastraml.registry import Raml
 from fastraml.yamlnode import TAG_INCLUDE, TAG_STR, Node, NodeKind
+from tests.diagnostics import leaves
 from tests.unit.conftest import CountingLoader
 
 if TYPE_CHECKING:
@@ -48,20 +49,20 @@ class TestUriResolution:
 
 
 class TestIncludeContent:
-    def test_binary_include_returns_a_diagnostic_from_lenient_parse(self, memory_workspace):
-        root = memory_workspace({'api.raml': API + '(a): !include blob.bin\n'})
-        memory_workspace.files[path_to_file_uri(root / 'blob.bin')] = b'\x00\xee\xff'
-        _raml, error = memory_workspace.lenient(root / 'api.raml', ParseOptions(unwrap=True, validate=True))
+    def test_binary_include_returns_a_diagnostic_from_lenient_parse(self, workspace):
+        root = workspace({'api.raml': API + '(a): !include blob.bin\n'})
+        workspace.files[path_to_file_uri(root / 'blob.bin')] = b'\x00\xee\xff'
+        _raml, error = workspace.lenient(root / 'api.raml', ParseOptions(unwrap=True, validate=True))
         assert error is not None
         assert error.head.message == 'include is not UTF-8'
         assert error.head.info == {'path': path_to_file_uri(root / 'blob.bin')}
         assert error.head.position is not None
         assert error.head.position.line == API.count('\n') + 1
 
-    def test_binary_schema_fragment_returns_a_diagnostic_from_lenient_parse(self, memory_workspace):
-        root = memory_workspace({'api.raml': '#%RAML 1.0\ntitle: t\ntypes:\n  T: !include schema.json\n'})
-        memory_workspace.files[path_to_file_uri(root / 'schema.json')] = b'\xff\x00'
-        _raml, error = memory_workspace.lenient(root / 'api.raml')
+    def test_binary_schema_fragment_returns_a_diagnostic_from_lenient_parse(self, workspace):
+        root = workspace({'api.raml': '#%RAML 1.0\ntitle: t\ntypes:\n  T: !include schema.json\n'})
+        workspace.files[path_to_file_uri(root / 'schema.json')] = b'\xff\x00'
+        _raml, error = workspace.lenient(root / 'api.raml')
         assert error is not None
         assert error.head.message == 'include'
         assert error.head.cause is not None
@@ -69,58 +70,58 @@ class TestIncludeContent:
         assert error.head.position is not None
         assert error.head.position.line == 4
 
-    def test_a_non_yaml_extension_becomes_a_string_scalar(self, memory_workspace):
+    def test_a_non_yaml_extension_becomes_a_string_scalar(self, workspace):
         # This is how `content: !include legal.md` works.
-        root = memory_workspace({'legal.md': '# Terms\n'})
-        raml = Raml(loader=CountingLoader(root, memory_workspace), workspace_root_uri=path_to_file_uri(root))
+        root = workspace({'legal.md': '# Terms\n'})
+        raml = Raml(loader=CountingLoader(root, workspace), workspace_root_uri=path_to_file_uri(root))
         _target, content = resolve_include(raml, include_node('legal.md'), path_to_file_uri(root / 'a.raml'))
         assert (content.kind, content.tag, content.value) == (NodeKind.SCALAR, TAG_STR, '# Terms\n')
 
-    def test_a_yaml_extension_is_composed(self, memory_workspace):
-        root = memory_workspace({'t.yaml': 'a: 1\n'})
-        raml = Raml(loader=CountingLoader(root, memory_workspace), workspace_root_uri=path_to_file_uri(root))
+    def test_a_yaml_extension_is_composed(self, workspace):
+        root = workspace({'t.yaml': 'a: 1\n'})
+        raml = Raml(loader=CountingLoader(root, workspace), workspace_root_uri=path_to_file_uri(root))
         _target, content = resolve_include(raml, include_node('t.yaml'), path_to_file_uri(root / 'a.raml'))
         assert content.kind is NodeKind.MAPPING
 
-    def test_a_json_pointer_suffix_does_not_hide_the_extension(self, memory_workspace):
-        root = memory_workspace({'s.json': '{"a": 1}\n'})
-        raml = Raml(loader=CountingLoader(root, memory_workspace), workspace_root_uri=path_to_file_uri(root))
+    def test_a_json_pointer_suffix_does_not_hide_the_extension(self, workspace):
+        root = workspace({'s.json': '{"a": 1}\n'})
+        raml = Raml(loader=CountingLoader(root, workspace), workspace_root_uri=path_to_file_uri(root))
         _target, content = resolve_include(
             raml, include_node('s.json#/definitions/A'), path_to_file_uri(root / 'a.raml')
         )
         assert content.kind is NodeKind.MAPPING
 
-    def test_a_tab_indented_json_file_is_composed(self, memory_workspace):
+    def test_a_tab_indented_json_file_is_composed(self, workspace):
         # JSON whitespace must work with both YAML scanners, including tabs
         # inside the root value (docs/03 § 4.2).
-        root = memory_workspace({'e.json': '\r\n\t{\r\n\t\t"a": "x\\ty"\r\n\t}\r\n\t'})
-        raml = Raml(loader=CountingLoader(root, memory_workspace), workspace_root_uri=path_to_file_uri(root))
+        root = workspace({'e.json': '\r\n\t{\r\n\t\t"a": "x\\ty"\r\n\t}\r\n\t'})
+        raml = Raml(loader=CountingLoader(root, workspace), workspace_root_uri=path_to_file_uri(root))
         _target, content = resolve_include(raml, include_node('e.json'), path_to_file_uri(root / 'a.raml'))
         key, value = content.content
         # The escaped tab in the string is kept, and columns are where they were.
         assert (key.value, value.value, key.column) == ('a', 'x\ty', 3)
 
-    def test_json_tabs_between_tokens_preserve_escaped_quotes_and_backslashes(self, memory_workspace):
-        root = memory_workspace({'e.json': '{\t"a":\t["x\\"\ty",\t"z\\\\",\t2]\t}'})
-        raml = Raml(loader=CountingLoader(root, memory_workspace), workspace_root_uri=path_to_file_uri(root))
+    def test_json_tabs_between_tokens_preserve_escaped_quotes_and_backslashes(self, workspace):
+        root = workspace({'e.json': '{\t"a":\t["x\\"\ty",\t"z\\\\",\t2]\t}'})
+        raml = Raml(loader=CountingLoader(root, workspace), workspace_root_uri=path_to_file_uri(root))
         _target, content = resolve_include(raml, include_node('e.json'), path_to_file_uri(root / 'a.raml'))
         key, value = content.content
         assert (key.value, key.column) == ('a', 3)
         assert [child.value for child in value.content] == ['x"\ty', 'z\\', '2']
 
     @pytest.mark.parametrize('head', ['#%RAML 1.0 NamedExample', '#%RAML 1.0 Type', '#%RAML 0.8'])
-    def test_a_file_with_a_raml_header_is_not_data(self, memory_workspace, head):
+    def test_a_file_with_a_raml_header_is_not_data(self, workspace, head):
         # A typed fragment belongs where its kind goes; an unknown header is no
         # better. Only a file without one reads as the value written here.
-        root = memory_workspace({'e.raml': f'{head}\nvalue: 1\n'})
-        raml = Raml(loader=CountingLoader(root, memory_workspace), workspace_root_uri=path_to_file_uri(root))
+        root = workspace({'e.raml': f'{head}\nvalue: 1\n'})
+        raml = Raml(loader=CountingLoader(root, workspace), workspace_root_uri=path_to_file_uri(root))
         with pytest.raises(RamlError) as caught:
             resolve_include(raml, include_node('e.raml'), path_to_file_uri(root / 'a.raml'))
         assert (caught.value.head.message, caught.value.head.info['header']) == ('fragment is not allowed here', head)
 
-    def test_a_raml_header_in_a_text_file_is_text(self, memory_workspace):
-        root = memory_workspace({'notes.md': '#%RAML 1.0 Trait\n'})
-        raml = Raml(loader=CountingLoader(root, memory_workspace), workspace_root_uri=path_to_file_uri(root))
+    def test_a_raml_header_in_a_text_file_is_text(self, workspace):
+        root = workspace({'notes.md': '#%RAML 1.0 Trait\n'})
+        raml = Raml(loader=CountingLoader(root, workspace), workspace_root_uri=path_to_file_uri(root))
         _target, content = resolve_include(raml, include_node('notes.md'), path_to_file_uri(root / 'a.raml'))
         assert content.value == '#%RAML 1.0 Trait\n'
 
@@ -131,8 +132,8 @@ class TestIncludeContent:
 
 
 class TestCachingAndLimits:
-    def test_a_target_referenced_five_times_is_read_once(self, memory_workspace):
-        root = memory_workspace(
+    def test_a_target_referenced_five_times_is_read_once(self, workspace):
+        root = workspace(
             {
                 'api.raml': API + '(a): !include shared.yaml\n'
                 '(b): !include shared.yaml\n(c): !include shared.yaml\n'
@@ -140,35 +141,35 @@ class TestCachingAndLimits:
                 'shared.yaml': 'k: v\n',
             }
         )
-        loader = CountingLoader(root, memory_workspace)
+        loader = CountingLoader(root, workspace)
         parse_from_path(root / 'api.raml', ParseOptions(file_loader=loader))
         assert loader.counts[path_to_file_uri(root / 'shared.yaml')] == 1
 
-    def test_the_cache_is_released_when_the_parse_ends(self, memory_workspace):
-        root = memory_workspace({'api.raml': API + '(a): !include shared.yaml\n', 'shared.yaml': 'k: v\n'})
-        raml = memory_workspace.parse(root / 'api.raml')
+    def test_the_cache_is_released_when_the_parse_ends(self, workspace):
+        root = workspace({'api.raml': API + '(a): !include shared.yaml\n', 'shared.yaml': 'k: v\n'})
+        raml = workspace.parse(root / 'api.raml')
         assert raml.include_nodes == {}
         assert raml.entry_point.annotations['a'].value.raw == {'k': 'v'}, 'the model keeps what it read'
 
-    def test_a_partial_model_releases_the_cache(self, memory_workspace):
-        root = memory_workspace({'api.raml': API + '(a): !include shared.yaml\n(z): 1\n', 'shared.yaml': 'k: v\n'})
-        raml, error = memory_workspace.lenient(root / 'api.raml')
+    def test_a_partial_model_releases_the_cache(self, workspace):
+        root = workspace({'api.raml': API + '(a): !include shared.yaml\n(z): 1\n', 'shared.yaml': 'k: v\n'})
+        raml, error = workspace.lenient(root / 'api.raml')
         assert error is not None
         assert raml.include_nodes == {}
 
-    def test_retained_source_keeps_the_cache(self, memory_workspace):
-        root = memory_workspace({'api.raml': API + '(a): !include shared.yaml\n', 'shared.yaml': 'k: v\n'})
-        raml = memory_workspace.parse(root / 'api.raml', ParseOptions(retain_source=True))
+    def test_retained_source_keeps_the_cache(self, workspace):
+        root = workspace({'api.raml': API + '(a): !include shared.yaml\n', 'shared.yaml': 'k: v\n'})
+        raml = workspace.parse(root / 'api.raml', ParseOptions(retain_source=True))
         assert list(raml.include_nodes) == [path_to_file_uri(root / 'shared.yaml')]
 
-    def test_an_unwrap_after_the_parse_reads_a_union_s_include_again(self, memory_workspace):
+    def test_an_unwrap_after_the_parse_reads_a_union_s_include_again(self, workspace):
         # A union keeps the facets beside it as YAML until P9 (docs/07 § 5).
         # Unwrapped after a parse that did not unwrap, an include among them
         # is read through the parse's own loader and limit, once per member,
         # and nothing refills the cache the parse emptied (docs/03 § 4.3).
         from fastraml.types.unwrap import unwrap_detached
 
-        root = memory_workspace(
+        root = workspace(
             {
                 'api.raml': '#%RAML 1.0\ntitle: t\ntypes:\n'
                 '  S:\n    type: string\n    pattern: !include pattern.yaml\n'
@@ -176,7 +177,7 @@ class TestCachingAndLimits:
                 'pattern.yaml': '^a+$\n',
             }
         )
-        loader = CountingLoader(root, memory_workspace)
+        loader = CountingLoader(root, workspace)
         raml = parse_from_path(root / 'api.raml', ParseOptions(file_loader=loader))
         pattern_uri = path_to_file_uri(root / 'pattern.yaml')
         assert loader.counts[pattern_uri] == 1
@@ -185,15 +186,15 @@ class TestCachingAndLimits:
         assert loader.counts[pattern_uri] == 3
         assert raml.include_nodes == {}
 
-    def test_the_reference_is_recorded_once_per_occurrence(self, memory_workspace):
+    def test_the_reference_is_recorded_once_per_occurrence(self, workspace):
         # The cache is about I/O; tooling still wants every document link.
-        root = memory_workspace(
+        root = workspace(
             {
                 'api.raml': API + '(a): !include shared.yaml\n(b): !include shared.yaml\n',
                 'shared.yaml': 'k: v\n',
             }
         )
-        raml = memory_workspace.parse(root / 'api.raml')
+        raml = workspace.parse(root / 'api.raml')
         refs = raml.include_refs_in(path_to_file_uri(root / 'api.raml'))
         assert [ref.path for ref in refs] == ['shared.yaml', 'shared.yaml']
         # Two occurrences, two positions: the point of recording each one.
@@ -207,30 +208,32 @@ class TestCachingAndLimits:
             pytest.param('user.json', '{"type": "string"}', id='JSON Schema'),
         ],
     )
-    def test_a_type_included_whole_is_recorded_once(self, memory_workspace, path, content):
-        root = memory_workspace({'api.raml': API + f'types:\n  User:\n    type: !include {path}\n', path: content})
-        raml = memory_workspace.parse(root / 'api.raml')
+    def test_a_type_included_whole_is_recorded_once(self, workspace, path, content):
+        root = workspace({'api.raml': API + f'types:\n  User:\n    type: !include {path}\n', path: content})
+        raml = workspace.parse(root / 'api.raml')
         assert [ref.path for ref in raml.include_refs_in(path_to_file_uri(root / 'api.raml'))] == [path]
 
-    def test_an_oversized_include_is_rejected_without_being_read_whole(self, memory_workspace):
-        root = memory_workspace({'api.raml': API + '(a): !include big.yaml\n', 'big.yaml': 'k: ' + 'x' * 5000})
-        loader = CountingLoader(root, memory_workspace)
+    def test_an_oversized_include_is_rejected_without_being_read_whole(self, workspace):
+        root = workspace({'api.raml': API + '(a): !include big.yaml\n', 'big.yaml': 'k: ' + 'x' * 5000})
+        loader = CountingLoader(root, workspace)
         with pytest.raises(RamlError) as caught:
             parse_from_path(root / 'api.raml', ParseOptions(file_loader=loader, max_include_size=64))
 
-        assert 'include file exceeds size limit' in caught.value.messages()[0]
+        assert [(t.message, t.info) for t in leaves(caught.value)] == [
+            ('include file exceeds size limit', {'path': path_to_file_uri(root / 'big.yaml'), 'limit': 64})
+        ]
         limits = [limit for uri, limit in loader.calls if uri.endswith('big.yaml')]
         assert limits == [64], 'the loader must be asked for limit + 1 bytes, not for the whole file'
 
-    def test_a_limit_of_zero_disables_the_check(self, memory_workspace):
-        root = memory_workspace({'api.raml': API + '(a): !include big.yaml\n', 'big.yaml': 'k: ' + 'x' * 5000})
-        raml = memory_workspace.parse(root / 'api.raml', ParseOptions(max_include_size=0))
+    def test_a_limit_of_zero_disables_the_check(self, workspace):
+        root = workspace({'api.raml': API + '(a): !include big.yaml\n', 'big.yaml': 'k: ' + 'x' * 5000})
+        raml = workspace.parse(root / 'api.raml', ParseOptions(max_include_size=0))
         assert raml.entry_point.annotations['a'].value.raw['k'].endswith('x')
 
 
 class TestCycles:
-    def test_a_scalar_include_cycle_is_reported_with_a_position(self, memory_workspace):
-        root = memory_workspace(
+    def test_a_scalar_include_cycle_is_reported_with_a_position(self, workspace):
+        root = workspace(
             {
                 'api.raml': API + '(a): !include one.yaml\n',
                 'one.yaml': 'v: !include two.yaml\n',
@@ -238,37 +241,36 @@ class TestCycles:
             }
         )
         with pytest.raises(RamlError) as caught:
-            memory_workspace.parse(root / 'api.raml')
+            workspace.parse(root / 'api.raml')
 
         trace = next(iter(caught.value.chains()))[-1]
         assert trace.message == 'circular include detected'
         assert trace.info['path'] == path_to_file_uri(root / 'one.yaml')
         assert trace.position is not None
 
-    def test_a_diamond_include_is_not_a_cycle(self, memory_workspace):
-        root = memory_workspace(
+    def test_a_diamond_include_is_not_a_cycle(self, workspace):
+        root = workspace(
             {
                 'api.raml': API + '(a): !include one.yaml\n',
                 'one.yaml': 'l: !include leaf.yaml\nr: !include leaf.yaml\n',
                 'leaf.yaml': 'v: 1\n',
             }
         )
-        raml = memory_workspace.parse(root / 'api.raml')
+        raml = workspace.parse(root / 'api.raml')
         assert raml.entry_point.annotations['a'].value.raw == {'l': {'v': 1}, 'r': {'v': 1}}
 
 
 class TestMissingTargets:
-    def test_a_missing_include_names_the_file_it_could_not_read(self, memory_workspace):
-        root = memory_workspace({'api.raml': API + '(a): !include gone.yaml\n'})
+    def test_a_missing_include_names_the_file_it_could_not_read(self, workspace):
         with pytest.raises(RamlError) as caught:
-            memory_workspace.parse(root / 'api.raml')
+            workspace.document(API + '(a): !include gone.yaml\n')
         # Named by the include's `info`; the message is a key (docs/11 § 6).
         include, missing = caught.value.frames()[-2:]
         assert (include.message, missing.message) == ('include', 'file not found')
         assert include.info['path'].endswith('/gone.yaml')
 
-    def test_an_include_outside_the_workspace_is_refused(self, workspace, tmp_path: Path):
-        root = workspace({'project/api.raml': API + '(a): !include ../secret.yaml\n'})
+    def test_an_include_outside_the_workspace_is_refused(self, disk_workspace, tmp_path: Path):
+        root = disk_workspace({'project/api.raml': API + '(a): !include ../secret.yaml\n'})
         (tmp_path / 'secret.yaml').write_text('k: v\n', encoding='utf-8')
         with pytest.raises(RamlError):
             parse_from_path(root / 'project' / 'api.raml')
@@ -300,23 +302,25 @@ class TestATemplateParameterIsNotAPath:
                 return b'#%RAML 1.0 DataType\ntype: string\n'
             return super().load(uri, max_bytes=max_bytes)
 
-    def test_an_include_argument_is_refused(self, memory_workspace):
-        root = memory_workspace({'api.raml': API + 'types:\n  T: !include <<version>>.raml\n'})
+    def test_an_include_argument_is_refused(self, workspace):
+        root = workspace({'api.raml': API + 'types:\n  T: !include <<version>>.raml\n'})
         with pytest.raises(RamlError) as caught:
-            parse_from_path(root / 'api.raml', ParseOptions(file_loader=self.Serving(root, memory_workspace)))
+            parse_from_path(root / 'api.raml', ParseOptions(file_loader=self.Serving(root, workspace)))
         assert caught.value.head.message == 'path must not contain a template parameter'
         assert caught.value.head.info == {'path': '<<version>>.raml'}
 
-    def test_a_uses_value_is_refused(self, memory_workspace):
-        root = memory_workspace({'api.raml': API + 'uses:\n  lib: <<version>>.raml\n'})
+    def test_a_uses_value_is_refused(self, workspace):
+        root = workspace({'api.raml': API + 'uses:\n  lib: <<version>>.raml\n'})
         with pytest.raises(RamlError) as caught:
-            parse_from_path(root / 'api.raml', ParseOptions(file_loader=self.Serving(root, memory_workspace)))
-        assert any('must not contain a template parameter' in m for m in caught.value.messages())
+            parse_from_path(root / 'api.raml', ParseOptions(file_loader=self.Serving(root, workspace)))
+        assert [(t.message, t.info) for t in leaves(caught.value)] == [
+            ('path must not contain a template parameter', {'path': '<<version>>.raml'})
+        ]
 
-    def test_the_position_is_the_argument_and_not_the_document(self, memory_workspace):
-        root = memory_workspace({'api.raml': API + 'types:\n  T: !include <<version>>.raml\n'})
+    def test_the_position_is_the_argument_and_not_the_document(self, workspace):
+        root = workspace({'api.raml': API + 'types:\n  T: !include <<version>>.raml\n'})
         with pytest.raises(RamlError) as caught:
-            parse_from_path(root / 'api.raml', ParseOptions(file_loader=self.Serving(root, memory_workspace)))
+            parse_from_path(root / 'api.raml', ParseOptions(file_loader=self.Serving(root, workspace)))
         assert caught.value.head.position is not None
         assert caught.value.head.position.line > 1
 

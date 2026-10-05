@@ -12,17 +12,9 @@ from __future__ import annotations
 import pytest
 
 from fastraml import ParseOptions, RamlError
+from tests.diagnostics import traces
 
 API = '#%RAML 1.0\ntitle: T\nmediaType: application/json\n'
-
-
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
-def parse(workspace, root, name: str = 'api.raml'):
-    return workspace.parse(root / name)
 
 
 class TestParameters:
@@ -31,21 +23,22 @@ class TestParameters:
     RT = 'resourceTypes:\n  r:\n    get:\n      description: <<methodName>>\n'
 
     def test_method_name_is_supplied_by_the_caller(self, workspace):
-        root = workspace({'api.raml': API + self.RT + '/users:\n  type: {r: {methodName: listing}}\n'})
-        assert parse(workspace, root).endpoints['/users'].operations['get'].description.value == 'listing'
+        assert (
+            workspace.document(API + self.RT + '/users:\n  type: {r: {methodName: listing}}\n')
+            .endpoints['/users']
+            .operations['get']
+            .description.value
+            == 'listing'
+        )
 
     def test_method_name_is_required_where_used(self, workspace):
         # Before, it counted as reserved but was never injected: `<<methodName>>`
         # reached the model as written.
-        root = workspace({'api.raml': API + self.RT + '/users:\n  type: r\n'})
         with pytest.raises(RamlError) as caught:
-            parse(workspace, root)
-        assert [
-            frame.info
-            for chain in caught.value.chains()
-            for frame in chain
-            if frame.message == 'missing required parameter'
-        ] == [{'parameter': 'methodName'}]
+            workspace.document(API + self.RT + '/users:\n  type: r\n')
+        assert [frame.info for frame in traces(caught.value) if frame.message == 'missing required parameter'] == [
+            {'parameter': 'methodName'}
+        ]
 
     def test_the_reserved_parameters_omit_ext(self, workspace):
         """Spec § Resource Type and Trait Parameters (raml-10.md L2356): applying
@@ -53,66 +46,67 @@ class TestParameters:
         "`bom`" (docs/08 § 3.3).
         """
         rt = 'resourceTypes:\n  r:\n    get:\n      description: <<resourcePath>> <<resourcePathName>>\n'
-        root = workspace({'api.raml': API + rt + '/bom/{itemId}{ext}:\n  type: r\n'})
-        endpoint = parse(workspace, root).endpoints['/bom/{itemId}{ext}']
+        endpoint = workspace.document(API + rt + '/bom/{itemId}{ext}:\n  type: r\n').endpoints['/bom/{itemId}{ext}']
         assert endpoint.operations['get'].description.value == '/bom/{itemId} bom'
 
 
 class TestApplication:
     def test_a_method_the_resource_lacks_is_grafted(self, workspace):
-        root = workspace(
-            {'api.raml': API + 'resourceTypes:\n  base:\n    get:\n      description: d\n/users:\n  type: base\n'}
-        )
-        endpoint = parse(workspace, root).endpoints['/users']
+        endpoint = workspace.document(
+            API + 'resourceTypes:\n  base:\n    get:\n      description: d\n/users:\n  type: base\n'
+        ).endpoints['/users']
         assert list(endpoint.operations) == ['get']
         assert endpoint.operations['get'].description.value == 'd'
 
     def test_a_method_the_resource_declares_merges_and_wins(self, workspace):
-        root = workspace(
-            {
-                'api.raml': API
+        get = (
+            workspace.document(
+                API
                 + 'resourceTypes:\n  base:\n    get:\n      description: theirs\n      displayName: kept\n'
                 + '/users:\n  type: base\n  get:\n    description: mine\n'
-            }
+            )
+            .endpoints['/users']
+            .operations['get']
         )
-        get = parse(workspace, root).endpoints['/users'].operations['get']
         assert get.description.value == 'mine'
         assert get.display_name.value == 'kept'
 
     def test_endpoint_level_facets_merge_too(self, workspace):
-        root = workspace(
-            {'api.raml': API + 'resourceTypes:\n  base:\n    description: from the type\n' + '/users:\n  type: base\n'}
+        assert (
+            workspace.document(
+                API + 'resourceTypes:\n  base:\n    description: from the type\n' + '/users:\n  type: base\n'
+            )
+            .endpoints['/users']
+            .description.value
+            == 'from the type'
         )
-        assert parse(workspace, root).endpoints['/users'].description.value == 'from the type'
 
     def test_a_chain_applies_with_the_closest_declaration_winning(self, workspace):
-        root = workspace(
-            {
-                'api.raml': API
-                + 'resourceTypes:\n'
-                + '  grandparent:\n    description: grandparent\n    displayName: from grandparent\n'
-                + '  parent:\n    type: grandparent\n    description: parent\n'
-                + '/users:\n  type: parent\n'
-            }
-        )
-        endpoint = parse(workspace, root).endpoints['/users']
+        endpoint = workspace.document(
+            API
+            + 'resourceTypes:\n'
+            + '  grandparent:\n    description: grandparent\n    displayName: from grandparent\n'
+            + '  parent:\n    type: grandparent\n    description: parent\n'
+            + '/users:\n  type: parent\n'
+        ).endpoints['/users']
         assert endpoint.description.value == 'parent'
         assert endpoint.display_name.value == 'from grandparent'
 
     def test_a_cycle_terminates(self, workspace):
-        root = workspace(
-            {
-                'api.raml': API
+        assert (
+            workspace.document(
+                API
                 + 'resourceTypes:\n  a:\n    type: b\n    description: a\n  b:\n    type: a\n    description: b\n'
                 + '/users:\n  type: a\n'
-            }
+            )
+            .endpoints['/users']
+            .description.value
+            == 'a'
         )
-        assert parse(workspace, root).endpoints['/users'].description.value == 'a'
 
     def test_an_unresolvable_resource_type_names_itself(self, workspace):
-        root = workspace({'api.raml': API + '/users:\n  type: nowhere\n'})
         with pytest.raises(RamlError) as caught:
-            parse(workspace, root)
+            workspace.document(API + '/users:\n  type: nowhere\n')
         assert caught.value.head.info == {'resourceType': 'nowhere'}
 
 
@@ -129,68 +123,66 @@ class TestOptionalMethods:
     )
 
     def test_an_optional_method_the_resource_lacks_is_dropped(self, workspace):
-        root = workspace(
-            {'api.raml': self.CORP + '/queues:\n  type: { corpResource: { TextAboutGet: about get } }\n  get:\n'}
-        )
-        assert list(parse(workspace, root).endpoints['/queues'].operations) == ['get']
+        assert list(
+            workspace.document(self.CORP + '/queues:\n  type: { corpResource: { TextAboutGet: about get } }\n  get:\n')
+            .endpoints['/queues']
+            .operations
+        ) == ['get']
 
     def test_its_variables_are_not_required(self, workspace):
         # The point of filtering before recollecting: `/queues` has no `post`,
         # so `<<TextAboutPost>>` is unreachable and must not be demanded.
         # go-raml demands it (KNOWN-ISSUES.md entry 6).
-        root = workspace(
-            {'api.raml': self.CORP + '/queues:\n  type: { corpResource: { TextAboutGet: about get } }\n  get:\n'}
+        assert (
+            workspace.document(self.CORP + '/queues:\n  type: { corpResource: { TextAboutGet: about get } }\n  get:\n')
+            .endpoints['/queues']
+            .operations['get']
+            .description.value
+            == 'about get'
         )
-        assert parse(workspace, root).endpoints['/queues'].operations['get'].description.value == 'about get'
 
     def test_each_application_requires_its_kept_methods_variables(self, workspace):
         # Each key's variables are collected once per definition (docs/08 § 5);
         # every application still requires what its own kept methods use.
-        root = workspace(
-            {
-                'api.raml': self.CORP
+        with pytest.raises(RamlError) as caught:
+            workspace.document(
+                self.CORP
                 + '/queues:\n  type: { corpResource: { TextAboutGet: g } }\n  get:\n'
                 + '/topics:\n  type: { corpResource: { TextAboutPost: p } }\n  get:\n'
                 + '/orders:\n  type: { corpResource: { TextAboutGet: g } }\n  post:\n'
-            }
-        )
-        with pytest.raises(RamlError) as caught:
-            parse(workspace, root)
-        assert [
-            frame.info
-            for chain in caught.value.chains()
-            for frame in chain
-            if frame.message == 'missing required parameter'
-        ] == [{'parameter': 'TextAboutGet'}, {'parameter': 'TextAboutPost'}]
+            )
+        assert [frame.info for frame in traces(caught.value) if frame.message == 'missing required parameter'] == [
+            {'parameter': 'TextAboutGet'},
+            {'parameter': 'TextAboutPost'},
+        ]
 
     def test_a_sibling_variable_is_still_substituted(self, workspace):
         # The second half of the same fault: with a stale index, filtering out
         # `post` leaves `<<TextAboutGet>>` looking up the wrong entry and
         # reaching the model unsubstituted.
-        root = workspace(
-            {
-                'api.raml': self.CORP
+        assert (
+            workspace.document(
+                self.CORP
                 + '/queues:\n  type: { corpResource: { TextAboutGet: about get, TextAboutPost: unused } }\n  get:\n'
-            }
+            )
+            .endpoints['/queues']
+            .operations['get']
+            .description.value
+            == 'about get'
         )
-        assert parse(workspace, root).endpoints['/queues'].operations['get'].description.value == 'about get'
 
     def test_an_optional_method_the_resource_declares_is_applied(self, workspace):
-        root = workspace(
-            {
-                'api.raml': self.CORP
-                + '/queues:\n'
-                + '  type: { corpResource: { TextAboutGet: g, TextAboutPost: p } }\n'
-                + '  get:\n  post:\n'
-            }
-        )
-        endpoint = parse(workspace, root).endpoints['/queues']
+        endpoint = workspace.document(
+            self.CORP
+            + '/queues:\n'
+            + '  type: { corpResource: { TextAboutGet: g, TextAboutPost: p } }\n'
+            + '  get:\n  post:\n'
+        ).endpoints['/queues']
         assert endpoint.operations['post'].description.value == 'p'
 
     def test_a_declaration_error_names_the_offending_key(self, workspace):
-        root = workspace({'api.raml': API + 'resourceTypes:\n  base:\n    nonsense:\n      description: d\n'})
         with pytest.raises(RamlError) as caught:
-            parse(workspace, root)
+            workspace.document(API + 'resourceTypes:\n  base:\n    nonsense:\n      description: d\n')
         assert 'resource type method must be an HTTP method' in str(caught.value)
 
 
@@ -207,27 +199,43 @@ class TestTraitPriority:
     )
 
     def test_a_resource_type_method_trait_beats_a_resource_type_resource_trait(self, workspace):
-        root = workspace({'api.raml': self.FOUR_CLASSES + '/users:\n  type: rt\n  get:\n'})
-        assert parse(workspace, root).endpoints['/users'].operations['get'].description.value == 'rt-method'
+        assert (
+            workspace.document(self.FOUR_CLASSES + '/users:\n  type: rt\n  get:\n')
+            .endpoints['/users']
+            .operations['get']
+            .description.value
+            == 'rt-method'
+        )
 
     def test_the_resources_own_trait_beats_both(self, workspace):
-        root = workspace(
-            {'api.raml': self.FOUR_CLASSES + '/users:\n  type: rt\n  is: [{t: {who: resource}}]\n  get:\n'}
+        assert (
+            workspace.document(self.FOUR_CLASSES + '/users:\n  type: rt\n  is: [{t: {who: resource}}]\n  get:\n')
+            .endpoints['/users']
+            .operations['get']
+            .description.value
+            == 'resource'
         )
-        assert parse(workspace, root).endpoints['/users'].operations['get'].description.value == 'resource'
 
     def test_the_methods_own_trait_beats_everything(self, workspace):
-        root = workspace(
-            {
-                'api.raml': self.FOUR_CLASSES
+        assert (
+            workspace.document(
+                self.FOUR_CLASSES
                 + '/users:\n  type: rt\n  is: [{t: {who: resource}}]\n  get:\n    is: [{t: {who: method}}]\n'
-            }
+            )
+            .endpoints['/users']
+            .operations['get']
+            .description.value
+            == 'method'
         )
-        assert parse(workspace, root).endpoints['/users'].operations['get'].description.value == 'method'
 
     def test_a_trait_named_only_by_the_resource_type_still_applies(self, workspace):
-        root = workspace({'api.raml': self.FOUR_CLASSES + '/users:\n  type: rt\n'})
-        assert parse(workspace, root).endpoints['/users'].operations['get'].description.value == 'rt-method'
+        assert (
+            workspace.document(self.FOUR_CLASSES + '/users:\n  type: rt\n')
+            .endpoints['/users']
+            .operations['get']
+            .description.value
+            == 'rt-method'
+        )
 
 
 class TestProvenance:
@@ -249,7 +257,9 @@ class TestProvenance:
                 'models.raml': '#%RAML 1.0 Library\ntypes:\n  Thing: integer\n',
             }
         )
-        body = parse(workspace, root).endpoints['/users'].operations['get'].request.bodies['application/json']
+        body = (
+            workspace.parse(root / 'api.raml').endpoints['/users'].operations['get'].request.bodies['application/json']
+        )
         assert body.shape.inherits[0].location.endswith('models.raml')
         assert body.shape.type == 'integer', "the caller's string Thing must not win"
 
@@ -260,7 +270,9 @@ class TestProvenance:
                 'rt.raml': '#%RAML 1.0 ResourceType\nget:\n  body:\n    application/json:\n      type: string\n',
             }
         )
-        body = parse(workspace, root).endpoints['/users'].operations['get'].request.bodies['application/json']
+        body = (
+            workspace.parse(root / 'api.raml').endpoints['/users'].operations['get'].request.bodies['application/json']
+        )
         assert body.shape.location.endswith('rt.raml')
 
     def test_what_a_library_resource_type_contributes_is_located_in_the_library(self, workspace):
@@ -277,20 +289,18 @@ class TestProvenance:
                 ),
             }
         )
-        post = parse(workspace, root).endpoints['/users'].operations['post']
+        post = workspace.parse(root / 'api.raml').endpoints['/users'].operations['post']
         located = [post.location, post.request.bodies['application/json'].location, post.responses['201'].location]
         assert all(where.endswith('/lib.raml') for where in located), located
         assert post.key_pos.line == 4
 
     def test_a_resource_type_contributed_shape_joins_the_later_passes(self, workspace):
-        root = workspace(
-            {
-                'api.raml': API
+        with pytest.raises(RamlError) as caught:
+            workspace.document(
+                API
                 + 'resourceTypes:\n  rt:\n    get:\n      body:\n'
                 + '        application/json:\n          type: string\n          example: 1\n'
-                + '/users:\n  type: rt\n'
-            }
-        )
-        with pytest.raises(RamlError) as caught:
-            workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, validate=True))
+                + '/users:\n  type: rt\n',
+                ParseOptions(unwrap=True, validate=True),
+            )
         assert 'example' in str(caught.value)

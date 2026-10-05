@@ -163,29 +163,29 @@ POSITIONS = {
 
 
 @pytest.mark.parametrize('position', list(POSITIONS))
-def test_a_position_reads_included_content_in_place(memory_workspace, position):
+def test_a_position_reads_included_content_in_place(workspace, position):
     api, content, read, expected = POSITIONS[position]
-    root = memory_workspace({'api.raml': ROOT + api, 'c.yaml': content})
-    assert read(memory_workspace.parse(root / 'api.raml')) == expected
+    root = workspace({'api.raml': ROOT + api, 'c.yaml': content})
+    assert read(workspace.parse(root / 'api.raml')) == expected
 
 
-def test_an_included_type_is_named_in_the_api_and_checked_in_its_file(memory_workspace):
+def test_an_included_type_is_named_in_the_api_and_checked_in_its_file(workspace):
     # Named in the declaring document, so `types_in` and every view reading it
     # see it there; indexed for unwrap and validation where it is written.
-    root = memory_workspace(
+    root = workspace(
         {
             'api.raml': ROOT + 'types: !include c.yaml\n',
             'c.yaml': 'A:\n  properties:\n    n: integer\n  example: {n: x}\n',
         }
     )
     with pytest.raises(RamlError) as caught:
-        memory_workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, validate=True))
+        workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, validate=True))
     frame = next(caught.value.chains())[0]
     assert (frame.message, frame.where().rsplit('/', 1)[-1]) == ('invalid example', 'c.yaml:4:12')
 
 
-def test_a_subtype_in_an_included_types_map_resolves_deferred_property_names(memory_workspace):
-    root = memory_workspace(
+def test_a_subtype_in_an_included_types_map_resolves_deferred_property_names(workspace):
+    root = workspace(
         {
             'api.raml': ROOT + 'types: !include types.yaml\n',
             'types.yaml': (
@@ -195,7 +195,7 @@ def test_a_subtype_in_an_included_types_map_resolves_deferred_property_names(mem
             ),
         }
     )
-    raml = memory_workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, validate=True))
+    raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, validate=True))
     types = raml.entry_point.types
     assert list(types) == ['Derived', 'Base', 'Item']
     assert list(types['Derived'].shape.properties) == ['items', 'id']
@@ -203,15 +203,15 @@ def test_a_subtype_in_an_included_types_map_resolves_deferred_property_names(mem
     assert types['Derived'].shape.properties['items'].base.location.endswith('/types.yaml')
 
 
-def test_a_missing_deferred_property_name_in_an_included_types_map_reports_its_file(memory_workspace):
-    root = memory_workspace(
+def test_a_missing_deferred_property_name_in_an_included_types_map_reports_its_file(workspace):
+    root = workspace(
         {
             'api.raml': ROOT + 'types: !include types.yaml\n',
             'types.yaml': 'Base: object\nDerived:\n  type: Base\n  properties:\n    items: Missing[]\n',
         }
     )
     with pytest.raises(RamlError) as caught:
-        memory_workspace.parse(root / 'api.raml')
+        workspace.parse(root / 'api.raml')
     frame = next(caught.value.chains())[-1]
     assert (frame.message, frame.info, frame.where().rsplit('/', 1)[-1]) == (
         'reference not found',
@@ -220,42 +220,42 @@ def test_a_missing_deferred_property_name_in_an_included_types_map_reports_its_f
     )
 
 
-def test_a_resource_is_keyed_where_it_is_written_and_decoded_in_its_file(memory_workspace):
-    root = memory_workspace({'api.raml': ROOT + '/x: !include c.yaml\n', 'c.yaml': 'displayName: X\n/y:\n'})
-    raml = memory_workspace.parse(root / 'api.raml')
+def test_a_resource_is_keyed_where_it_is_written_and_decoded_in_its_file(workspace):
+    root = workspace({'api.raml': ROOT + '/x: !include c.yaml\n', 'c.yaml': 'displayName: X\n/y:\n'})
+    raml = workspace.parse(root / 'api.raml')
     x, y = raml.endpoints['/x'], raml.endpoints['/x/y']
     files = [each.rsplit('/', 1)[-1] for each in (x.location, x.display_name.location, y.location)]
     assert files == ['api.raml', 'c.yaml', 'c.yaml']
 
 
-def test_a_failure_in_included_content_is_reported_in_its_file(memory_workspace):
-    root = memory_workspace({'api.raml': ROOT + '/x: !include c.yaml\n', 'c.yaml': 'get:\n  bogus: 1\n'})
+def test_a_failure_in_included_content_is_reported_in_its_file(workspace):
+    root = workspace({'api.raml': ROOT + '/x: !include c.yaml\n', 'c.yaml': 'get:\n  bogus: 1\n'})
     with pytest.raises(RamlError) as caught:
-        memory_workspace.parse(root / 'api.raml')
+        workspace.parse(root / 'api.raml')
     frame = next(caught.value.chains())[-1]
     assert (frame.message, frame.where().rsplit('/', 1)[-1]) == ('unknown field', 'c.yaml:2:3')
 
 
-def test_a_typed_fragment_is_not_content(memory_workspace):
+def test_a_typed_fragment_is_not_content(workspace):
     # A ResourceType where a resource goes: its place is `resourceTypes:`.
-    root = memory_workspace({'api.raml': ROOT + '/x: !include c.raml\n', 'c.raml': '#%RAML 1.0 ResourceType\nget:\n'})
+    root = workspace({'api.raml': ROOT + '/x: !include c.raml\n', 'c.raml': '#%RAML 1.0 ResourceType\nget:\n'})
     with pytest.raises(RamlError) as caught:
-        memory_workspace.parse(root / 'api.raml')
+        workspace.parse(root / 'api.raml')
     frame = next(caught.value.chains())[-1]
     assert (frame.message, frame.info['header']) == ('fragment is not allowed here', '#%RAML 1.0 ResourceType')
 
 
-def test_a_text_file_is_judged_at_the_include(memory_workspace):
-    root = memory_workspace({'api.raml': ROOT + '/x: !include c.md\n', 'c.md': 'get:\n'})
+def test_a_text_file_is_judged_at_the_include(workspace):
+    root = workspace({'api.raml': ROOT + '/x: !include c.md\n', 'c.md': 'get:\n'})
     with pytest.raises(RamlError) as caught:
-        memory_workspace.parse(root / 'api.raml')
+        workspace.parse(root / 'api.raml')
     frame = next(caught.value.chains())[-1]
     assert (frame.message, frame.where().rsplit('/', 1)[-1]) == ('resource must be a mapping', 'api.raml:3:5')
 
 
-def test_an_empty_file_is_empty_content(memory_workspace):
-    root = memory_workspace({'api.raml': ROOT + 'types: !include c.yaml\n', 'c.yaml': ''})
-    raml = memory_workspace.parse(root / 'api.raml')
+def test_an_empty_file_is_empty_content(workspace):
+    root = workspace({'api.raml': ROOT + 'types: !include c.yaml\n', 'c.yaml': ''})
+    raml = workspace.parse(root / 'api.raml')
     assert raml.types_in(raml.location) == {}
 
 
@@ -310,23 +310,23 @@ TYPED_POSITIONS = {
 
 
 @pytest.mark.parametrize('position', list(TYPED_POSITIONS))
-def test_a_typed_position_reads_a_file_without_a_header_as_its_content(memory_workspace, position):
+def test_a_typed_position_reads_a_file_without_a_header_as_its_content(workspace, position):
     api, content, read, expected = TYPED_POSITIONS[position]
-    root = memory_workspace({'api.raml': ROOT + api, 'c.yaml': content})
-    assert read(memory_workspace.parse(root / 'api.raml')) == expected
+    root = workspace({'api.raml': ROOT + api, 'c.yaml': content})
+    assert read(workspace.parse(root / 'api.raml')) == expected
 
 
-def test_included_content_resolves_names_where_it_is_included(memory_workspace):
+def test_included_content_resolves_names_where_it_is_included(workspace):
     # Literal content has no namespace of its own: `B` is the API's.
-    root = memory_workspace({'api.raml': ROOT + 'types:\n  B: integer\n  T: !include c.yaml\n', 'c.yaml': 'type: B\n'})
-    raml = memory_workspace.parse(root / 'api.raml')
+    root = workspace({'api.raml': ROOT + 'types:\n  B: integer\n  T: !include c.yaml\n', 'c.yaml': 'type: B\n'})
+    raml = workspace.parse(root / 'api.raml')
     assert _type(raml).link.shape.inherits == [raml.types_in(raml.location)['B']]
 
 
-def test_a_uses_in_included_content_is_no_import(memory_workspace):
+def test_a_uses_in_included_content_is_no_import(workspace):
     # Only a typed fragment imports; content that writes `uses:` is a type
     # declaration with an unknown facet, and `l.X` names nothing.
-    root = memory_workspace(
+    root = workspace(
         {
             'api.raml': ROOT + 'types:\n  T: !include c.yaml\n',
             'c.yaml': 'uses:\n  l: lib.raml\ntype: l.X\n',
@@ -334,37 +334,37 @@ def test_a_uses_in_included_content_is_no_import(memory_workspace):
         }
     )
     with pytest.raises(RamlError):
-        memory_workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, validate=True))
+        workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, validate=True))
 
 
 @pytest.mark.parametrize('declared', ['traits:\n  t: !include t.yaml\n', 'traits: !include t.yaml\n'])
-def test_a_grafted_template_body_is_located_in_its_file(memory_workspace, declared):
+def test_a_grafted_template_body_is_located_in_its_file(workspace, declared):
     # Its names resolve in the API, but a failure is reported where it is written.
     body = 'description: d\nbogus: 1\n' if 't: !include' in declared else 't:\n  bogus: 1\n'
-    root = memory_workspace({'api.raml': ROOT + declared + '/x:\n  get:\n    is: [t]\n', 't.yaml': body})
+    root = workspace({'api.raml': ROOT + declared + '/x:\n  get:\n    is: [t]\n', 't.yaml': body})
     with pytest.raises(RamlError) as caught:
-        memory_workspace.parse(root / 'api.raml')
+        workspace.parse(root / 'api.raml')
     frame = next(caught.value.chains())[-1]
     assert (frame.message, frame.location.rsplit('/', 1)[-1]) == ('unknown field', 't.yaml')
 
 
-def test_a_json_file_where_a_type_goes_is_still_a_schema(memory_workspace):
-    root = memory_workspace({'api.raml': ROOT + 'types:\n  T: !include s.json\n', 's.json': '{"type": "object"}'})
-    assert _type(memory_workspace.parse(root / 'api.raml')).type == 'json'
+def test_a_json_file_where_a_type_goes_is_still_a_schema(workspace):
+    root = workspace({'api.raml': ROOT + 'types:\n  T: !include s.json\n', 's.json': '{"type": "object"}'})
+    assert _type(workspace.parse(root / 'api.raml')).type == 'json'
 
 
-def test_deciding_content_from_fragment_reads_a_file_once(memory_workspace):
+def test_deciding_content_from_fragment_reads_a_file_once(workspace):
     from fastraml import parse_from_path, path_to_file_uri
     from tests.unit.conftest import CountingLoader
 
-    root = memory_workspace(
+    root = workspace(
         {
             'api.raml': ROOT + 'traits:\n  f: !include f.raml\n  c: !include c.yaml\n/x:\n  get:\n    is: [f, c]\n',
             'f.raml': '#%RAML 1.0 Trait\ndescription: f\n',
             'c.yaml': 'displayName: c\n',
         }
     )
-    loader = CountingLoader(root, memory_workspace)
+    loader = CountingLoader(root, workspace)
     parse_from_path(root / 'api.raml', ParseOptions(file_loader=loader))
     counts = loader.counts
     assert (counts[path_to_file_uri(root / 'f.raml')], counts[path_to_file_uri(root / 'c.yaml')]) == (1, 1)

@@ -20,6 +20,7 @@ from fastraml.registry import Raml
 from fastraml.service.workspace import _HEAD_BYTES, BOM, Workspace, _head, canonical
 from fastraml.uris import path_to_file_uri
 from fastraml.yamlnode import decode_source, read_head
+from tests.diagnostics import leaves, traces
 from tests.unit.conftest import write_files
 
 if TYPE_CHECKING:
@@ -229,7 +230,7 @@ class TestSnapshots:
         workspace.open(f'{folder}/lib.raml', LIBRARY.replace('User', 'Person'), 1)
         snapshot = workspace.snapshot(f'{folder}/api.raml')
         assert snapshot.error is not None
-        assert {frame.info.get('type') for chain in snapshot.error.chains() for frame in chain} >= {'lib.User'}
+        assert {frame.info.get('type') for frame in traces(snapshot.error)} >= {'lib.User'}
 
     def test_a_buffer_outside_the_folder_is_not_served(self, tmp_path):
         workspace, folder = _workspace(tmp_path / 'inside', {'api.raml': API + 'uses:\n  lib: ../lib.raml\n'})
@@ -237,9 +238,9 @@ class TestSnapshots:
         workspace.open(outside, LIBRARY, 1)
         snapshot = workspace.snapshot(f'{folder}/api.raml')
         assert snapshot.error is not None
-        assert any(
-            'outside the workspace root' in frame.message for chain in snapshot.error.chains() for frame in chain
-        )
+        assert [(t.message, t.info['path']) for t in leaves(snapshot.error)] == [
+            ('path is outside the workspace root', str(tmp_path / 'lib.raml'))
+        ]
 
     def test_a_file_that_appears_refreshes_a_snapshot_that_wanted_it(self, tmp_path):
         workspace, folder = _workspace(tmp_path, {'api.raml': API + 'uses:\n  lib: lib.raml\n'})

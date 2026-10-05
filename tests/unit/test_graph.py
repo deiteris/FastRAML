@@ -84,11 +84,6 @@ types:
 
 
 @pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
-@pytest.fixture
 def graph(workspace) -> Graph:
     root = workspace({'api.raml': API, 'lib.raml': LIB})
     return build_graph(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
@@ -166,13 +161,13 @@ class TestIris:
         independent of the type that wrote it — and two inline schemas in one
         file would otherwise both claim `#/properties/x`.
         """
-        root = workspace(
-            {
-                'api.raml': '#%RAML 1.0\ntitle: T\ntypes:\n'
-                '  A:\n    type: |\n      {"type": "object", "properties": {"x": {"type": "string"}}}\n'
-            }
+        graph = build_graph(
+            workspace.document(
+                '#%RAML 1.0\ntitle: T\ntypes:\n'
+                '  A:\n    type: |\n      {"type": "object", "properties": {"x": {"type": "string"}}}\n',
+                ParseOptions(unwrap=True),
+            )
         )
-        graph = build_graph(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
         assert any('/declarations/types/A' in iri and iri.endswith('/property/x/schema') for iri in graph.nodes)
 
     def test_a_use_site_does_not_steal_the_declaration_iri(self, graph):
@@ -238,10 +233,12 @@ class TestIris:
     def test_a_resource_with_a_display_name_is_found_by_its_path_too(self, workspace):
         """docs/16 § 3: `show api.raml /books` answered `no such node` when
         `/books` declared `displayName: Books`, the name it is listed under."""
-        root = workspace(
-            {'api.raml': '#%RAML 1.0\ntitle: D\n/books:\n  displayName: Books\n  get:\n  /{isbn}:\n    get:\n'}
+        graph = build_graph(
+            workspace.document(
+                '#%RAML 1.0\ntitle: D\n/books:\n  displayName: Books\n  get:\n  /{isbn}:\n    get:\n',
+                ParseOptions(unwrap=True),
+            )
         )
-        graph = build_graph(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
         books = f'{DEFAULT_BASE}#/web-api/endpoint/%2Fbooks'
         assert graph.find('Books') == [books]
         assert graph.find('/books') == [books]
@@ -343,13 +340,13 @@ class TestTheEdgesThatAnswerQuestions:
         assert graph.request_shape_iris() == walked
 
     def test_base_uri_parameter_shape_is_request_input(self, workspace):
-        root = workspace(
-            {
-                'api.raml': '#%RAML 1.0\ntitle: T\nbaseUri: https://{tenant}.example.test\n'
-                'types:\n  Tenant: string\nbaseUriParameters:\n  tenant: Tenant\n'
-            }
+        graph = build_graph(
+            workspace.document(
+                '#%RAML 1.0\ntitle: T\nbaseUri: https://{tenant}.example.test\n'
+                'types:\n  Tenant: string\nbaseUriParameters:\n  tenant: Tenant\n',
+                ParseOptions(unwrap=True),
+            )
         )
-        graph = build_graph(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
         parameter = next(iri for iri in iris(graph, 'Parameter') if graph.label(iri) == 'tenant')
         assert graph.out(parameter, ('range',))[0].object in graph.request_shape_iris()
 
@@ -359,16 +356,16 @@ class TestTheEdgesThatAnswerQuestions:
         `oauth2.0` is also the corpus's reminder that a dot in a name is not
         always a namespace separator (docs/16 § 3).
         """
-        root = workspace(
-            {
-                'api.raml': '#%RAML 1.0\ntitle: D\nbaseUri: https://e.test\n'
+        graph = build_graph(
+            workspace.document(
+                '#%RAML 1.0\ntitle: D\nbaseUri: https://e.test\n'
                 'securitySchemes:\n  oauth2.0:\n    type: OAuth 2.0\n'
                 '    settings:\n      authorizationGrants: [client_credentials]\n'
                 '      accessTokenUri: https://e.test/t\n'
-                '/persons:\n  get:\n    securedBy: [oauth2.0]\n'
-            }
+                '/persons:\n  get:\n    securedBy: [oauth2.0]\n',
+                ParseOptions(unwrap=True),
+            )
         )
-        graph = build_graph(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
         scheme = graph.find('oauth2.0')[0]
         assert scheme.endswith('/declarations/securitySchemes/oauth2.0')
         found = graph.walk(scheme, USE_EDGES, reverse=True)
@@ -528,8 +525,7 @@ title: T
 
     @pytest.fixture
     def parameterised(self, workspace):
-        root = workspace({'api.raml': self.QUERY})
-        return build_graph(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
+        return build_graph(workspace.document(self.QUERY, ParseOptions(unwrap=True)))
 
     def test_a_node_and_the_schema_inside_it_are_not_an_ambiguity(self, parameterised):
         """`…/parameter/query/login` and `…/parameter/query/login/schema` are one
@@ -562,8 +558,7 @@ title: T
             '  User:\n    type: Entity\n    properties:\n      name: string\n'
             '  Admin:\n    type: [User, Entity]\n    properties:\n      level: integer\n'
         )
-        root = workspace({'api.raml': api})
-        graph = build_graph(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
+        graph = build_graph(workspace.document(api, ParseOptions(unwrap=True)))
         found = graph.find('Entity')
         assert len(found) == 1, found
         assert found[0].endswith('#/declarations/types/Entity')
@@ -810,9 +805,9 @@ class TestAttributesAreDerivedNotStored:
 
     def test_scopes_are_every_scheme_in_force_not_the_last_one(self, workspace):
         """The eager writer set `scopes` once per scheme inside the loop."""
-        root = workspace(
-            {
-                'api.raml': """#%RAML 1.0
+        graph = build_graph(
+            workspace.document(
+                """#%RAML 1.0
 title: T
 securitySchemes:
   first:
@@ -832,10 +827,10 @@ securitySchemes:
 /things:
   get:
     securedBy: [first: {scopes: [read]}, second: {scopes: [admin]}]
-"""
-            }
+""",
+                ParseOptions(unwrap=True),
+            )
         )
-        graph = build_graph(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
         operation = iris(graph, 'Operation')[0]
         assert graph.nodes[operation].attributes['scopes'] == ('read', 'admin')
 

@@ -77,11 +77,6 @@ types:
 
 
 @pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
-@pytest.fixture
 def shown(workspace):
     root = workspace({'lib.raml': LIB})
     raml = workspace.parse(root / 'lib.raml', ParseOptions(unwrap=True))
@@ -314,8 +309,7 @@ def endpoint(workspace):
     from fastraml.views.graph import build_graph
     from fastraml.views.render import Sources, render_endpoint
 
-    root = workspace({'api.raml': API})
-    raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
+    raml = workspace.document(API, ParseOptions(unwrap=True))
     graph = build_graph(raml)
     sources = Sources.of(raml)
 
@@ -369,14 +363,12 @@ class TestTheEndpointView:
         """
         from fastraml.views.render import Sources, render_operation
 
-        root = workspace(
-            {
-                'api.raml': '#%RAML 1.0\ntitle: t\n'
-                'traits: {a: {queryParameters: {pa: string}}, b: {queryParameters: {pb: string}}}\n'
-                '/r:\n  get:\n    is: [a, b]\n'
-            }
+        raml = workspace.document(
+            '#%RAML 1.0\ntitle: t\n'
+            'traits: {a: {queryParameters: {pa: string}}, b: {queryParameters: {pb: string}}}\n'
+            '/r:\n  get:\n    is: [a, b]\n',
+            ParseOptions(unwrap=True),
         )
-        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
         operation = raml.endpoints['/r'].operations['get']
         notes = TestOrigins.notes('\n'.join(render_operation(operation, '/r', sources=Sources.of(raml))))
         assert notes['pa'].startswith('a,')
@@ -870,8 +862,7 @@ class TestExtensionsAreShown:
 
     @pytest.fixture
     def extended(self, workspace):
-        root = workspace({'api.raml': EXTENDED})
-        graph = build_graph(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
+        graph = build_graph(workspace.document(EXTENDED, ParseOptions(unwrap=True)))
 
         def show(name: str) -> dict:
             text = '\n'.join(render(graph.shape_at(graph.find(name)[0]), root=graph.root))
@@ -939,8 +930,7 @@ types:
 
     @pytest.fixture
     def views(self, workspace):
-        root = workspace({'api.raml': self.FACETED})
-        graph = build_graph(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
+        graph = build_graph(workspace.document(self.FACETED, ParseOptions(unwrap=True)))
 
         def of(name: str) -> tuple[set[str], set[str], set[str]]:
             iri = graph.find(name)[0]

@@ -19,13 +19,9 @@ from hypothesis import strategies as st
 
 from fastraml import ParseOptions, RamlError, Stage, parse_from_path
 from fastraml.types.values import ValueSet, is_subset, same_value, unique_items
+from tests.diagnostics import messages, traces
 
 API = '#%RAML 1.0\ntitle: T\n'
-
-
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
 
 
 #: `12` in Arabic-Indic digits, which Python's `\d` matches and `int()` reads.
@@ -34,8 +30,7 @@ _ARABIC_INDIC_12 = chr(0x0661) + chr(0x0662)
 
 def declared_in(workspace, body: str, name: str = 'T'):
     """The parse and the named type from `types:\n<body>`, unwrapped."""
-    root = workspace({'api.raml': API + 'types:\n' + body})
-    raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
+    raml = workspace.document(API + 'types:\n' + body, ParseOptions(unwrap=True))
     return raml, raml.types_in(raml.location)[name]
 
 
@@ -45,16 +40,11 @@ def declared(workspace, body: str, name: str = 'T'):
 
 
 def parse_validating(workspace, body: str):
-    root = workspace({'api.raml': API + 'types:\n' + body})
     try:
-        workspace.parse(root / 'api.raml', ParseOptions(validate=True, unwrap=True))
+        workspace.document(API + 'types:\n' + body, ParseOptions(validate=True, unwrap=True))
     except RamlError as err:
         return err
     return None
-
-
-def messages(error: RamlError) -> set[str]:
-    return {trace.message for chain in error.chains() for trace in chain}
 
 
 class TestScalarTypes:
@@ -103,8 +93,8 @@ class TestScalarTypes:
         # Python's `\d` would take Arabic-Indic digits and `int()` would read them.
         error = parse_validating(workspace, f"  T:\n    type: {kind}\n    example: '{value}'\n")
         assert error is not None
-        traces = [trace for chain in error.chains() for trace in chain if trace.message == 'invalid date']
-        assert [trace.info['expected'] for trace in traces] == [expected]
+        dates = [trace for trace in traces(error) if trace.message == 'invalid date']
+        assert [trace.info['expected'] for trace in dates] == [expected]
 
     def test_rfc2616_is_selected_by_format(self, workspace):
         shape = declared(workspace, '  T:\n    type: datetime\n    format: rfc2616\n')
@@ -277,7 +267,7 @@ class TestArray:
 
     def test_the_failing_index_is_in_the_path(self, workspace):
         error = declared(workspace, '  T: integer[]\n').validate([1, 2, 'x'])
-        paths = {trace.info.get('path') for chain in error.chains() for trace in chain if trace.info}
+        paths = {trace.info.get('path') for trace in traces(error) if trace.info}
         assert '$[2]' in paths
 
     def test_unique_items(self, workspace):
@@ -342,10 +332,7 @@ class TestObject:
         shape = declared(workspace, '  T:\n    properties:\n      a: string\n      b: string\n      c: string\n')
         error = shape.validate({})
         missing = [
-            trace.info['properties']
-            for chain in error.chains()
-            for trace in chain
-            if trace.message == 'missing required properties'
+            trace.info['properties'] for trace in traces(error) if trace.message == 'missing required properties'
         ]
         assert missing == [['a', 'b', 'c']]
 
@@ -354,7 +341,7 @@ class TestObject:
         # reads in, which makes the diagnostic reproducible.
         shape = declared(workspace, '  T:\n    properties:\n      a: integer\n      b: integer\n')
         error = shape.validate({'b': 'x', 'a': 'y'})
-        paths = [trace.info['path'] for chain in error.chains() for trace in chain if trace.info.get('path')]
+        paths = [trace.info['path'] for trace in traces(error) if trace.info.get('path')]
         assert paths.index('$.a') < paths.index('$.b')
 
     def test_additional_properties_are_allowed_by_default(self, workspace):
@@ -500,7 +487,7 @@ class TestObject:
             '  T:\n    properties:\n      address:\n        properties:\n          zip: integer\n',
         )
         error = shape.validate({'address': {'zip': 'x'}})
-        paths = {trace.info.get('path') for chain in error.chains() for trace in chain if trace.info}
+        paths = {trace.info.get('path') for trace in traces(error) if trace.info}
         assert '$.address.zip' in paths
 
 
@@ -515,9 +502,7 @@ class TestUnion:
         # tell which one they meant to satisfy.
         error = declared(workspace, '  T: string | integer\n').validate([])
         assert error is not None
-        expected = {
-            trace.info.get('expected') for chain in error.chains() for trace in chain if trace.message == 'invalid type'
-        }
+        expected = {trace.info.get('expected') for trace in traces(error) if trace.message == 'invalid type'}
         assert expected == {'string', 'integer'}
 
 
@@ -546,7 +531,7 @@ class TestUnionDispatchesOnADiscriminator:
     def test_an_unknown_tag_is_refused_by_name(self, workspace):
         error = declared(workspace, TAGGED).validate({'kind': 'Fish', 'meows': True})
         assert error is not None
-        trace = next(t for chain in error.chains() for t in chain if t.message == 'unknown discriminator value')
+        trace = next(t for t in traces(error) if t.message == 'unknown discriminator value')
         assert trace.info['discriminator'] == 'kind'
         assert trace.info['known'] == ['Cat', 'Dog']
 
@@ -628,8 +613,7 @@ class TestUnionDispatchesOnADiscriminator:
         assert error is not None
         trace = next(
             t
-            for chain in error.chains()
-            for t in chain
+            for t in traces(error)
             if t.message == 'discriminator value is claimed by more than one member of the union'
         )
         assert trace.info['discriminator'] == 'k'
@@ -739,8 +723,7 @@ class TestUnionDispatchesOnADiscriminator:
         # docs/02 § 4, invariant I12. Without unwrap a child shows only
         # what its own declaration wrote, so it accepts a value missing the
         # property its parent made required — silently, which is the hazard.
-        root = workspace({'api.raml': API + 'types:\n' + TAGGED})
-        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=False))
+        raml = workspace.document(API + 'types:\n' + TAGGED, ParseOptions(unwrap=False))
         with pytest.raises(AssertionError, match='unwrapped shape') as caught:
             raml.types_in(raml.location)['Cat'].validate({'meows': True})
         # The remedy it names is the function P10 itself uses.
@@ -795,7 +778,7 @@ class TestExamplesAndDefaults:
             '  T:\n    type: integer\n    examples:\n      good: 1\n      bad: notanumber\n',
         )
         assert error is not None
-        named = {trace.info.get('example') for chain in error.chains() for trace in chain if trace.info}
+        named = {trace.info.get('example') for trace in traces(error) if trace.info}
         assert 'bad' in named
 
     def test_a_bad_default_is_reported(self, workspace):
@@ -946,7 +929,7 @@ class TestCustomFacets:
         error = parse_validating(workspace, body)
         assert error is not None
         assert messages(error) == {'required custom facet is missing'}
-        assert [trace.info for chain in error.chains() for trace in chain if trace.info] == [{'facet': 'breed'}]
+        assert [trace.info for trace in traces(error) if trace.info] == [{'facet': 'breed'}]
         assert 'unknown facet' not in messages(error)
 
     def test_a_diamond_reaches_its_shared_ancestor_once(self, workspace):
@@ -997,9 +980,7 @@ class TestCustomFacets:
         for tail in ('', '  C:\n    type: B\n  D:\n    type: C\n'):
             error = parse_validating(workspace, body + tail)
             assert error is not None
-            duplicates = [
-                frame for chain in error.chains() for frame in chain if frame.message == 'duplicate custom facet'
-            ]
+            duplicates = [frame for frame in traces(error) if frame.message == 'duplicate custom facet']
             # Lines 7 and 11 of the document are A's and B's `f?:`.
             assert [(frame.info, frame.position.line) for frame in duplicates] == [({'facet': 'f'}, 11)]
             assert [(frame.origin.message, frame.origin.position.line) for frame in duplicates] == [
@@ -1025,7 +1006,7 @@ class TestCustomFacets:
         )
         error = parse_validating(workspace, body + tail)
         assert error is not None
-        duplicates = [frame for chain in error.chains() for frame in chain if frame.message == 'duplicate custom facet']
+        duplicates = [frame for frame in traces(error) if frame.message == 'duplicate custom facet']
         # Line 11 of the document is B's `f?:`.
         assert [(frame.info, frame.position.line) for frame in duplicates] == [({'facet': 'f'}, 11)]
 
@@ -1036,9 +1017,7 @@ class TestCustomFacets:
         )
         error = parse_validating(workspace, body)
         assert error is not None
-        assert [
-            frame.info for chain in error.chains() for frame in chain if frame.message == 'duplicate custom facet'
-        ] == [{'facet': 'f'}]
+        assert [frame.info for frame in traces(error) if frame.message == 'duplicate custom facet'] == [{'facet': 'f'}]
 
 
 class TestUnionFacetsAreDistributed:
@@ -1093,15 +1072,16 @@ class TestUnionFacetsAreDistributed:
         by reference, so decoding a facet in place would narrow `U` itself — and
         with it every other subtype of `U`.
         """
-        root = workspace(
-            {
-                'api.raml': API
+        assert (
+            workspace.document(
+                API
                 + 'types:\n  U: integer | number\n'
                 + '  Narrow:\n    type: U\n    maximum: 2\n'
-                + '  Wide:\n    type: U\n    example: 99999\n'
-            }
+                + '  Wide:\n    type: U\n    example: 99999\n',
+                ParseOptions(validate=True, unwrap=True),
+            )
+            is not None
         )
-        assert workspace.parse(root / 'api.raml', ParseOptions(validate=True, unwrap=True)) is not None
 
 
 class TestUnionDeclarationFacetsAreDistributed:
@@ -1122,7 +1102,7 @@ class TestUnionDeclarationFacetsAreDistributed:
         body = self.OBJECTS + '  T:\n    type: A | B\n    properties:\n      c: integer\n    example: {a: x, c: no}\n'
         error = parse_validating(workspace, body)
         assert error is not None
-        paths = {trace.info.get('path') for chain in error.chains() for trace in chain if trace.info}
+        paths = {trace.info.get('path') for trace in traces(error) if trace.info}
         assert '$.c' in paths
 
     def test_items_beside_a_union_of_arrays_constrain_every_member(self, workspace):
@@ -1184,7 +1164,7 @@ class TestPublicSurface:
 
     def test_the_path_starts_at_the_root(self, workspace):
         error = declared(workspace, '  T:\n    properties:\n      a: integer\n').validate({'a': 'x'})
-        paths = {trace.info.get('path') for chain in error.chains() for trace in chain if trace.info}
+        paths = {trace.info.get('path') for trace in traces(error) if trace.info}
         assert '$.a' in paths
 
 
@@ -1192,12 +1172,9 @@ class TestPrivateUnwrap:
     """`validate=True` without `unwrap=True` must not flatten the caller's model."""
 
     def test_the_declared_model_keeps_its_inherits(self, workspace):
-        root = workspace(
-            {
-                'api.raml': API + 'types:\n  P:\n    properties:\n      a: string\n  T:\n    type: P\n',
-            }
+        raml = workspace.document(
+            API + 'types:\n  P:\n    properties:\n      a: string\n  T:\n    type: P\n', ParseOptions(validate=True)
         )
-        raml = workspace.parse(root / 'api.raml', ParseOptions(validate=True))
         child = raml.types_in(raml.location)['T']
         assert not raml.unwrapped
         assert [parent.name for parent in child.inherits] == ['P']
@@ -1206,15 +1183,11 @@ class TestPrivateUnwrap:
 
     def test_validation_still_sees_the_inherited_shape(self, workspace):
         # The copy is what gets checked, so an inherited facet still bites.
-        root = workspace(
-            {
-                'api.raml': API + 'types:\n'
-                '  P:\n    type: integer\n    maximum: 5\n'
-                '  T:\n    type: P\n    example: 99\n',
-            }
-        )
         with pytest.raises(RamlError):
-            workspace.parse(root / 'api.raml', ParseOptions(validate=True))
+            workspace.document(
+                API + 'types:\n  P:\n    type: integer\n    maximum: 5\n  T:\n    type: P\n    example: 99\n',
+                ParseOptions(validate=True),
+            )
 
     def test_the_private_copies_are_not_indexed(self, workspace):
         """docs/10 § 1: the copies keep the declarations' ids; registered, they
@@ -1227,8 +1200,9 @@ class TestPrivateUnwrap:
         assert len({shape.id for shape in validated.shapes}) == len(validated.shapes)
 
     def test_a_merge_the_private_copy_rejects_marks_nothing(self, workspace):
-        root = workspace({'api.raml': API + 'types:\n  N: integer\n  C:\n    type: [string, N]\n'})
-        raml, error = workspace.lenient(root / 'api.raml', ParseOptions(validate=True))
+        raml, error = workspace.lenient_document(
+            API + 'types:\n  N: integer\n  C:\n    type: [string, N]\n', ParseOptions(validate=True)
+        )
         assert error is not None
         assert raml.stopped_at is Stage.VALIDATED
         assert raml.broken == {}

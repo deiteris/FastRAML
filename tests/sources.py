@@ -10,10 +10,26 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import fastraml
 
-__all__ = ['MODEL', 'PACKAGE', 'Import', 'imports', 'module_name', 'parse', 'sources']
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+__all__ = [
+    'MODEL',
+    'NOT_MODEL',
+    'PACKAGE',
+    'Import',
+    'edges',
+    'imports',
+    'module_name',
+    'offenders',
+    'parse',
+    'sources',
+    'within',
+]
 
 #: The `fastraml` package directory.
 PACKAGE = Path(fastraml.__file__).parent
@@ -30,6 +46,13 @@ MODEL = (
     'fastraml/datanode.py',
     'fastraml/yamlnode.py',
 )
+
+#: The packages, dotted, that consume the model rather than form it: the composition
+#: roots and what they ship. Not `MODEL`'s complement: the support modules
+#: (`errors`, `loaders`, `positions`, `uris`, ...) are in neither. They define
+#: model classes, so the `__slots__` rule covers them, but `loaders` is the
+#: I/O boundary, so the rules on what the passes import and read do not.
+NOT_MODEL = ('fastraml.views', 'fastraml.service', 'fastraml.join', 'fastraml.cli', 'fastraml.skilldata')
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +85,34 @@ def module_name(path: Path) -> str:
     """
     parts = path.relative_to(PACKAGE.parent).with_suffix('').parts
     return '.'.join(parts[:-1] if parts[-1] == '__init__' else parts)
+
+
+def within(module: str, *packages: str) -> bool:
+    """Whether dotted `module` is one of `packages` or lies below one."""
+    return any(module == package or module.startswith(f'{package}.') for package in packages)
+
+
+def edges(*roots: str, runtime: bool = False) -> list[tuple[str, Import]]:
+    """(importer, import) for every import in a module under `roots`; with
+    `runtime`, only those that run (not under `if TYPE_CHECKING:`).
+    """
+    return [
+        (module_name(path), found)
+        for path in sources(*roots)
+        for found in imports(path)
+        if not (runtime and found.type_checking)
+    ]
+
+
+def offenders(roots: Iterable[str], *banned: str, allowed: tuple[str, ...] = (), runtime: bool = False) -> list[str]:
+    """`importer:line imports module` for each import, from a module under
+    `roots` but not within `allowed`, of a module within one of `banned`.
+    """
+    return [
+        f'{importer}:{found.line} imports {found.module}'
+        for importer, found in edges(*roots, runtime=runtime)
+        if within(found.module, *banned) and not within(importer, *allowed)
+    ]
 
 
 def parse(path: Path) -> ast.Module:

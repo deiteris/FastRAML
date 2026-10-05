@@ -15,13 +15,9 @@ import pytest
 from fastraml import RamlError
 from fastraml.types.complex_ import UnionShape
 from fastraml.types.inherit import alias_to, inherit
+from tests.diagnostics import keys
 
 LIB = '#%RAML 1.0 Library\n'
-
-
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
 
 
 def shapes(workspace, body: str, extra: dict[str, str] | None = None):
@@ -45,7 +41,7 @@ def merge(workspace, child: str, parent: str, extra: str = ''):
 def failure(workspace, child: str, parent: str) -> list[str]:
     with pytest.raises(RamlError) as caught:
         merge(workspace, child, parent)
-    return [trace.message for chain in caught.value.chains() for trace in chain]
+    return keys(caught.value)
 
 
 class TestKindCheck:

@@ -4,17 +4,29 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fastraml.types.base import EMPTY_DICT, EMPTY_LIST
+from fastraml.registry import Raml
+from fastraml.types.base import EMPTY_DICT, EMPTY_LIST, BaseShape
 from fastraml.types.complex_ import ArrayShape, ObjectShape, UnionShape
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from fastraml.registry import Raml
-    from fastraml.types.base import BaseShape
 
-#: The `BaseShape` containers that start as a shared empty (docs/05 § 1).
-CONTAINERS = ('inherits', 'custom_facets', 'custom_facet_defs', 'annotations', 'type_expr_refs')
+def is_shared_empty(value: object) -> bool:
+    """Whether `value` is `EMPTY_LIST` or `EMPTY_DICT` itself, not merely empty."""
+    return value is EMPTY_LIST or value is EMPTY_DICT
+
+
+def _containers() -> tuple[str, ...]:
+    fresh = BaseShape(id=0, raml=Raml(), location='file:///')
+    found = tuple(name for name in BaseShape.__slots__ if is_shared_empty(getattr(fresh, name, None)))
+    assert found, 'a fresh BaseShape holds no shared empty: every loop over CONTAINERS would pass vacuously'
+    return found
+
+
+#: The `BaseShape` containers that start as a shared empty (docs/05 § 1),
+#: read off a fresh shape so a new one is covered without editing this list.
+CONTAINERS = _containers()
 
 
 def reachable(roots: Iterable[BaseShape]) -> dict[int, BaseShape]:
@@ -59,5 +71,5 @@ def unshared_empties(raml: Raml) -> list[str]:
         f'shape {base.id} ({base.name!r}).{field}'
         for base in reachable(raml.shapes).values()
         for field in CONTAINERS
-        if not (value := getattr(base, field)) and value is not EMPTY_LIST and value is not EMPTY_DICT
+        if not (value := getattr(base, field)) and not is_shared_empty(value)
     ]

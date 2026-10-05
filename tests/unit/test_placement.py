@@ -16,11 +16,6 @@ from fastraml import ParseOptions
 API = '#%RAML 1.0\ntitle: T\n'
 
 
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
 def span(position) -> tuple[int, int, int, int]:
     return (position.line, position.column, position.end_line, position.end_column)
 

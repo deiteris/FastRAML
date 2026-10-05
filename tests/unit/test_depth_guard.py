@@ -17,17 +17,9 @@ import pytest
 
 from fastraml import ParseOptions, RamlError
 from fastraml.yamlnode import DEFAULT_MAX_DEPTH
+from tests.diagnostics import messages, traces
 
 LIB = '#%RAML 1.0 Library\n'
-
-
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
-def messages(error: RamlError) -> list[str]:
-    return [trace.message for chain in error.chains() for trace in chain]
 
 
 def deep_graph(depth: int) -> str:
@@ -138,7 +130,7 @@ class TestEachGuardNamesItself:
         root = workspace({'lib.raml': deep_graph(40)})
         with pytest.raises(RamlError) as caught:
             workspace.parse(root / 'lib.raml', ParseOptions(unwrap=True, max_depth=17))
-        limits = [trace.info.get('limit') for chain in caught.value.chains() for trace in chain]
+        limits = [trace.info.get('limit') for trace in traces(caught.value)]
         assert 17 in limits
 
 
@@ -190,7 +182,7 @@ class TestNoRecursionErrorEscapes:
         with pytest.raises(RamlError) as caught:
             workspace.parse(root / 'lib.raml', ParseOptions(max_depth=10))
         assert 'type reference chain too deep' in messages(caught.value)
-        limits = [trace.info.get('limit') for chain in caught.value.chains() for trace in chain]
+        limits = [trace.info.get('limit') for trace in traces(caught.value)]
         assert 10 in limits
 
     def test_a_chain_past_the_ceiling_marks_each_shape_once(self, workspace, monkeypatch):

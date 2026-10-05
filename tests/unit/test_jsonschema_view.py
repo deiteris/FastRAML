@@ -27,22 +27,15 @@ from fastraml.views.jsonschema import SCHEMA_VERSION, to_json_schema
 API = '#%RAML 1.0\ntitle: T\n'
 
 
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
 def converted(workspace, body: str, name: str = 'T'):
     """The named type's schema and what the conversion dropped."""
-    root = workspace({'api.raml': API + 'types:\n' + body})
-    raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
+    raml = workspace.document(API + 'types:\n' + body, ParseOptions(unwrap=True))
     return to_json_schema(raml.types_in(raml.location)[name])
 
 
 def both(workspace, body: str, name: str = 'T'):
     """The RAML shape and its schema, for comparing verdicts."""
-    root = workspace({'api.raml': API + 'types:\n' + body})
-    raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
+    raml = workspace.document(API + 'types:\n' + body, ParseOptions(unwrap=True))
     shape = raml.types_in(raml.location)[name]
     schema, _ = to_json_schema(shape)
     return shape, schema
@@ -66,8 +59,7 @@ class TestOnlyTheEntryPointIsADefinition:
         assert schema['definitions']['T']['properties']['name'] == {'type': 'string'}
 
     def test_an_anonymous_entry_point_is_named_root(self, workspace):
-        root = workspace({'api.raml': API + 'types:\n  T:\n    properties:\n      a: string\n'})
-        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
+        raml = workspace.document(API + 'types:\n  T:\n    properties:\n      a: string\n', ParseOptions(unwrap=True))
         prop = raml.types_in(raml.location)['T'].shape.properties['a'].base
         schema, _ = to_json_schema(prop)
         assert schema['$ref'] == '#/definitions/a'
@@ -130,8 +122,7 @@ class TestFacets:
 
     def test_an_example_without_data_is_left_out(self, workspace):
         # A model assembled in Python may carry one; it has nothing to write.
-        root = workspace({'api.raml': API + 'types:\n  T:\n    type: string\n    example: y\n'})
-        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
+        raml = workspace.document(API + 'types:\n  T:\n    type: string\n    example: y\n', ParseOptions(unwrap=True))
         shape = raml.types_in(raml.location)['T']
         shape.example.data = None
         assert 'examples' not in to_json_schema(shape)[0]['definitions']['T']
@@ -179,8 +170,9 @@ class TestKinds:
 
 class TestUnwrapped:
     def test_a_declared_shape_is_refused(self, workspace):
-        root = workspace({'api.raml': API + 'types:\n  P:\n    properties:\n      a: string\n  T:\n    type: P\n'})
-        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=False))
+        raml = workspace.document(
+            API + 'types:\n  P:\n    properties:\n      a: string\n  T:\n    type: P\n', ParseOptions(unwrap=False)
+        )
         with pytest.raises(AssertionError, match='unwrapped shape'):
             to_json_schema(raml.types_in(raml.location)['T'])
 
@@ -437,8 +429,7 @@ def test_inherited_pattern_precedence_agrees_with_raml(workspace, body, values):
     ids=['numbered-backreference', 'named-backreference', 'global-flags'],
 )
 def test_pattern_export_keeps_capture_scopes_and_reports_unsupported_precedence(workspace, properties, value):
-    root = workspace({'api.raml': API + f'types:\n  T:\n    properties:\n      {properties}\n'})
-    raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
+    raml = workspace.document(API + f'types:\n  T:\n    properties:\n      {properties}\n', ParseOptions(unwrap=True))
     shape = raml.types_in(raml.location)['T']
     schema, dropped = to_json_schema(shape)
     jsonschema.Draft7Validator.check_schema(schema)
@@ -494,8 +485,7 @@ def test_explicit_names_escape_only_ecma_syntax_characters(workspace):
     ids=['single-capture-scope', 'capture-in-last-pattern'],
 )
 def test_pattern_export_preserves_precedence_when_no_capture_scope_is_shifted(workspace, properties, values):
-    root = workspace({'api.raml': API + f'types:\n  T:\n    properties:\n      {properties}\n'})
-    raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
+    raml = workspace.document(API + f'types:\n  T:\n    properties:\n      {properties}\n', ParseOptions(unwrap=True))
     shape = raml.types_in(raml.location)['T']
     schema, dropped = to_json_schema(shape)
     assert dropped == []

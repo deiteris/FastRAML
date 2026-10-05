@@ -13,20 +13,12 @@ from __future__ import annotations
 import pytest
 
 from fastraml import ParseOptions, RamlError, Stage, parse_lenient, path_to_file_uri
+from tests.diagnostics import messages
 from tests.unit.conftest import write_files
 
 API = '#%RAML 1.0\ntitle: T\n'
 LIB = '#%RAML 1.0 Library\n'
 BOTH = ParseOptions(unwrap=True, validate=True)
-
-
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
-def messages(error: RamlError) -> set[str]:
-    return {trace.message for chain in error.chains() for trace in chain}
 
 
 class TestCleanInput:
@@ -38,8 +30,7 @@ class TestCleanInput:
         assert caught.value.head.message == 'entry is not UTF-8'
 
     def test_a_valid_document_reports_no_error(self, workspace):
-        root = workspace({'api.raml': API + 'types:\n  T: string\n'})
-        raml, error = workspace.lenient(root / 'api.raml', BOTH)
+        raml, error = workspace.lenient_document(API + 'types:\n  T: string\n', BOTH)
         assert error is None
         assert raml.entry_point.types['T'].type == 'string'
 
@@ -56,22 +47,16 @@ class TestCleanInput:
 
 class TestPartialModel:
     def test_a_bad_example_still_yields_the_endpoints(self, workspace):
-        root = workspace(
-            {
-                'api.raml': API
-                + 'types:\n  T:\n    type: integer\n    example: not-an-integer\n'
-                + '/things:\n  get:\n  post:\n'
-            }
+        raml, error = workspace.lenient_document(
+            API + 'types:\n  T:\n    type: integer\n    example: not-an-integer\n' + '/things:\n  get:\n  post:\n', BOTH
         )
-        raml, error = workspace.lenient(root / 'api.raml', BOTH)
         assert error is not None
         assert 'invalid example' in messages(error)
         assert list(raml.endpoints) == ['/things']
         assert sorted(raml.endpoints['/things'].operations) == ['get', 'post']
 
     def test_an_undeclared_type_still_yields_the_declared_ones(self, workspace):
-        root = workspace({'api.raml': API + 'types:\n  Good: string\n  Bad: NoSuchType\n'})
-        raml, error = workspace.lenient(root / 'api.raml', BOTH)
+        raml, error = workspace.lenient_document(API + 'types:\n  Good: string\n  Bad: NoSuchType\n', BOTH)
         assert error is not None
         assert raml.entry_point.types['Good'].type == 'string'
 
@@ -83,8 +68,9 @@ class TestPartialModel:
         would call this fatal. The fragment was registered before its body was
         decoded, so there is in fact a partial one to return.
         """
-        root = workspace({'api.raml': API + 'types:\n  T:\n    type: string\n    minLength: two\n/r:\n  get:\n'})
-        raml, error = workspace.lenient(root / 'api.raml', BOTH)
+        raml, error = workspace.lenient_document(
+            API + 'types:\n  T:\n    type: string\n    minLength: two\n/r:\n  get:\n', BOTH
+        )
         assert error is not None
         assert raml.entry_point is not None
         assert raml.entry_point.title.value == 'T'
@@ -176,8 +162,7 @@ class TestUsesIsResolvedPastADecodeFailure:
         assert len(list(error.chains())) == len(list(alone.chains()))
 
     def test_a_library_that_cannot_be_loaded_is_unlinked_and_marked(self, workspace):
-        root = workspace({'api.raml': API + 'uses:\n  lib: absent.raml\n'})
-        raml, _error = workspace.lenient(root / 'api.raml', BOTH)
+        raml, _error = workspace.lenient_document(API + 'uses:\n  lib: absent.raml\n', BOTH)
         link = raml.entry_point.uses['lib']
         assert link.link is None
         assert raml.broken[link.id].head.message == 'parse uses library'
@@ -213,8 +198,7 @@ class TestTheModelSaysHowFarItGot:
 
     @pytest.mark.parametrize('stage', list(FAILURES), ids=[stage.value for stage in FAILURES])
     def test_a_failure_names_its_stage_and_everything_before_it(self, workspace, stage):
-        root = workspace({'api.raml': API + self.FAILURES[stage]})
-        raml, error = workspace.lenient(root / 'api.raml', BOTH)
+        raml, error = workspace.lenient_document(API + self.FAILURES[stage], BOTH)
         assert error is not None
         assert raml.stopped_at is stage
         assert raml.completed == list(self.ORDER[: self.ORDER.index(stage)])
@@ -230,8 +214,7 @@ class TestTheModelSaysHowFarItGot:
     )
     def test_a_clean_parse_lists_the_stages_it_ran(self, workspace, options, expected):
         """An optional stage that did not run is absent, not implied by a later one."""
-        root = workspace({'api.raml': API + 'types:\n  T: string\n'})
-        raml, error = workspace.lenient(root / 'api.raml', options)
+        raml, error = workspace.lenient_document(API + 'types:\n  T: string\n', options)
         assert error is None
         assert raml.stopped_at is None
         assert raml.completed == list(expected)
@@ -256,8 +239,7 @@ class TestOneBadDeclarationKeepsItsSiblings:
     @pytest.mark.parametrize(('key', 'case'), CASES.items(), ids=list(CASES))
     def test_the_good_sibling_is_declared(self, workspace, header, key, case):
         attribute, bad, good = case
-        root = workspace({'api.raml': header + f'{key}:\n  {bad}\n  {good}\n'})
-        raml, error = workspace.lenient(root / 'api.raml', BOTH)
+        raml, error = workspace.lenient_document(header + f'{key}:\n  {bad}\n  {good}\n', BOTH)
         assert error is not None
         declared = getattr(raml.fragments[raml.location], attribute)
         name = good.split(':')[0]
@@ -265,8 +247,9 @@ class TestOneBadDeclarationKeepsItsSiblings:
         assert declared[name].id not in raml.broken
 
     def test_the_fragment_and_the_registry_agree(self, workspace):
-        root = workspace({'api.raml': API + 'types:\n  Good: string\n  Bad:\n    minLength: two\n  User: object\n'})
-        raml, error = workspace.lenient(root / 'api.raml', BOTH)
+        raml, error = workspace.lenient_document(
+            API + 'types:\n  Good: string\n  Bad:\n    minLength: two\n  User: object\n', BOTH
+        )
         assert error is not None
         assert list(raml.entry_point.types) == list(raml.types_in(raml.location)) == ['Good', 'Bad', 'User']
 
@@ -295,8 +278,7 @@ class TestABrokenTypeDeclarationIsKeptAndMarked:
     @pytest.mark.parametrize('header', [API, LIB], ids=['api', 'library'])
     @pytest.mark.parametrize(('body', 'kind'), CASES.values(), ids=list(CASES))
     def test_it_is_declared_registered_and_marked(self, workspace, header, body, kind):
-        root = workspace({'api.raml': header + f'types:\n  Good: string\n  {body}\n'})
-        raml, error = workspace.lenient(root / 'api.raml', BOTH)
+        raml, error = workspace.lenient_document(header + f'types:\n  Good: string\n  {body}\n', BOTH)
         assert error is not None
         bad = raml.fragments[raml.location].types['Bad']
         assert raml.types_in(raml.location)['Bad'] is bad
@@ -305,8 +287,9 @@ class TestABrokenTypeDeclarationIsKeptAndMarked:
         assert set(raml.broken) == {bad.id}
 
     def test_the_mark_holds_the_declarations_own_failure(self, workspace):
-        root = workspace({'api.raml': API + 'types:\n  Bad:\n    minLength: two\n  Worse:\n    maxLength: x\n'})
-        raml, error = workspace.lenient(root / 'api.raml', BOTH)
+        raml, error = workspace.lenient_document(
+            API + 'types:\n  Bad:\n    minLength: two\n  Worse:\n    maxLength: x\n', BOTH
+        )
         assert error is not None
         types = raml.entry_point.types
         assert [[chain[-1].message for chain in raml.broken[types[name].id].chains()] for name in types] == [
@@ -316,16 +299,14 @@ class TestABrokenTypeDeclarationIsKeptAndMarked:
         assert [raml.broken[types[name].id].head.position.line for name in types] == [5, 7]
 
     def test_an_annotation_type_is_kept_the_same_way(self, workspace):
-        root = workspace({'api.raml': API + 'annotationTypes:\n  bad:\n    minLength: two\n'})
-        raml, error = workspace.lenient(root / 'api.raml', BOTH)
+        raml, error = workspace.lenient_document(API + 'annotationTypes:\n  bad:\n    minLength: two\n', BOTH)
         assert error is not None
         bad = raml.entry_point.annotation_types['bad']
         assert bad.is_annotation_type
         assert set(raml.broken) == {bad.id}
 
     def test_a_valid_parse_marks_nothing(self, workspace):
-        root = workspace({'api.raml': API + 'types:\n  Good: string\n'})
-        raml, error = workspace.lenient(root / 'api.raml', BOTH)
+        raml, error = workspace.lenient_document(API + 'types:\n  Good: string\n', BOTH)
         assert error is None
         assert raml.broken == {}
 
@@ -340,13 +321,9 @@ class TestADeclarationKeepsTheChildrenThatBuilt:
     """
 
     def test_a_failed_property_leaves_its_siblings(self, workspace):
-        root = workspace(
-            {
-                'api.raml': API
-                + 'types:\n  T:\n    properties:\n      a: string\n      b: {minLength: x}\n      c: string\n'
-            }
+        raml, error = workspace.lenient_document(
+            API + 'types:\n  T:\n    properties:\n      a: string\n      b: {minLength: x}\n      c: string\n', BOTH
         )
-        raml, error = workspace.lenient(root / 'api.raml', BOTH)
         assert error is not None
         t = raml.entry_point.types['T']
         assert type(t.shape).__name__ == 'ObjectShape'
@@ -354,18 +331,16 @@ class TestADeclarationKeepsTheChildrenThatBuilt:
         assert set(raml.broken) == {t.id}
 
     def test_every_failed_property_is_reported(self, workspace):
-        root = workspace(
-            {'api.raml': API + 'types:\n  T:\n    properties:\n      a: {minLength: x}\n      b: {maxLength: y}\n'}
+        _, error = workspace.lenient_document(
+            API + 'types:\n  T:\n    properties:\n      a: {minLength: x}\n      b: {maxLength: y}\n', BOTH
         )
-        _, error = workspace.lenient(root / 'api.raml', BOTH)
         assert error is not None
         assert [chain[-1].position.line for chain in error.chains()] == [6, 7]
 
     def test_a_failed_union_member_leaves_the_others(self, workspace):
-        root = workspace(
-            {'api.raml': API + 'types:\n  U:\n    type: union\n    anyOf: [string, {minLength: x}, integer]\n'}
+        raml, error = workspace.lenient_document(
+            API + 'types:\n  U:\n    type: union\n    anyOf: [string, {minLength: x}, integer]\n', BOTH
         )
-        raml, error = workspace.lenient(root / 'api.raml', BOTH)
         assert error is not None
         u = raml.entry_point.types['U']
         assert [member.type for member in u.shape.any_of] == ['string', 'integer']
@@ -373,14 +348,12 @@ class TestADeclarationKeepsTheChildrenThatBuilt:
     def test_a_property_that_p7_fails_is_inside_its_declaration(self, workspace):
         # P7 builds these properties, because `type: B` left the kind unknown
         # until then; `c: 11` fails the build after `b: Nope` was queued.
-        root = workspace(
-            {
-                'api.raml': API
-                + 'types:\n  B: object\n  T:\n    type: B\n    properties:\n      a: string\n'
-                + '      b: Nope\n      c: 11\n'
-            }
+        raml, error = workspace.lenient_document(
+            API
+            + 'types:\n  B: object\n  T:\n    type: B\n    properties:\n      a: string\n'
+            + '      b: Nope\n      c: 11\n',
+            BOTH,
         )
-        raml, error = workspace.lenient(root / 'api.raml', BOTH)
         assert error is not None
         assert raml.stopped_at is Stage.RESOLVED
         t = raml.entry_point.types['T']
@@ -405,8 +378,7 @@ class TestABrokenDefinitionIsKeptAndMarked:
     @pytest.mark.parametrize('header', [API, LIB], ids=['api', 'library'])
     @pytest.mark.parametrize(('attribute', 'body'), CASES.values(), ids=list(CASES))
     def test_it_is_declared_and_marked(self, workspace, header, attribute, body):
-        root = workspace({'api.raml': header + body})
-        raml, error = workspace.lenient(root / 'api.raml', BOTH)
+        raml, error = workspace.lenient_document(header + body, BOTH)
         assert error is not None
         declared = getattr(raml.fragments[raml.location], attribute)
         assert list(declared) == ['bad', 'good']
@@ -416,21 +388,18 @@ class TestABrokenDefinitionIsKeptAndMarked:
         """Every mark names an entity in the model: the response, the
         description holding it and the scheme holding that.
         """
-        root = workspace(
-            {
-                'api.raml': API + 'securitySchemes:\n  s:\n    type: Basic Authentication\n'
-                '    describedBy:\n      responses:\n        401:\n          foo: 1\n        403:\n'
-            }
+        raml, _ = workspace.lenient_document(
+            API + 'securitySchemes:\n  s:\n    type: Basic Authentication\n'
+            '    describedBy:\n      responses:\n        401:\n          foo: 1\n        403:\n',
+            BOTH,
         )
-        raml, _ = workspace.lenient(root / 'api.raml', BOTH)
         scheme = raml.entry_point.security_schemes['s']
         responses = scheme.described_by.responses
         assert list(responses) == ['401', '403']
         assert set(raml.broken) == {scheme.id, scheme.described_by.id, responses['401'].id}
 
     def test_an_include_that_fails_marks_the_definition_naming_it(self, workspace):
-        root = workspace({'api.raml': API + 'traits:\n  t: !include missing.raml\n'})
-        raml, error = workspace.lenient(root / 'api.raml', BOTH)
+        raml, error = workspace.lenient_document(API + 'traits:\n  t: !include missing.raml\n', BOTH)
         assert error is not None
         trait = raml.entry_point.traits['t']
         assert trait.link is None
@@ -555,8 +524,7 @@ class TestATemplateThatFailsToApplyMarksWhatLacksIt:
 
     @staticmethod
     def marked(workspace, body: str):
-        root = workspace({'api.raml': API + body})
-        raml, error = workspace.lenient(root / 'api.raml', BOTH)
+        raml, error = workspace.lenient_document(API + body, BOTH)
         assert error is not None
         names = {}
         for uri, endpoint in raml.endpoints.items():
@@ -623,8 +591,7 @@ class TestALaterStageMarksWhatItCouldNotSettle:
 
     @staticmethod
     def parse(workspace, body: str):
-        root = workspace({'api.raml': API + body})
-        raml, error = workspace.lenient(root / 'api.raml', BOTH)
+        raml, error = workspace.lenient_document(API + body, BOTH)
         assert error is not None
         return raml
 
@@ -684,13 +651,11 @@ class TestACheckThatBuildsNothingMarksNothing:
     entities; only the returned error reports them."""
 
     def test_the_discriminator_declaration_check(self, workspace):
-        root = workspace(
-            {
-                'api.raml': API + 'types:\n  T:\n    properties:\n      p:\n'
-                '        properties:\n          kind: string\n        discriminator: kind\n'
-            }
+        raml, error = workspace.lenient_document(
+            API + 'types:\n  T:\n    properties:\n      p:\n'
+            '        properties:\n          kind: string\n        discriminator: kind\n',
+            BOTH,
         )
-        raml, error = workspace.lenient(root / 'api.raml', BOTH)
         assert error.head.message == 'discriminator on an inline type declaration'
         assert raml.stopped_at is Stage.RESOLVED
         assert raml.broken == {}
@@ -698,8 +663,7 @@ class TestACheckThatBuildsNothingMarksNothing:
         assert not [shape for shape in raml.shapes if type(shape.shape).__name__ == 'UnknownShape']
 
     def test_validation(self, workspace):
-        root = workspace({'api.raml': API + 'types:\n  T:\n    type: integer\n    example: nope\n'})
-        raml, error = workspace.lenient(root / 'api.raml', BOTH)
+        raml, error = workspace.lenient_document(API + 'types:\n  T:\n    type: integer\n    example: nope\n', BOTH)
         assert error is not None
         assert raml.stopped_at is Stage.VALIDATED
         assert raml.broken == {}
@@ -733,27 +697,23 @@ class TestTheEndpointTreeKeepsWhatFailed:
         return names
 
     def test_a_bad_response_key_keeps_the_whole_tree(self, workspace):
-        root = workspace({'api.raml': API + self.DOCUMENT})
-        raml, error = workspace.lenient(root / 'api.raml', BOTH)
+        raml, error = workspace.lenient_document(API + self.DOCUMENT, BOTH)
         assert error is not None
         assert list(raml.endpoints) == ['/a', '/a/b', '/a/c', '/d']
         assert list(raml.endpoints['/a/b'].operations) == ['get', 'post']
         assert list(raml.endpoints['/a/b'].operations['post'].responses) == ['200', '201']
 
     def test_it_marks_the_response_and_everything_enclosing_it(self, workspace):
-        root = workspace({'api.raml': API + self.DOCUMENT})
-        raml, _ = workspace.lenient(root / 'api.raml', BOTH)
+        raml, _ = workspace.lenient_document(API + self.DOCUMENT, BOTH)
         assert self.marked(raml) == {'/a', '/a/b', '/a/b post', '/a/b post 200'}
 
     def test_a_bad_operation_key_marks_the_operation_and_its_resource(self, workspace):
-        root = workspace({'api.raml': API + '/a:\n  get:\n    foo: 1\n  post:\n'})
-        raml, _ = workspace.lenient(root / 'api.raml', BOTH)
+        raml, _ = workspace.lenient_document(API + '/a:\n  get:\n    foo: 1\n  post:\n', BOTH)
         assert list(raml.endpoints['/a'].operations) == ['get', 'post']
         assert self.marked(raml) == {'/a', '/a get'}
 
     def test_a_bad_resource_key_keeps_its_children(self, workspace):
-        root = workspace({'api.raml': API + '/a:\n  foo: 1\n  get:\n  /b:\n    get:\n'})
-        raml, _ = workspace.lenient(root / 'api.raml', BOTH)
+        raml, _ = workspace.lenient_document(API + '/a:\n  foo: 1\n  get:\n  /b:\n    get:\n', BOTH)
         assert list(raml.endpoints) == ['/a', '/a/b']
         assert list(raml.endpoints['/a'].operations) == ['get']
         assert self.marked(raml) == {'/a'}
@@ -768,16 +728,14 @@ class TestTheEndpointTreeKeepsWhatFailed:
 
     def test_a_kept_resource_still_gets_its_uri_parameters_checked(self, workspace):
         """P6 runs over a kept resource: an unused parameter is its own mistake."""
-        root = workspace({'api.raml': API + '/a/{id}:\n  uriParameters:\n    other: string\n  foo: 1\n'})
-        _, error = workspace.lenient(root / 'api.raml', BOTH)
+        _, error = workspace.lenient_document(API + '/a/{id}:\n  uriParameters:\n    other: string\n  foo: 1\n', BOTH)
         assert error is not None
         assert [chain[-1].message for chain in error.chains()] == ['unknown field', 'uri parameter is not used']
 
     def test_a_nested_duplicate_uri_is_kept_and_marked_with_what_encloses_it(self, workspace):
         """docs/13 § 1: the loser stays in its parent's `endpoints`, outside
         `Raml.endpoints`, so it and its parent are marked."""
-        root = workspace({'api.raml': API + '/users/foo:\n  get:\n/users:\n  /foo:\n    get:\n'})
-        raml, _ = workspace.lenient(root / 'api.raml', BOTH)
+        raml, _ = workspace.lenient_document(API + '/users/foo:\n  get:\n/users:\n  /foo:\n    get:\n', BOTH)
         winner, users = raml.endpoints['/users/foo'], raml.endpoints['/users']
         loser = users.endpoints['/foo']
         assert loser is not winner
@@ -787,8 +745,9 @@ class TestTheEndpointTreeKeepsWhatFailed:
         assert winner.id not in raml.broken
 
     def test_a_top_level_duplicate_uri_is_absent_with_its_subtree_and_unmarked(self, workspace):
-        root = workspace({'api.raml': API + '/users:\n  /foo:\n    get:\n/users/foo:\n  post:\n  /bar:\n    get:\n'})
-        raml, _ = workspace.lenient(root / 'api.raml', BOTH)
+        raml, _ = workspace.lenient_document(
+            API + '/users:\n  /foo:\n    get:\n/users/foo:\n  post:\n  /bar:\n    get:\n', BOTH
+        )
         assert list(raml.endpoints['/users/foo'].operations) == ['get']
         assert list(raml.endpoints) == ['/users', '/users/foo']
         assert raml.broken == {}
@@ -856,8 +815,7 @@ class TestItStopsWhereStrictStops:
         body = 'uses:\n  lib: absent.raml\ntypes:\n' + ''.join(
             f'  D{index}:\n    properties:\n      p: lib.Thing\n' for index in range(20)
         )
-        root = workspace({'api.raml': API + body})
-        _, error = workspace.lenient(root / 'api.raml', BOTH)
+        _, error = workspace.lenient_document(API + body, BOTH)
         assert error is not None
         assert len(list(error.chains())) == 1
 
@@ -890,22 +848,19 @@ class TestOneMistakeOneChain:
 
     @pytest.mark.parametrize(('body', 'message'), CASES.values(), ids=list(CASES))
     def test_in_a_strict_parse(self, workspace, body, message):
-        root = workspace({'api.raml': API + body})
         with pytest.raises(RamlError) as caught:
-            workspace.parse(root / 'api.raml', BOTH)
+            workspace.document(API + body, BOTH)
         assert [chain[0].message for chain in caught.value.chains()] == [message]
 
     @pytest.mark.parametrize(('body', 'message'), CASES.values(), ids=list(CASES))
     def test_in_a_lenient_parse(self, workspace, body, message):
-        root = workspace({'api.raml': API + body})
-        _, error = workspace.lenient(root / 'api.raml', BOTH)
+        _, error = workspace.lenient_document(API + body, BOTH)
         assert error is not None
         assert [chain[0].message for chain in error.chains()] == [message]
 
     def test_two_uses_of_one_missing_name_are_two_mistakes(self, workspace):
         """Written twice, at two places: both are reported."""
-        root = workspace({'api.raml': API + 'types:\n  A: NoSuch\n  B: NoSuch\n'})
-        _, error = workspace.lenient(root / 'api.raml', BOTH)
+        _, error = workspace.lenient_document(API + 'types:\n  A: NoSuch\n  B: NoSuch\n', BOTH)
         assert error is not None
         assert len(list(error.chains())) == 2
 
@@ -920,22 +875,19 @@ class TestStillFatal:
         assert 'load resource' in messages(caught.value)
 
     def test_a_missing_header_raises(self, workspace):
-        root = workspace({'api.raml': 'title: no header here\n'})
         with pytest.raises(RamlError) as caught:
-            workspace.lenient(root / 'api.raml')
+            workspace.lenient_document('title: no header here\n')
         assert 'unknown fragment kind' in messages(caught.value)
 
     def test_a_non_mapping_root_raises(self, workspace):
-        root = workspace({'api.raml': API.splitlines()[0] + '\n- a\n- b\n'})
         with pytest.raises(RamlError) as caught:
-            workspace.lenient(root / 'api.raml')
+            workspace.lenient_document(API.splitlines()[0] + '\n- a\n- b\n')
         assert 'must be map' in messages(caught.value)
 
     def test_an_overlay_whose_master_cannot_be_loaded_raises(self, workspace):
         # With no root API there is no model to hand back (docs/19 § 2).
-        root = workspace({'api.raml': '#%RAML 1.0 Overlay\nextends: base.raml\ntitle: T\n'})
         with pytest.raises(RamlError) as caught:
-            workspace.lenient(root / 'api.raml')
+            workspace.lenient_document('#%RAML 1.0 Overlay\nextends: base.raml\ntitle: T\n')
         assert caught.value.head.message == 'resolve extends'
 
     def test_the_same_problem_in_an_included_file_is_not_fatal(self, workspace):

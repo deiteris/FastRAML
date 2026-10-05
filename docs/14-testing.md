@@ -61,11 +61,14 @@ the default root, the entry's own directory, would refuse
 | Bindings | TypeScript, Python, and Go tree-contract conformance. |
 | Benchmark tests | Generated corpus validity and the optional linearity assertion. |
 
-Unit tests that check parser behavior can use `memory_workspace` from
+Unit tests that check parser behavior use the `workspace` fixture from
 `tests/unit/conftest.py`: it supplies file-shaped paths and serves their bytes
-through `ParseOptions(file_loader=...)` without creating directories or files. The
-ordinary `workspace` fixture writes real files for tests of filesystem behavior
-and callers that read paths outside the parser's loader.
+through `ParseOptions(file_loader=...)` without creating directories or files.
+`workspace.document(text)` parses `text` as `api.raml`; `lenient_document` and
+`rejection` are its `parse_lenient` and error-or-`None` forms. The `disk_workspace` fixture writes real files, for tests of filesystem behavior
+and callers that read paths outside the parser's loader (the CLI). A test reads a
+`RamlError` through `tests/diagnostics.py`, which yields message keys, frames and
+`info` dicts, never rendered text.
 
 Golden cases live in `tests/golden/cases/`, and rendered reports in
 `tests/golden/reports/`. Regenerate only with

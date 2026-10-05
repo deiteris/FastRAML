@@ -16,14 +16,10 @@ from hypothesis import strategies as st
 from fastraml import ParseOptions, RamlError, parse_from_path
 from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
 from fastraml.types.unwrap import unwrap_detached
+from tests.diagnostics import keys, traces
 
 LIB = '#%RAML 1.0 Library\n'
 UNWRAP = ParseOptions(unwrap=True)
-
-
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
 
 
 def unwrapped(workspace, body: str, extra: dict[str, str] | None = None):
@@ -38,7 +34,7 @@ def unwrapped(workspace, body: str, extra: dict[str, str] | None = None):
 def failure(workspace, body: str) -> list[str]:
     with pytest.raises(RamlError) as caught:
         unwrapped(workspace, body)
-    return [trace.message for chain in caught.value.chains() for trace in chain]
+    return keys(caught.value)
 
 
 class TestSingleInheritance:
@@ -300,10 +296,7 @@ class TestTwoParentsPatterns:
         with pytest.raises(RamlError) as caught:
             unwrapped(workspace, body)
         return [
-            frame.info
-            for chain in caught.value.chains()
-            for frame in chain
-            if frame.message == 'conflicting pattern from multiple parents'
+            frame.info for frame in traces(caught.value) if frame.message == 'conflicting pattern from multiple parents'
         ]
 
     def test_two_parents_patterns_on_one_property_conflict(self, workspace):
@@ -612,8 +605,9 @@ class TestEnumBesideAUnion:
         # The spec's `Tuesday18` case: a string, but in neither member's enum.
         with pytest.raises(RamlError) as caught:
             self.scheduled(workspace, '[Feb1, Tuesday18]')
-        traces = [trace for chain in caught.value.chains() for trace in chain]
-        unplaced = [trace for trace in traces if trace.message == 'enum value matches no member of the union']
+        unplaced = [
+            trace for trace in traces(caught.value) if trace.message == 'enum value matches no member of the union'
+        ]
         assert [trace.info for trace in unplaced] == [{'index': 1}]
 
     def test_a_member_left_with_no_value_is_dropped(self, workspace):
@@ -633,8 +627,9 @@ class TestEnumBesideAUnion:
         )
         with pytest.raises(RamlError) as caught:
             unwrapped(workspace, body)
-        traces = [trace for chain in caught.value.chains() for trace in chain]
-        unplaced = [trace for trace in traces if trace.message == 'enum value matches no member of the union']
+        unplaced = [
+            trace for trace in traces(caught.value) if trace.message == 'enum value matches no member of the union'
+        ]
         assert len(unplaced) == 2
 
     def test_a_nested_union_reports_to_the_enclosing_one(self, workspace):
@@ -734,7 +729,7 @@ class TestRecursionMarking:
         )
         with pytest.raises(RamlError) as caught:
             workspace.parse(root / 'lib.raml', ParseOptions(unwrap=True, validate=True))
-        paths = [trace.info.get('path') for chain in caught.value.chains() for trace in chain if trace.info]
+        paths = [trace.info.get('path') for trace in traces(caught.value) if trace.info]
         assert '$.q[0].p2' in paths
 
     def test_a_shared_union_gets_one_dispatch_table(self, workspace, monkeypatch):
@@ -812,9 +807,7 @@ class TestAFailedMerge:
 
     def test_the_error_is_the_strict_one(self, workspace):
         _raml, _types, error = lenient(workspace, FAILING_MERGE + RECURSIVE)
-        assert [trace.message for chain in error.chains() for trace in chain] == failure(
-            workspace, FAILING_MERGE + RECURSIVE
-        )
+        assert keys(error) == failure(workspace, FAILING_MERGE + RECURSIVE)
 
     def test_a_second_route_to_the_failed_shape_reports_nothing_more(self, workspace):
         _raml, _types, error = lenient(

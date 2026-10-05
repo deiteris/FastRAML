@@ -12,6 +12,7 @@ from fastraml.facet_names import chomp_optional
 from fastraml.registry import Raml
 from fastraml.types.shape import make_declarations, make_property
 from fastraml.yamlnode import Node, compose, pairs
+from tests.diagnostics import leaves
 
 LOCATION = 'file:///a.raml'
 
@@ -85,12 +86,16 @@ class TestPatternProperties:
     def test_a_pattern_property_may_not_be_marked_optional(self):
         with pytest.raises(RamlError) as caught:
             declarations('properties:\n  /a/?: string\n')
-        assert "'required' is not supported on a pattern property" in caught.value.messages()[0]
+        assert [(t.message, t.info) for t in leaves(caught.value)] == [
+            ("'required' is not supported on a pattern property", {'property': '/a/?'})
+        ]
 
     def test_a_pattern_property_may_not_declare_required(self):
         with pytest.raises(RamlError) as caught:
             declarations('properties:\n  /a/:\n    type: string\n    required: false\n')
-        assert "'required' is not supported on a pattern property" in caught.value.messages()[0]
+        assert [(t.message, t.info) for t in leaves(caught.value)] == [
+            ("'required' is not supported on a pattern property", {'property': '/a/'})
+        ]
 
     def test_an_uncompilable_pattern_is_reported_where_it_is_written(self):
         with pytest.raises(RamlError) as caught:

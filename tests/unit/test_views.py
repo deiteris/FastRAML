@@ -16,7 +16,7 @@ import ast
 
 import pytest
 
-from tests.sources import MODEL, PACKAGE, imports, module_name, parse, sources
+from tests.sources import MODEL, PACKAGE, imports, module_name, offenders, parse, sources, within
 
 _VIEWS = (
     'walk',
@@ -41,42 +41,25 @@ _VIEWS = (
 _SUBSTRATES = frozenset({'fastraml.views.walk', 'fastraml.views.graph', 'fastraml.views.severity'})
 
 
-def _within(module: str, package: str) -> bool:
-    return module == package or module.startswith(f'{package}.')
-
-
 def _view_crossings(importer: str, imported: list[str]) -> list[str]:
     """The modules of `imported` that view module `importer` may not import:
     another view's, unless it is a substrate. A view that is a package may
     import itself.
     """
-    own = importer.split('.')[2] if _within(importer, 'fastraml.views') and importer.count('.') >= 2 else None
+    own = importer.split('.')[2] if within(importer, 'fastraml.views') and importer.count('.') >= 2 else None
     return [
         module
         for module in imported
         if module.startswith('fastraml.views.')
-        and not any(_within(module, substrate) for substrate in _SUBSTRATES)
-        and not (own is not None and _within(module, f'fastraml.views.{own}'))
-    ]
-
-
-def _offenders(roots: tuple[str, ...], banned: str, *, allowed: tuple[str, ...] = ()) -> list[str]:
-    """Each import of `banned` or below it from a module under `roots`,
-    other than from a module under one of `allowed`.
-    """
-    return [
-        f'{module_name(path)}:{found.line} imports {found.module}'
-        for path in sources(*roots)
-        if not any(_within(module_name(path), root) for root in allowed)
-        for found in imports(path)
-        if _within(found.module, banned)
+        and not within(module, *_SUBSTRATES)
+        and not (own is not None and within(module, f'fastraml.views.{own}'))
     ]
 
 
 class TestTheModelDoesNotSeeTheViews:
     def test_no_pass_imports_the_view_layer(self):
-        offenders = _offenders(MODEL, 'fastraml.views')
-        assert not offenders, '\n'.join(offenders)
+        found = offenders(MODEL, 'fastraml.views')
+        assert not found, '\n'.join(found)
 
     def test_no_module_outside_the_package_reaches_a_view_but_the_composition_roots(self):
         # The lazy table in `fastraml/__init__.py` names them by string, not by
@@ -84,28 +67,28 @@ class TestTheModelDoesNotSeeTheViews:
         # would then build a graph module nobody asked for. The CLI and the
         # language service compose views; nothing else does (docs/02 § 2).
         allowed = ('fastraml.cli', 'fastraml.views', 'fastraml.service')
-        offenders = _offenders(('fastraml',), 'fastraml.views', allowed=allowed)
-        assert not offenders, '\n'.join(offenders)
+        found = offenders(('fastraml',), 'fastraml.views', allowed=allowed)
+        assert not found, '\n'.join(found)
 
 
 class TestTheServiceIsACompositionRoot:
     """`fastraml/service/` composes the views for an editor (docs/21 § 1)."""
 
     def test_nothing_but_the_cli_imports_the_service(self):
-        offenders = _offenders(('fastraml',), 'fastraml.service', allowed=('fastraml.cli', 'fastraml.service'))
-        assert not offenders, '\n'.join(offenders)
+        found = offenders(('fastraml',), 'fastraml.service', allowed=('fastraml.cli', 'fastraml.service'))
+        assert not found, '\n'.join(found)
 
 
 class TestTheJoinIsNeitherAPassNorAView:
     """`fastraml/join/` runs on source trees before decoding (docs/20 § 9)."""
 
     def test_nothing_but_the_cli_imports_the_join(self):
-        offenders = _offenders(('fastraml',), 'fastraml.join', allowed=('fastraml.cli', 'fastraml.join'))
-        assert not offenders, '\n'.join(offenders)
+        found = offenders(('fastraml',), 'fastraml.join', allowed=('fastraml.cli', 'fastraml.join'))
+        assert not found, '\n'.join(found)
 
     def test_the_join_imports_no_view(self):
-        offenders = _offenders(('fastraml/join',), 'fastraml.views')
-        assert not offenders, '\n'.join(offenders)
+        found = offenders(('fastraml/join',), 'fastraml.views')
+        assert not found, '\n'.join(found)
 
 
 class TestTheCheckerSeesEveryEvasion:

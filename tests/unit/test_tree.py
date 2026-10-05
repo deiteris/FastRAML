@@ -61,11 +61,6 @@ types:
 REFERENCE_KEYS = frozenset({'$ref', 'declaration', 'id', 'type'})
 
 
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
 def references(value: object, key: str = '') -> list[tuple[str, str]]:
     """Every `(key, address)` pair the projection emits, however deep."""
     found: list[tuple[str, str]] = []
@@ -82,8 +77,7 @@ def references(value: object, key: str = '') -> list[tuple[str, str]]:
 
 @pytest.fixture
 def both(workspace):
-    root = workspace({'api.raml': API})
-    raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
+    raml = workspace.document(API, ParseOptions(unwrap=True))
     return build_tree(raml), build_graph(raml)
 
 
@@ -96,8 +90,7 @@ class TestWireContract:
         assert projection['entry_point']['kind'] == 'API'
 
     def test_protocols_have_one_wire_spelling(self, workspace):
-        root = workspace({'api.raml': '#%RAML 1.0\ntitle: t\nprotocols: [hTtPs]\n'})
-        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
+        raml = workspace.document('#%RAML 1.0\ntitle: t\nprotocols: [hTtPs]\n', ParseOptions(unwrap=True))
         assert build_tree(raml)['entry_point']['protocols'] == ['HTTPS']
 
     def test_fragment_kind_is_not_guessed_from_the_shared_model_class(self, workspace):
@@ -139,8 +132,9 @@ class TestEveryReferenceResolves:
         shares, so `C`'s still names `P` instead of carrying `P`'s marker.
         """
         body = f'  P:\n    properties:\n      {declaration}\n  C:\n    type: P\n'
-        root = workspace({'api.raml': f'#%RAML 1.0\ntitle: t\ntypes:\n{body}'})
-        declared = build_tree(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))['types']['api.raml']
+        declared = build_tree(workspace.document(f'#%RAML 1.0\ntitle: t\ntypes:\n{body}', ParseOptions(unwrap=True)))[
+            'types'
+        ]['api.raml']
         field = 'pattern_properties' if declaration.startswith('/') else 'properties'
         [marker] = [entry['type'] for entry in declared['P'][field].values()]
         assert marker['type'] == 'recursive'
@@ -435,13 +429,11 @@ class TestATypedFragmentIsADeclaration:
                 assert url in urls
                 return SimpleNamespace(status_code=200, content=TestATypedFragmentIsADeclaration.FRAGMENT.encode())
 
-        root = workspace(
-            {
-                'api.raml': '#%RAML 1.0\ntitle: T\ntypes:\n'
-                + ''.join(f'  T{index}: !include {url}\n' for index, url in enumerate(urls))
-            }
+        raml = workspace.document(
+            '#%RAML 1.0\ntitle: T\ntypes:\n'
+            + ''.join(f'  T{index}: !include {url}\n' for index, url in enumerate(urls)),
+            ParseOptions(unwrap=True, http_client=Client()),
         )
-        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True, http_client=Client()))
         tree = build_tree(raml)
         addresses = []
         for index, url in enumerate(urls):
@@ -610,8 +602,7 @@ class TestAnAddressMapCanBeReused:
         """The join is only real if the two agree, and they agree because it is
         one map rather than two walks that happen to match.
         """
-        root = workspace({'api.raml': API})
-        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
+        raml = workspace.document(API, ParseOptions(unwrap=True))
         graph = build_graph(raml)
         assert build_tree(raml, addresses=graph.addresses) == build_tree(raml)
 
@@ -662,8 +653,7 @@ class TestWhatADocumentationViewNeeds:
 
     @pytest.fixture
     def doc(self, workspace):
-        root = workspace({'api.raml': DOCUMENTED})
-        return build_tree(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
+        return build_tree(workspace.document(DOCUMENTED, ParseOptions(unwrap=True)))
 
     def test_base_uri_parameters_are_projected(self, doc):
         """`{tenant}` is a value every caller supplies; without it no request
@@ -710,8 +700,7 @@ class TestAnAnnotationIsRecordedWhereItWasApplied:
 
     @pytest.fixture
     def doc(self, workspace):
-        root = workspace({'api.raml': DOCUMENTED})
-        return build_tree(workspace.parse(root / 'api.raml', ParseOptions(unwrap=True)))
+        return build_tree(workspace.document(DOCUMENTED, ParseOptions(unwrap=True)))
 
     def test_on_the_resource(self, doc):
         assert doc['endpoints']['/users']['annotations'] == [
@@ -740,8 +729,7 @@ class TestAnAnnotationIsRecordedWhereItWasApplied:
         assert operation['responses']['200']['annotations'][0]['value'] == 'going away'
 
     def test_each_points_at_a_type_that_exists(self, workspace):
-        root = workspace({'api.raml': DOCUMENTED})
-        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
+        raml = workspace.document(DOCUMENTED, ParseOptions(unwrap=True))
         graph = build_graph(raml)
         dangling = [a for _, a in references(build_tree(raml)) if a not in graph.nodes]
         assert not dangling, dangling
@@ -787,8 +775,7 @@ class TestABoundSurvivesTheTripToAConsumer:
 
     @pytest.fixture
     def limits(self, workspace):
-        root = workspace({'api.raml': NUMBERS})
-        raml = workspace.parse(root / 'api.raml', ParseOptions(unwrap=True))
+        raml = workspace.document(NUMBERS, ParseOptions(unwrap=True))
         return build_tree(raml)['types']['api.raml']['Limits']['properties']
 
     def bound(self, limits, name, facet):

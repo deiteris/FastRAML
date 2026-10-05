@@ -11,31 +11,18 @@ import pytest
 
 from fastraml import ParseOptions, RamlError
 from fastraml.domains import DomainLocation
+from tests.diagnostics import messages, traces
 
 API = '#%RAML 1.0\ntitle: T\n'
 JSON = API + 'mediaType: application/json\n'
 
 
-@pytest.fixture
-def workspace(memory_workspace):
-    return memory_workspace
-
-
 def parse(workspace, body: str, head: str = API, **options):
-    root = workspace({'api.raml': head + body})
-    return workspace.parse(root / 'api.raml', ParseOptions(**options) if options else None)
+    return workspace.document(head + body, ParseOptions(**options) if options else None)
 
 
 def fails(workspace, body: str, head: str = API) -> RamlError | None:
-    try:
-        parse(workspace, body, head)
-    except RamlError as err:
-        return err
-    return None
-
-
-def messages(error: RamlError) -> set[str]:
-    return {trace.message for chain in error.chains() for trace in chain}
+    return workspace.rejection(head + body)
 
 
 class TestStructure:
@@ -72,7 +59,7 @@ LEVELS = {
 
 
 def frames(error: RamlError) -> list[tuple[str, dict]]:
-    return [(frame.message, frame.info) for chain in error.chains() for frame in chain]
+    return [(frame.message, frame.info) for frame in traces(error)]
 
 
 class TestProtocols:
@@ -153,19 +140,14 @@ class TestOperations:
         """
         error = fails(workspace, f'/users:\n  {method}:\n  get:\n')
         assert error is not None
-        assert [frame.info for chain in error.chains() for frame in chain if frame.message == 'unknown field'] == [
-            {'field': method}
-        ]
+        assert [frame.info for frame in traces(error) if frame.message == 'unknown field'] == [{'field': method}]
 
     @pytest.mark.parametrize('method', ['trace', 'connect'])
     def test_a_resource_type_cannot_contribute_a_non_raml_method(self, workspace, method):
         error = fails(workspace, f'resourceTypes:\n  r:\n    {method}:\n/users:\n  type: r\n')
         assert error is not None
         assert [
-            frame.info
-            for chain in error.chains()
-            for frame in chain
-            if frame.message == 'resource type method must be an HTTP method'
+            frame.info for frame in traces(error) if frame.message == 'resource type method must be an HTTP method'
         ] == [{'key': method}]
 
     def test_headers_and_query_parameters_are_properties(self, workspace):
@@ -376,7 +358,7 @@ class TestBodyMediaTypeKeys:
         text = BODY_SITES['request'](key).replace('body:\n', 'body:\n      text/plain: string\n')
         error = fails(workspace, text)
         assert error is not None
-        bad = [frame for chain in error.chains() for frame in chain if frame.message == 'invalid media type']
+        bad = [frame for frame in traces(error) if frame.message == 'invalid media type']
         assert [(frame.info, frame.position.line) for frame in bad] == [
             ({'media type': key.strip("'")}, API.count('\n') + 5)
         ]
@@ -408,8 +390,7 @@ class TestBodyMediaTypeKeys:
     def test_a_bad_key_keeps_its_valid_siblings_in_the_lenient_model(self, workspace, site):
         # `Missing` is kept for P7 to judge; the parse stops at the failing
         # pass, so in this model it stays unresolved and unreported.
-        root = workspace({'api.raml': API + self._beside(site, 'Missing')})
-        raml, error = workspace.lenient(root / 'api.raml')
+        raml, error = workspace.lenient_document(API + self._beside(site, 'Missing'))
         assert error is not None
         operation = raml.endpoints['/a'].operations['post']
         holder = operation.request if site == 'request' else operation.responses['200']
@@ -548,14 +529,12 @@ class TestRegisteredForLaterPasses:
             '/users:\n  post:\n    body:\n      application/json:\n        type: integer\n        example: notanumber\n',
         )
         assert error is None, 'validation is off without the option'
-        root = workspace(
-            {
-                'api.raml': API + '/users:\n  post:\n    body:\n      application/json:\n'
-                '        type: integer\n        example: notanumber\n'
-            }
-        )
         with pytest.raises(RamlError) as caught:
-            workspace.parse(root / 'api.raml', ParseOptions(validate=True, unwrap=True))
+            workspace.document(
+                API + '/users:\n  post:\n    body:\n      application/json:\n'
+                '        type: integer\n        example: notanumber\n',
+                ParseOptions(validate=True, unwrap=True),
+            )
         assert 'invalid example' in {t.message for c in caught.value.chains() for t in c}
 
 
@@ -659,11 +638,7 @@ class TestParameterEntity:
         assert 'reviewId' not in parent.uri_parameters
 
     def test_base_uri_parameters_bind_as_uri(self, workspace):
-        root = workspace(
-            {
-                'api.raml': '#%RAML 1.0\ntitle: T\nbaseUri: http://{host}.example.test\n'
-                'baseUriParameters:\n  host:\n    type: string\n'
-            }
+        raml = workspace.document(
+            '#%RAML 1.0\ntitle: T\nbaseUri: http://{host}.example.test\nbaseUriParameters:\n  host:\n    type: string\n'
         )
-        raml = workspace.parse(root / 'api.raml')
         assert raml.entry_point.base_uri_parameters['host'].binding == 'uri'

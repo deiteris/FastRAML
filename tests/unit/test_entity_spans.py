@@ -43,8 +43,8 @@ def _line(text: str) -> int:
 
 
 @pytest.fixture
-def raml(memory_workspace):
-    return memory_workspace.parse(memory_workspace({'api.raml': API}) / 'api.raml')
+def raml(workspace):
+    return workspace.parse(workspace({'api.raml': API}) / 'api.raml')
 
 
 def _entities(raml):

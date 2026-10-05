@@ -120,9 +120,13 @@ text is authored. See [04](04-fragments-and-namespaces.md).
 
 ### 4.5 JSON Schema and discriminators
 
-JSON Schema types may be used in properties, arrays, and unions, and in bodies
-whose media type allows JSON; not in parameters or query strings
+JSON Schema types may be used in properties, arrays, unions, and parameters
 ([10](10-validation.md) § 7).
+Deliberate deviation: *Using XML and JSON Schema* forbids a JSON schema in a
+query parameter, query string, URI parameter or header, and in a body whose
+media type does not allow JSON. fastRAML accepts all of these and reports
+nothing, because the schema is well-defined there and the restriction guards
+nothing the parser needs.
 They cannot be specialized through RAML inheritance unless the raw schemas are
 identical. A uniformly discriminated union dispatches by its discriminator;
 an absent discriminator and non-uniform unions use ordinary member matching.

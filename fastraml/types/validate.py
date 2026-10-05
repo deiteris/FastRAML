@@ -21,8 +21,7 @@ from typing import TYPE_CHECKING
 
 from fastraml.datanode import at_value, locate
 from fastraml.errors import Accumulator, ErrorKind, RamlError, Trace
-from fastraml.parser.facets import media_parts
-from fastraml.types.base import TYPE_JSON, checks_memoized
+from fastraml.types.base import checks_memoized
 from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape, nested
 from fastraml.types.examples import examples_of
 from fastraml.types.unwrap import unwrap_detached
@@ -34,10 +33,9 @@ if TYPE_CHECKING:
 
     from fastraml.datanode import DataNode
     from fastraml.parser.annotations import DomainExtension
-    from fastraml.parser.endpoints import Body
     from fastraml.parser.security import SecuritySchemeDescription
     from fastraml.registry import Raml
-    from fastraml.types.base import BaseShape, Parameter, Property
+    from fastraml.types.base import BaseShape, Property
     from fastraml.types.examples import Example
 
 __all__ = ['check_declared_discriminators', 'validate_shapes']
@@ -110,7 +108,6 @@ def validate_shapes(raml: Raml) -> None:
     accumulator = Accumulator()
     _validate_types(raml, cache, accumulator)
     _validate_query_strings(raml, cache, accumulator)
-    _validate_json_schema_placement(raml, cache, accumulator)
     _validate_domain_extensions(raml, cache, accumulator)
     accumulator.raise_if_any()
 
@@ -170,59 +167,6 @@ def _descriptions(raml: Raml) -> Iterator[SecuritySchemeDescription]:
                 yield described_by
 
 
-# -- where a JSON schema may stand (docs/10 § 7) --------------------------------
-
-
-def _validate_json_schema_placement(raml: Raml, cache: dict[int, BaseShape], acc: Accumulator) -> None:
-    """Spec § Using XML and JSON Schema: a JSON schema "MUST NOT be used where
-    the media type does not allow [...] JSON-formatted data", and is "forbidden
-    in any declaration of query parameters, query string, URI parameters, and
-    headers".
-
-    A `body:` written without a media type was instantiated once per default
-    media type, so each instance is judged by the media type it stands for.
-    Every place is also a declaration in `fragment_typedefs`, so one that cannot
-    be unwrapped has already been reported by `_validate_types`.
-    """
-    for body in _bodies(raml):
-        if body.shape is not None and not _allows_json(body.media_type) and _holds_json_schema(raml, body.shape, cache):
-            acc.add(
-                failure(
-                    'JSON schema for a media type that is not JSON',
-                    body.location,
-                    body.key_pos,
-                    info={'mediaType': body.media_type},
-                )
-            )
-    for parameter in _parameters(raml):
-        if _holds_json_schema(raml, parameter.base, cache):
-            acc.add(
-                failure(
-                    'JSON schema in a parameter',
-                    parameter.base.location,
-                    parameter.key_pos,
-                    info={'parameter': parameter.name, 'binding': parameter.binding},
-                )
-            )
-    for base in _query_strings(raml):
-        if _holds_json_schema(raml, base, cache):
-            acc.add(failure('JSON schema in a query string', base.location, base.key_pos))
-
-
-def _allows_json(media_type: str) -> bool:
-    """`application/json`, a `+json` suffix (RFC 6839 § 3.1), or a range that admits one."""
-    kind, _, subtype = media_parts(media_type)[0].partition('/')
-    if kind == '*' or (kind == 'application' and subtype in {'json', '*'}):
-        return True
-    return subtype.endswith('+json')
-
-
-def _holds_json_schema(raml: Raml, base: BaseShape, cache: dict[int, BaseShape]) -> bool:
-    """Whether the flattened declaration is a JSON schema, or a union with one among its members."""
-    flattened = _flattened(raml, base, cache)
-    return flattened is not None and _some_member(flattened, lambda member: member.type == TYPE_JSON)
-
-
 def _some_member(base: BaseShape, holds: Callable[[BaseShape], bool]) -> bool:
     """Whether `base`, or a member anywhere in its flattened `any_of` closure, `holds`.
 
@@ -236,38 +180,6 @@ def _some_member(base: BaseShape, holds: Callable[[BaseShape], bool]) -> bool:
         if isinstance(current.shape, UnionShape):
             pending.extend(current.shape.any_of or ())
     return False
-
-
-def _bodies(raml: Raml) -> Iterator[Body]:
-    """Every request and response body, an operation's and then a `describedBy`'s."""
-    for endpoint in raml.endpoints.values():
-        for operation in endpoint.operations.values():
-            if operation.request is not None:
-                yield from operation.request.bodies.values()
-            for response in operation.responses.values():
-                yield from response.bodies.values()
-    for described_by in _descriptions(raml):
-        for response in described_by.responses.values():
-            yield from response.bodies.values()
-
-
-def _parameters(raml: Raml) -> Iterator[Parameter]:
-    """Every bound parameter: base URI, URI, header and query, wherever declared."""
-    for fragment in raml.fragments.values():
-        yield from getattr(fragment, 'base_uri_parameters', {}).values()
-    for endpoint in raml.endpoints.values():
-        yield from (parameter for parameter in endpoint.uri_parameters.values() if not parameter.synthesized)
-        for operation in endpoint.operations.values():
-            if operation.request is not None:
-                yield from operation.request.headers.values()
-                yield from operation.request.query_parameters.values()
-            for response in operation.responses.values():
-                yield from response.headers.values()
-    for described_by in _descriptions(raml):
-        yield from described_by.headers.values()
-        yield from described_by.query_parameters.values()
-        for response in described_by.responses.values():
-            yield from response.headers.values()
 
 
 def _ensure_unwrapped(raml: Raml, base: BaseShape, cache: dict[int, BaseShape]) -> BaseShape:

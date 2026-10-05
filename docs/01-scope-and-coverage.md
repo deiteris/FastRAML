@@ -95,7 +95,9 @@ implementations leave room for interpretation.
 the optional `google-re2` package and rejects patterns it cannot compile.
 RAML `pattern:` facets and pattern-property keys use the selected engine.
 Patterns evaluated inside an external JSON Schema remain controlled by the
-schema library and use Python `re`.
+schema library and use Python `re`; the schema's RAML projection compiles
+them with the selected engine, and with `re2` absent it has no projection
+(`projection_error()` names the missing package).
 
 ### 4.3 Fragment namespaces
 

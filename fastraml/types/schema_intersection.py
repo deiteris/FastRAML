@@ -14,15 +14,22 @@ from fractions import Fraction
 from functools import cache
 from math import ceil, floor, gcd, isfinite, lcm
 from typing import TYPE_CHECKING, Any, Final
-from urllib.parse import urldefrag, urljoin
 
-from fastraml.errors import ErrorKind, RamlError
-from fastraml.parser.facets import regex_engine
-from fastraml.types.base import BaseShape, Property, ScalarFacet
+from fastraml.errors import RamlError
+from fastraml.types.base import TYPE_ANY, TYPE_NIL, TYPE_RECURSIVE, TYPE_UNION, BaseShape, Property, ScalarFacet
 from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
 from fastraml.types.scalars import AnyShape, BooleanShape, IntegerShape, NilShape, NumberShape, StringShape
-from fastraml.types.schema_compile import document_of, specification_of
-from fastraml.types.schema_view import KEYWORD_TYPE, attach, attach_kind, unsupported, view_base, view_data
+from fastraml.types.schema_compile import document_of, ref_target, specification_of
+from fastraml.types.schema_view import (
+    KEYWORD_TYPE,
+    attach,
+    attach_kind,
+    check_depth,
+    try_compile,
+    unsupported,
+    view_base,
+    view_data,
+)
 from fastraml.types.values import EnumValues, as_fraction
 
 if TYPE_CHECKING:
@@ -165,17 +172,6 @@ def intersect(  # noqa: PLR0913 - the walk's state, and the walk itself
         raise unsupported(context, 'unsatisfiable allOf') from None
 
 
-def _depth(context: Projection, depth: int) -> None:
-    if depth > context.parent._raml.max_depth:  # noqa: SLF001 - the projection shares the parse's ceiling
-        raise RamlError.new(
-            'JSON schema nesting too deep',
-            context.parent.location,
-            context.parent.value_pos,
-            kind=ErrorKind.RESOLVING,
-            info={'limit': context.parent._raml.max_depth},  # noqa: SLF001
-        )
-
-
 def _effective_specification(context: Projection, contents: dict[str, Any]) -> tuple[Any, Any]:
     # A JSON Pointer entry's selected schema need not repeat its document's
     # $schema. The compiled validator, not that selected body, owns the draft.
@@ -199,7 +195,7 @@ def _parts(  # noqa: PLR0912 - refs, draft-specific siblings, and nested conjunc
     context: Projection, contents: Any, active: set[_ScopeKey], done: set[_ScopeKey], depth: int
 ) -> Iterator[_Part]:
     """Flatten conjunctions and references, keeping each leaf's resolution scope."""
-    _depth(context, depth)
+    check_depth(context, depth)
     if contents is False:
         raise _EmptyIntersection
     if contents is True:
@@ -224,7 +220,7 @@ def _parts(  # noqa: PLR0912 - refs, draft-specific siblings, and nested conjunc
                 # enclosing validator class before evolving to the new draft.
                 raise unsupported(context, 'allOf mixed-draft $ref siblings')
             resolved = context.resolver.lookup(reference)
-            _, pointer = urldefrag(urljoin(document_of(context.resolver) or '', reference))
+            _, pointer = ref_target(context.resolver, reference)
             yield from _parts(context.at(resolved.resolver, pointer), resolved.contents, active, done, depth + 1)
             # Draft 4/6/7 ignore siblings of $ref; newer drafts apply them.
             if specification in (DRAFT4, DRAFT6, DRAFT7):
@@ -296,20 +292,20 @@ def _inferred_types(parts: list[_Part]) -> list[str]:
         hinted.add('string')
     if len(hinted) > 1:
         raise unsupported(parts[0][0], 'allOf constraints on multiple inferred types')
-    return list(hinted) or ['any']
+    return list(hinted) or [TYPE_ANY]
 
 
 def _intersect(
     context: Projection, sources: list[_Source], base: BaseShape, state: _Intersection, depth: int
 ) -> BaseShape:
-    _depth(context, depth)
+    check_depth(context, depth)
     done: set[_ScopeKey] = set()
     parts = [part for scope, schema in sources for part in _parts(scope, schema, set(), done, depth)]
     key = frozenset((document_of(scope.resolver), scope.pointer) for scope, _ in parts)
     previous = state.built.get(key)
     if previous is not None:
         if key in state.active:
-            return attach_kind(view_base(context), 'recursive', RecursiveShape, head=previous)
+            return attach_kind(view_base(context), TYPE_RECURSIVE, RecursiveShape, head=previous)
         return previous
     state.built[key] = base
     state.active.add(key)
@@ -338,8 +334,8 @@ def _build(context: Projection, parts: list[_Part], base: BaseShape, state: _Int
             members.append(member)
         if not members:
             raise _EmptyIntersection
-        attach_kind(base, 'union', UnionShape, any_of=members)
-    _enum(base, parts, names[0] if len(names) == 1 else 'union')
+        attach_kind(base, TYPE_UNION, UnionShape, any_of=members)
+    _enum(base, parts, names[0] if len(names) == 1 else TYPE_UNION)
     return base
 
 
@@ -356,12 +352,12 @@ def _body(  # noqa: PLR0913, PLR0917 - the selected kind and recursion state
         _number(context, parts, name, base)
     elif name == 'string':
         _string(context, parts, base, strict=state.strict)
-    elif name == 'any':
+    elif name == TYPE_ANY:
         attach_kind(base, name, AnyShape)
     elif name == 'boolean':
         attach_kind(base, name, BooleanShape)
     elif name == 'null':
-        attach_kind(base, 'nil', NilShape)
+        attach_kind(base, TYPE_NIL, NilShape)
     else:
         raise unsupported(context, f'type: {name}')
 
@@ -385,7 +381,7 @@ def _string(context: Projection, parts: list[_Part], base: BaseShape, *, strict:
     if len(patterns) > 1:
         raise unsupported(context, 'allOf with multiple patterns')
     if patterns:
-        shape.pattern = _pattern_facet(base, patterns.pop())
+        shape.pattern = _pattern_facet(context, base, patterns.pop())
         if shape.pattern is None and (strict or any(contents.get('format') in STRING_FORMATS for _, contents in parts)):
             raise unsupported(context, 'allOf pattern')
     attach(base, 'string', shape)
@@ -503,7 +499,7 @@ def _number(  # noqa: PLR0912 - per-kind bounds and exact multiples share their 
 
 def _check_child(scope: Projection, contents: Any, state: _Intersection, depth: int) -> None:
     """Check representability before a canonical cache can bypass the source walk."""
-    _depth(scope, depth)
+    check_depth(scope, depth)
     target, target_scope = contents, scope
     if isinstance(contents, dict) and set(contents) == {'$ref'}:
         resolved = scope.resolver.lookup(contents['$ref'])
@@ -534,7 +530,7 @@ def _check_child(scope: Projection, contents: Any, state: _Intersection, depth: 
 
 
 def _child(context: Projection, sources: list[_Source], state: _Intersection, depth: int) -> BaseShape:
-    _depth(context, depth + 1)
+    check_depth(context, depth + 1)
     if len(sources) == 1:
         scope, contents = sources[0]
         # An unchanged child uses the ordinary projector, including its canonical
@@ -571,7 +567,9 @@ def _object(  # noqa: PLR0912 - closed members and impossible optional propertie
             continue
         scope = context.into('properties', name)
         try:
-            child = _child(scope, sources, state, depth) if sources else attach_kind(view_base(scope), 'any', AnyShape)
+            child = (
+                _child(scope, sources, state, depth) if sources else attach_kind(view_base(scope), TYPE_ANY, AnyShape)
+            )
         except _EmptyIntersection:
             if name in required:
                 raise
@@ -666,7 +664,7 @@ def _enum(base: BaseShape, parts: list[_Part], name: str) -> None:
     values = []
     for value in candidates:
         kind = _value_type(value)
-        if name not in {'any', 'union', kind} and not (name == 'number' and kind == 'integer'):
+        if name not in {TYPE_ANY, TYPE_UNION, kind} and not (name == 'number' and kind == 'integer'):
             continue
         assert base.shape is not None  # noqa: S101 - constructed before intersecting enum values
         try:
@@ -689,17 +687,8 @@ def _validator_at(scope: Projection) -> Any:
     return type(scope.validator)
 
 
-def _pattern_facet(base: BaseShape, value: Any) -> ScalarFacet[re.Pattern[str]] | None:
-    if not isinstance(value, str):
-        return None
-    try:
-        compiled = regex_engine(base._raml).compile(value)  # noqa: SLF001 - the parse's engine (docs/01 § 4.2)
-    except ImportError:
-        raise
-    except Exception:  # noqa: BLE001 - whatever the selected engine raises
-        # A pattern the schema library accepts under ECMA-262 semantics may not
-        # compile here, and `re2` rejects strictly more than `re` does. The
-        # projection is a view, so the constraint is dropped rather than the
-        # whole shape refused; `validate()` still enforces it.
-        return None
-    return ScalarFacet(value=compiled, location=base.location)
+def _pattern_facet(context: Projection, base: BaseShape, value: Any) -> ScalarFacet[re.Pattern[str]] | None:
+    # A pattern that does not compile here is dropped rather than the whole
+    # shape refused: the projection is a view, and `validate()` still enforces it.
+    compiled = try_compile(context, value) if isinstance(value, str) else None
+    return None if compiled is None else ScalarFacet(value=compiled, location=base.location)

@@ -9,10 +9,7 @@ projection, shared under the target's canonical URI, and a cycle becomes a
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
-from urllib.parse import urldefrag, urljoin
 
-from fastraml.errors import ErrorKind, RamlError
-from fastraml.parser.facets import regex_engine
 from fastraml.types.base import (
     TYPE_ANY,
     TYPE_OBJECT,
@@ -26,7 +23,7 @@ from fastraml.types.base import (
 from fastraml.types.complex_ import ObjectShape, RecursiveShape, UnionShape
 from fastraml.types.examples import Example, Examples
 from fastraml.types.scalars import AnyShape
-from fastraml.types.schema_compile import document_of, draft_of, is_one_schema, schema_registry
+from fastraml.types.schema_compile import canonical, draft_of, ref_target, schema_registry
 from fastraml.types.schema_intersection import STRING_FORMATS, intersect, ref_siblings_apply
 from fastraml.types.schema_view import (
     KEYWORD_TYPE,
@@ -34,7 +31,9 @@ from fastraml.types.schema_view import (
     Visiting,
     attach,
     attach_kind,
+    check_depth,
     subschema_name,
+    try_compile,
     unsupported,
     view_base,
     view_data,
@@ -42,7 +41,7 @@ from fastraml.types.schema_view import (
 from fastraml.types.values import EnumValues
 
 if TYPE_CHECKING:
-    # Annotations only: every pattern is compiled through `regex_engine`, so
+    # Annotations only: every pattern is compiled through `try_compile`, so
     # the parse's engine applies to projected patterns too (docs/01 § 4.2).
     import re
 
@@ -54,14 +53,7 @@ def project(context: Projection, contents: Any, visiting: Visiting) -> BaseShape
     # and the guard costs a `len`. Each document was already bounded by
     # `_check_nesting`; what this catches is a chain of `$ref`s across many
     # shallow documents, which nests as deep as the chain is long.
-    if len(visiting) > context.parent._raml.max_depth:  # noqa: SLF001 - the parse's ceiling (docs/12 § 3)
-        raise RamlError.new(
-            'JSON schema nesting too deep',
-            context.parent.location,
-            context.parent.value_pos,
-            kind=ErrorKind.RESOLVING,
-            info={'limit': context.parent._raml.max_depth},  # noqa: SLF001 - as above
-        )
+    check_depth(context, len(visiting))
     if contents is False:
         raise unsupported(context, 'false schema')
     if contents is True or not isinstance(contents, dict):
@@ -88,7 +80,7 @@ def project(context: Projection, contents: Any, visiting: Visiting) -> BaseShape
             return project_reference(context, reference, visiting)
         assert base is not None  # noqa: S101 - only reference-only frames have no type head
         if siblings_apply:
-            return _project_all_of(context, contents, base, visiting)
+            return intersect(context, contents, base, visiting, project)
         if 'if' in contents:
             raise unsupported(context, 'if/then/else')
         return _project_body(context, contents, base, visiting)
@@ -101,12 +93,9 @@ def project(context: Projection, contents: Any, visiting: Visiting) -> BaseShape
 
 def project_reference(context: Projection, reference: str, visiting: Visiting) -> BaseShape:
     resolved = context.resolver.lookup(reference)
-    # Where the reference lands, split the way `Resolver.lookup` splits it. A
-    # reference moves the walk outright rather than deeper, so this replaces the
-    # current position instead of extending it. `urljoin` needs no special case
-    # for a bare `#...`: it appends the fragment to the base, which is what
-    # `lookup` shortcuts to.
-    document, target = urldefrag(urljoin(document_of(context.resolver) or '', reference))
+    # A reference moves the walk outright rather than deeper, so where it lands
+    # replaces the current position instead of extending it.
+    document, target = ref_target(context.resolver, reference)
     if id(resolved.contents) in visiting:
         head = _cycle_head(visiting, id(resolved.contents))
         if head is None:
@@ -125,10 +114,10 @@ def project_reference(context: Projection, reference: str, visiting: Visiting) -
     # Only a target in a file of its own has a canonical URI to share under. An
     # inline schema compiles under the RAML file's URI, which it shares with
     # every other inline schema in that file.
-    canonical = uri if is_one_schema(context.parent._raml, document) else None  # noqa: SLF001 - the parse's index
+    shared_as = canonical(context.parent._raml, document, target)  # noqa: SLF001 - the parse's index
     registry = schema_registry(context.parent._raml)  # noqa: SLF001 - one registry per parse
     draft = draft_of(context.validator)
-    shared = registry.projected(canonical, draft) if canonical else None
+    shared = registry.projected(shared_as, draft) if shared_as else None
     if shared is not None:
         if name is not None:
             context.defs[name] = shared[0]
@@ -138,12 +127,12 @@ def project_reference(context: Projection, reference: str, visiting: Visiting) -
     if name is not None:
         built.name = name
         context.defs[name] = built
-    if canonical is not None and not isinstance(built.shape, RecursiveShape):
+    if shared_as is not None and not isinstance(built.shape, RecursiveShape):
         # After the walk, never during it: a shape still being built is one a
         # cycle must reach through `visiting`. Nor a back-edge: a reference
         # that is one names a head only this walk has open, so the same target
         # walked from another entry is the head's projection, not a marker.
-        registry.share(canonical, draft, built)
+        registry.share(shared_as, draft, built)
     return built
 
 
@@ -180,7 +169,8 @@ def _cycle_head(visiting: Visiting, key: int) -> BaseShape | None:
 
 def _project_body(context: Projection, contents: dict, base: BaseShape, visiting: Visiting) -> BaseShape:
     if contents.get('allOf'):
-        return _project_all_of(context, contents, base, visiting)
+        # Intersect source constraints rather than directional RAML inheritance.
+        return intersect(context, contents, base, visiting, project)
     for keyword in ('oneOf', 'anyOf'):
         # `oneOf`'s exactly-one semantics is lost. RAML's union is "at least
         # one" and there is nothing nearer; docs/10 § 7 records the loss.
@@ -225,11 +215,6 @@ def _inferred_type(contents: dict) -> str | None:
     """
     implied = {KEYWORD_TYPE[keyword] for keyword in contents if keyword in KEYWORD_TYPE}
     return implied.pop() if len(implied) == 1 else None
-
-
-def _project_all_of(context: Projection, contents: dict, base: BaseShape, visiting: Visiting) -> BaseShape:
-    """Intersect source constraints rather than directional RAML inheritance."""
-    return intersect(context, contents, base, visiting, project)
 
 
 def _project_union(context: Projection, keyword: str, members: list, base: BaseShape, visiting: Visiting) -> BaseShape:
@@ -301,9 +286,7 @@ def _int_facet(base: BaseShape, value: Any) -> ScalarFacet[int] | None:
 
 
 def _compile(context: Projection, text: str) -> re.Pattern[str]:
-    engine = regex_engine(context.parent._raml)  # noqa: SLF001 - as above
-    try:
-        compiled: re.Pattern[str] = engine.compile(text)
-    except Exception as err:
-        raise unsupported(context, f'patternProperties: {text}') from err
+    compiled = try_compile(context, text)
+    if compiled is None:
+        raise unsupported(context, f'patternProperties: {text}')
     return compiled

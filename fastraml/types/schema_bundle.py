@@ -9,9 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
-from urllib.parse import urldefrag, urljoin
 
-from fastraml.types.schema_compile import document_of, escape_json_pointer_segment
+from fastraml.types.schema_compile import DATA_KEYWORDS, SCHEMA_MAPS, escape_json_pointer_segment, ref_target
 from fastraml.uris import uri_stem
 
 if TYPE_CHECKING:
@@ -125,7 +124,10 @@ def _definition_aliases(context: _Bundling, document: Any) -> dict[str, Any]:
 
 
 def _bundle_root(context: _Bundling, document: Any) -> Any:
-    """Bundle one document, expanding its claimed definition aliases in place."""
+    """Bundle one document, expanding its claimed definition aliases in place.
+
+    A `$ref` at its root is rewritten as one anywhere below it is.
+    """
     if not isinstance(document, dict):
         return _bundle_node(context, document)
     aliases = _definition_aliases(context, document)
@@ -143,8 +145,10 @@ def _bundle_root(context: _Bundling, document: Any) -> Any:
                 else _bundle_node(context, node)
                 for name, node in value.items()
             }
+        elif key == '$ref' and (local := _rewritten(context, value)) is not None:
+            bundled[key] = local
         else:
-            bundled[key] = _bundle_node(context, value)
+            bundled[key] = _bundle_member(context, key, value)
     return bundled
 
 
@@ -158,16 +162,37 @@ def _bundle_node(context: _Bundling, node: Any) -> Any:
         return [_bundle_node(context, item) for item in node]
     if not isinstance(node, dict):
         return node
-    reference = node.get('$ref')
-    if not isinstance(reference, str) or (context.root and reference.startswith('#')):
-        return {key: _bundle_node(context, value) for key, value in node.items()}
-    local = _pull(context, reference)
+    local = _rewritten(context, node.get('$ref'))
     if local is None:
-        return {key: _bundle_node(context, value) for key, value in node.items()}
+        return {key: _bundle_member(context, key, value) for key, value in node.items()}
     # `$ref` first, where the author wrote it, and its siblings after: draft 2019
     # onward gives a schema beside a `$ref` meaning, so they are not dropped.
-    rest = {key: _bundle_node(context, value) for key, value in node.items() if key != '$ref'}
+    rest = {key: _bundle_member(context, key, value) for key, value in node.items() if key != '$ref'}
     return {'$ref': local, **rest}
+
+
+def _rewritten(context: _Bundling, reference: Any) -> str | None:
+    """The local reference that replaces `reference`, or `None` where it stands
+    as written: not a reference, a pointer into the bundled document itself,
+    or one that does not resolve (`_pull`).
+    """
+    if not isinstance(reference, str) or (context.root and reference.startswith('#')):
+        return None
+    return _pull(context, reference)
+
+
+def _bundle_member(context: _Bundling, key: str, value: Any) -> Any:
+    """One keyword's value, read as `_prefetch` reads it.
+
+    A data keyword's value is a value, kept as written even where it looks like
+    a reference; a map of subschemas is bundled member by member, so a property
+    named `default` is still a schema.
+    """
+    if key in DATA_KEYWORDS:
+        return value
+    if key in SCHEMA_MAPS and isinstance(value, dict):
+        return {name: _bundle_node(context, member) for name, member in value.items()}
+    return _bundle_node(context, value)
 
 
 def _pull(context: _Bundling, reference: str) -> str | None:
@@ -176,13 +201,14 @@ def _pull(context: _Bundling, reference: str) -> str | None:
     else a `definitions` entry holding what it names, registered on first use.
 
     `None` where it does not resolve, which leaves the reference as the author
-    wrote it. `_prefetch` has already resolved every reference in the schema by
-    the time anything here runs, so this is the arm that should not be reachable
-    rather than a fallback that is expected to fire.
+    wrote it. `_prefetch` has already resolved every reference the bundle
+    follows, skipping the same data keywords (`_bundle_member`), so this is the
+    arm that should not be reachable rather than a fallback that is expected to
+    fire.
     """
     from referencing.exceptions import Unresolvable  # noqa: PLC0415 - deferred for startup cost
 
-    document, fragment = urldefrag(urljoin(document_of(context.resolver) or '', reference))
+    document, fragment = ref_target(context.resolver, reference)
     if document == context.document:
         return f'#{fragment}'
     try:
@@ -193,7 +219,7 @@ def _pull(context: _Bundling, reference: str) -> str | None:
     if known is not None:
         return known
     name = _bundle_name(reference, context.taken)
-    local = f'#/{_BUNDLE_KEY}/{name}'
+    local = f'#/{_BUNDLE_KEY}/{escape_json_pointer_segment(name)}'
     # Registered before the walk into it, so a reference that leads back here
     # finds the name rather than descending again.
     context.named[id(resolved.contents)] = local
@@ -219,14 +245,15 @@ def _bundle_name(reference: str, taken: set[str]) -> str:
 
 
 def _pointer_tail(reference: str) -> str | None:
-    """The last segment of a reference's JSON Pointer, if it has one.
+    """The last segment of a reference's JSON Pointer, unescaped, if it has one.
 
     A *key*, not a type name: `_bundle_name` wants something short and unique
     per document. `subschema_name` is the one that decides what a subschema is
-    called, and it names only the forms a `$ref` can address.
+    called, and it names only the forms a `$ref` can address; both unescape
+    per RFC 6901, `~1` before `~0`.
     """
     pointer = reference.partition('#')[2]
     if not pointer.startswith('/'):
         return None
     segment = pointer.rsplit('/', 1)[-1]
-    return segment or None
+    return segment.replace('~1', '/').replace('~0', '~') or None

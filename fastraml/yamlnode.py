@@ -512,7 +512,7 @@ def is_null(node: Node) -> bool:
 def node_error(
     message: str,
     location: str,
-    node: Node | WrittenScalar | None = None,
+    node: Node | None = None,
     *,
     kind: ErrorKind = ErrorKind.PARSING,
     info: Mapping[str, object] | None = None,
@@ -522,15 +522,9 @@ def node_error(
     Returned rather than raised, because a decoder more often hands the result
     to an `Accumulator` than raises it, and because a factory call keeps the
     message text out of the `raise` statement.
-
-    A `WrittenScalar` is placed at its token in `location`: it no longer
-    knows which document wrote it.
     """
     position = None
-    if isinstance(node, WrittenScalar):
-        # Unreachable: every caller reports during P7 or earlier, before any node is detached.
-        position = node.position
-    elif node is not None:
+    if node is not None:
         position = node.full_position
         authors = AUTHORED_NODES.get()
         if authors:

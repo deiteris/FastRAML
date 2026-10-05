@@ -189,6 +189,7 @@ class Raml:
         'retain_text',
         'workspace_root_uri',
         # --- caches ----------------------------------------------------------
+        'caching_includes',
         'expr_cache',
         'fragments',
         'include_data',
@@ -254,8 +255,10 @@ class Raml:
 
         self.fragments: dict[str, Fragment] = {}
         #: Each composed include target. Emptied when the parse ends, unless
-        #: `retain_source` keeps it (docs/03 § 4.3).
+        #: `retain_source` keeps it, and then `caching_includes` is false so a
+        #: later read does not fill it again (docs/03 § 4.3).
         self.include_nodes: dict[str, Node] = {}
+        self.caching_includes = True
         # Equal YAML mapping keys share a string across this parse's files,
         # without depending on Python's process-global intern table.
         self.mapping_keys: dict[str, str] = {}

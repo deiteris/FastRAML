@@ -197,13 +197,14 @@ class TestFeatureCorporaReachTheirCode:
         from fastraml import build_graph
 
         calls = []
-        original = schema_module._project_all_of
+        original = schema_module.intersect
 
-        def counting(context, contents, base, visiting):
-            calls.append(contents['allOf'])
-            return original(context, contents, base, visiting)
+        def counting(context, contents, *args, **kwargs):
+            if kwargs.get('strict', True):  # the `allOf` path; a plain body intersects with `strict=False`
+                calls.append(contents['allOf'])
+            return original(context, contents, *args, **kwargs)
 
-        monkeypatch.setattr(schema_module, '_project_all_of', counting)
+        monkeypatch.setattr(schema_module, 'intersect', counting)
         references = []
         original_parts = intersection_module._parts
 
@@ -621,7 +622,7 @@ class TestFeatureCorporaReachTheirCode:
 
             return call
 
-        original_fold = inherit_module.fold
+        original_fold = inherit_module._fold
 
         def fold(parents):
             folded.add(parents[0].name)
@@ -631,7 +632,7 @@ class TestFeatureCorporaReachTheirCode:
         monkeypatch.setattr(inherit_module, '_inherit_into_union', counting('into', inherit_module._inherit_into_union))
         # `_narrow` dispatches through the table, not the module attribute.
         monkeypatch.setitem(inherit_module._RULES, UnionShape, counting('both', inherit_module._narrow_union))
-        monkeypatch.setattr(inherit_module, 'fold', fold)
+        monkeypatch.setattr(inherit_module, '_fold', fold)
         raml = parse_from_path(corpus.write_inheritance(tmp_path, family_count=1), ParseOptions(unwrap=True))
         assert {'from', 'into', 'both'} <= set(paths)
         assert folded >= {'tag', '/^x-/', 'items'}, 'a property, a pattern property and items'

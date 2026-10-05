@@ -164,8 +164,8 @@ class TestCachingAndLimits:
     def test_an_unwrap_after_the_parse_reads_a_union_s_include_again(self, memory_workspace):
         # A union keeps the facets beside it as YAML until P9 (docs/07 § 5).
         # Unwrapped after a parse that did not unwrap, an include among them
-        # is read through the parse's own loader and limit, again if the parse
-        # read the file for something else (docs/03 § 4.3).
+        # is read through the parse's own loader and limit, once per member,
+        # and nothing refills the cache the parse emptied (docs/03 § 4.3).
         from fastraml.types.unwrap import unwrap_detached
 
         root = memory_workspace(
@@ -182,9 +182,8 @@ class TestCachingAndLimits:
         assert loader.counts[pattern_uri] == 1
         copy = unwrap_detached(raml, raml.types_in(raml.location)['U'])
         assert [member.shape.pattern.value.pattern for member in copy.shape.any_of] == ['^a+$', '^a+$']
-        assert loader.counts[pattern_uri] == 2
-        # The read fills the cache again, and it stays filled (docs/03 § 4.3).
-        assert list(raml.include_nodes) == [pattern_uri]
+        assert loader.counts[pattern_uri] == 3
+        assert raml.include_nodes == {}
 
     def test_the_reference_is_recorded_once_per_occurrence(self, memory_workspace):
         # The cache is about I/O; tooling still wants every document link.

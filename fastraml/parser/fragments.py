@@ -61,6 +61,7 @@ from fastraml.parser.facets import MEDIA_TYPE, make_scalar_facet, make_string_fa
 from fastraml.parser.includes import (
     content_include,
     inline_include,
+    is_json_ref,
     note_include_ref,
     resolve_ref_uri,
     strip_uri_suffix,
@@ -79,7 +80,6 @@ from fastraml.yamlnode import (
     TAG_INCLUDE,
     TAG_MAP,
     TAG_NULL,
-    TAG_STR,
     Node,
     NodeKind,
     compose,
@@ -87,6 +87,7 @@ from fastraml.yamlnode import (
     node_error,
     pairs,
     read_head,
+    str_scalar,
     with_content,
 )
 
@@ -318,7 +319,7 @@ def resolve_uses(raml: Raml, uses: Mapping[str, LibraryLink], location: str) -> 
             refer(raml, link.link, link, partial(_uses_error, location, link))
             continue
         except RamlError as err:
-            error = RamlError.wrap('parse uses library', err, location, link.key_pos)
+            error = _uses_error(location, link, err)
         except (OSError, ValueError) as err:
             error = RamlError.wrap('resolve uses URI', err, location, link.key_pos)
         partial_library = raml.get_fragment(uri) if uri is not None else None
@@ -892,7 +893,7 @@ class DataTypeFragment(_UsesOnlyFragment):
                 NodeKind.MAPPING,
                 TAG_MAP,
                 '',
-                [Node(NodeKind.SCALAR, TAG_STR, FACET_TYPE), Node(NodeKind.SCALAR, TAG_STR, text)],
+                [str_scalar(FACET_TYPE), str_scalar(text)],
             )
         )
 
@@ -904,7 +905,7 @@ class DataTypeFragment(_UsesOnlyFragment):
         its content is decoded, so one that fails is kept and marked
         (docs/13 § 1).
         """
-        key = Node(NodeKind.SCALAR, TAG_STR, self.declared_name)
+        key = str_scalar(self.declared_name)
         make_shape(self._raml, key, declaration, self.location, attach=self._attach)
 
     def _attach(self, base: BaseShape) -> None:
@@ -1173,10 +1174,9 @@ def check_fragment_kind(text: str, uri: str, kind: FragmentKind) -> FragmentKind
     """
     # The extension is taken past a `#pointer`: `order.json#/definitions/Item`
     # is a JSON include, not an include of something ending `.json#`.
-    path = strip_uri_suffix(uri).lower()
-    if kind is FragmentKind.DATA_TYPE and path.endswith('.json'):
+    if kind is FragmentKind.DATA_TYPE and is_json_ref(uri):
         return FragmentKind.DATA_TYPE
-    if path.endswith('.xsd'):
+    if strip_uri_suffix(uri).lower().endswith('.xsd'):
         # docs/01 § 3. Reported here rather than left to the header check,
         # which would report an unrecognised RAML header instead. Only `.xsd`:
         # an `!include` of `.xml` is a scalar include and may be an example.
@@ -1230,15 +1230,14 @@ def decode_fragment(raml: Raml, uri: str, kind: FragmentKind, text: str) -> Frag
     # `schema.json#/definitions/User` is a JSON include of an inner element, not
     # a RAML DataType. Testing the raw URI misses the pointer form, and the file
     # then decodes as RAML with `$schema` and `definitions` as custom facets.
-    if kind is FragmentKind.DATA_TYPE and strip_uri_suffix(uri).lower().endswith('.json'):
+    if kind is FragmentKind.DATA_TYPE and is_json_ref(uri):
         return _decode_json_data_type(raml, uri, text)
 
     fragment = make_fragment(raml, kind, uri)
     # Registered before the body is decoded: a cycle back to this file resolves
     # to the in-progress object instead of recursing.
     raml.put_fragment(uri, fragment)
-    state = cast('_BaseFragment', fragment)  # every fragment class is one
-    state._waiting = []  # noqa: SLF001 - this module owns the field
+    fragment._waiting = []  # noqa: SLF001 - this module owns the field
     anchor = fragment if isinstance(fragment, ReferenceResolver) else None
     if anchor is not None:
         # Indexed here, where the capability check already happens, so that P7's
@@ -1267,22 +1266,21 @@ def decode_fragment(raml: Raml, uri: str, kind: FragmentKind, text: str) -> Frag
         accumulator.add(err)
     failure = accumulator.result()
     _settle(raml, fragment, failure)
-    state._waiting = None  # noqa: SLF001 - this module owns the field
+    fragment._waiting = None  # noqa: SLF001 - this module owns the field
     if failure is not None:
         raise failure
     return fragment
 
 
-def _settle(raml: Raml, fragment: Fragment, failure: RamlError | None) -> None:
+def _settle(raml: Raml, fragment: _BaseFragment, failure: RamlError | None) -> None:
     """Record why `fragment` failed, and mark each referrer that met it while
     it was being decoded (`refer`). Run after the body and again after
     `uses:`, which can fail on its own.
     """
-    state = cast('_BaseFragment', fragment)  # every fragment class is one
-    state._failure = failure  # noqa: SLF001 - this module owns the field
+    fragment._failure = failure  # noqa: SLF001 - this module owns the field
     if failure is None:
         return
-    waiting, state._waiting = state._waiting or [], []  # noqa: SLF001 - see above
+    waiting, fragment._waiting = fragment._waiting or [], []  # noqa: SLF001 - see above
     for referrer, wrap in waiting:
         raml.mark(referrer, wrap(failure))
 

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import os
 import sys
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
-from fastraml.cli.common import EXIT_INVALID, EXIT_OK, emit_document, parse_options, report_invalid, rule_overrides
+from fastraml.cli.common import EXIT_INVALID, EXIT_OK, emit_document, fail, parse_or_report, rule_overrides
 
 if TYPE_CHECKING:
     import argparse
@@ -16,11 +17,9 @@ if TYPE_CHECKING:
     from fastraml.views.lint import Registry as LintRegistry
 
 
-def _lint(args: argparse.Namespace) -> int:  # noqa: PLR0911, PLR0912, PLR0915 - command failures return at their source
+def _lint(args: argparse.Namespace) -> int:  # noqa: PLR0911, PLR0912 - command failures return at their source
     from pathlib import Path  # noqa: PLC0415 - lint's display root only
 
-    from fastraml.errors import RamlError  # noqa: PLC0415
-    from fastraml.parser.entry import parse_from_path  # noqa: PLC0415
     from fastraml.uris import path_to_file_uri  # noqa: PLC0415
     from fastraml.views.lint import (  # noqa: PLC0415
         Linter,
@@ -36,18 +35,15 @@ def _lint(args: argparse.Namespace) -> int:  # noqa: PLR0911, PLR0912, PLR0915 -
 
     registry = builtin_registry()
     if args.max_findings < 0 or args.max_findings_per_rule < 0:
-        print('lint: finding limits must be non-negative', file=sys.stderr)
-        return EXIT_INVALID
+        return fail('lint: finding limits must be non-negative')
     try:
         config = decode_config(args.fastraml_config.lint, registry, plugins=discover_plugins(registry))
     except (OSError, TypeError, ValueError) as err:
-        print(f'lint config: {err}', file=sys.stderr)
-        return EXIT_INVALID
+        return fail(f'lint config: {err}')
     try:
         config = _lint_rule_overrides(_lint_rulesets(config, args.ruleset, registry), args.rule, registry)
     except ValueError as err:
-        print(f'lint: {err}', file=sys.stderr)
-        return EXIT_INVALID
+        return fail(f'lint: {err}')
 
     if args.list_rules:
         rows = [
@@ -58,8 +54,7 @@ def _lint(args: argparse.Namespace) -> int:  # noqa: PLR0911, PLR0912, PLR0915 -
     if args.explain:
         rule = registry.get(args.explain)
         if rule is None:
-            print(f'{args.explain}: no such lint rule', file=sys.stderr)
-            return EXIT_INVALID
+            return fail(f'{args.explain}: no such lint rule')
         meta = rule.meta
         text = f'{meta.id} [{meta.category}, {meta.severity}]\n\n{meta.summary}\n\n{meta.rationale}\n'
         if meta.references:
@@ -72,17 +67,14 @@ def _lint(args: argparse.Namespace) -> int:  # noqa: PLR0911, PLR0912, PLR0915 -
             text += f'\nBad:\n\n{meta.bad}'
         return emit_document(args, text if text.endswith('\n') else text + '\n')
     if not args.files:
-        print('lint: at least one FILE is required unless --list-rules or --explain is used', file=sys.stderr)
-        return EXIT_INVALID
+        return fail('lint: at least one FILE is required unless --list-rules or --explain is used')
 
     linter = Linter(registry, config)
     findings = []
     failed = False
     for path in args.files:
-        try:
-            raml = parse_from_path(path, parse_options(args, validate=False, retain_source=True))
-        except RamlError as err:
-            report_invalid(path, err)
+        raml = parse_or_report(args, path, retain_source=True)
+        if raml is None:
             failed = True
             continue
         if not args.metrics:
@@ -121,19 +113,17 @@ def _lint_rulesets(config: LintConfig, names: Sequence[str], registry: LintRegis
     Rulesets only switch rules on, so configured categories and rules still
     apply after them, as they do to `extends` (docs/18 § 3).
     """
-    from fastraml.views.lint import Config  # noqa: PLC0415
-
     available = registry.sets()
     for name in names:
         if name not in available:
             raise ValueError(f'unknown ruleset: {name} (available: {", ".join(available)})')
     extends = tuple(dict.fromkeys((*config.extends, *names)))
-    return Config(extends=extends, plugins=config.plugins, categories=config.categories, rules=config.rules)
+    return replace(config, extends=extends)
 
 
 def _lint_rule_overrides(config: LintConfig, values: Sequence[str], registry: LintRegistry) -> LintConfig:
     """Apply repeatable `--rule ID[=SEVERITY|off]` entries after file config."""
-    from fastraml.views.lint import Config, RuleSetting, parse_severity  # noqa: PLC0415
+    from fastraml.views.lint import RuleSetting, parse_severity  # noqa: PLC0415
 
     rules = list(config.rules)
     for _, rule_id, action in rule_overrides(values, 'rule'):
@@ -160,4 +150,4 @@ def _lint_rule_overrides(config: LintConfig, values: Sequence[str], registry: Li
             rules.append(setting)
         else:
             rules[existing_index] = setting
-    return Config(extends=config.extends, plugins=config.plugins, categories=config.categories, rules=tuple(rules))
+    return replace(config, rules=tuple(rules))

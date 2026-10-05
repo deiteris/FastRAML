@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING
 
-from fastraml.cli.common import EXIT_INVALID, EXIT_OK, build_or_report
+from fastraml.cli.common import EXIT_INVALID, EXIT_OK, build_or_report, fail
 
 if TYPE_CHECKING:
     import argparse
@@ -71,8 +71,7 @@ def _list(args: argparse.Namespace) -> int:
 
     if not entries:
         detail = f' matching {args.pattern!r}' if args.pattern else ''
-        print(f'nothing{detail}', file=sys.stderr)
-        return EXIT_INVALID
+        return fail(f'nothing{detail}')
 
     if args.json:
         import json  # noqa: PLC0415 - only JSON output needs the encoder

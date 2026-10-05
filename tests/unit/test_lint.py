@@ -1771,11 +1771,6 @@ class TestMediaTypes:
 
         assert media_essence(' Application/JSON ; charset=utf-8') == 'application/json'
 
-    def test_parameters_are_keyed_by_casefolded_name_and_unquoted(self):
-        from fastraml.views.lint.mediatypes import split_media_type
-
-        assert split_media_type('Text/Plain; Charset="UTF-8"') == ('text/plain', {'charset': 'UTF-8'})
-
     @pytest.mark.parametrize(
         ('media_type', 'expected'),
         [('application/json', True), ('Application/Problem+JSON; x=1', True), ('text/json', False)],

@@ -6,22 +6,17 @@ goes through the casefolded forms here rather than each rule's own spelling.
 
 from __future__ import annotations
 
-__all__ = ['is_json', 'media_essence', 'split_media_type']
+__all__ = ['is_json', 'media_essence']
 
 
 def media_essence(media_type: str) -> str:
-    """`type/subtype`, casefolded, without parameters."""
+    """`type/subtype`, casefolded, without parameters.
+
+    Tolerant of any text, so it also reads values that need not be media types,
+    such as a `Content-Type` header's enum or a configured pattern. A body key
+    is a media range, read whole by `media_parts` in `parser/facets.py`.
+    """
     return media_type.partition(';')[0].strip().casefold()
-
-
-def split_media_type(media_type: str) -> tuple[str, dict[str, str]]:
-    """The essence, and the parameters by casefolded name with quotes removed."""
-    essence, *parameters = media_type.split(';')
-    found = {}
-    for parameter in parameters:
-        name, _, value = parameter.partition('=')
-        found[name.strip().casefold()] = value.strip().strip('"')
-    return media_essence(essence), found
 
 
 def is_json(media_type: str) -> bool:

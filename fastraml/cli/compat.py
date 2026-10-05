@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import sys
-from typing import TYPE_CHECKING, Any
+from dataclasses import replace
+from typing import TYPE_CHECKING, cast
 
-from fastraml.cli.common import EXIT_INVALID, EXIT_OK, emit_document, parse_or_report, rule_overrides
+from fastraml.cli.common import EXIT_INVALID, EXIT_OK, emit_document, fail, parse_or_report, rule_overrides
 
 if TYPE_CHECKING:
     import argparse
     from collections.abc import Sequence
+
+    from fastraml.config import CompatibilityConfig, Impact
 
 
 def _compat(args: argparse.Namespace) -> int:
@@ -40,8 +43,7 @@ def _compat(args: argparse.Namespace) -> int:
         compare = backward_types if args.types else backward
         changes = configure(compare(models[0], models[1]), compatibility)
     except ValueError as err:
-        print(f'compat: {err}', file=sys.stderr)
-        return EXIT_INVALID
+        return fail(f'compat: {err}')
     breaking = sum(change.impact == 'breaking' for change in changes)
     shown = [change for change in changes if IMPACTS.rank(change.impact) <= threshold]
 
@@ -62,22 +64,21 @@ def _compat(args: argparse.Namespace) -> int:
     return EXIT_INVALID if breaking else EXIT_OK
 
 
-def _compatibility_rule_overrides(config: Any, values: Sequence[str]) -> Any:
-    from typing import cast, get_args  # noqa: PLC0415 - compatibility CLI only
-
-    from fastraml.config import CompatibilityConfig, CompatibilityRuleSetting, Impact  # noqa: PLC0415 - compat only
+def _compatibility_rule_overrides(config: CompatibilityConfig, values: Sequence[str]) -> CompatibilityConfig:
+    from fastraml.config import CompatibilityRuleSetting  # noqa: PLC0415 - compat only
+    from fastraml.views.backward import IMPACTS  # noqa: PLC0415
 
     rules = list(config.rules)
     for raw, rule_id, action in rule_overrides(values, 'compatibility rule'):
-        if action is None or (action != 'off' and action not in get_args(Impact.__value__)):
+        if action is None or (action != 'off' and action not in IMPACTS):
             raise ValueError(f'invalid compatibility rule override: {raw!r}')
         # Appended after the file's entries; `configure` lets the last matching
         # entry decide, so these win over the file (docs/16 § 5).
         rules.append(
             CompatibilityRuleSetting(
                 id=rule_id,
-                impact=None if action == 'off' else cast('Any', action),
+                impact=None if action == 'off' else cast('Impact', action),
                 disabled=action == 'off',
             )
         )
-    return CompatibilityConfig(rules=tuple(rules))
+    return replace(config, rules=tuple(rules))

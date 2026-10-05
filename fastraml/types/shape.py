@@ -454,7 +454,7 @@ def _decode_examples(raml: Raml, base: BaseShape, value_node: Node) -> None:
         base.examples = Examples(
             location=base.location,
             position=position,
-            link=_parse_named_example(raml, base, value_node, base.location),
+            link=_parse_named_example(raml, base, value_node),
         )
         return
     if is_null(value_node):
@@ -507,7 +507,7 @@ def _decode_type_node(
 
     if type_node.tag == TAG_INCLUDE:
         # `_parse_data_type` records the include.
-        base.link = _parse_data_type(raml, base, type_node, location)
+        base.link = _parse_data_type(raml, base, type_node)
         return '', None
     if type_node.tag == TAG_NULL:
         # `default_type`, not `TYPE_STRING`: for a `type:` written with no value
@@ -704,7 +704,8 @@ def _check_custom_facet_names(base: BaseShape) -> None:
             raise node_error(
                 'cannot redefine built-in facet',
                 base.location,
-                base.custom_facet_defs[name].base.type_expr,
+                # Still a node: `entry._detach_type_expressions` runs after P7.
+                cast('Node | None', base.custom_facet_defs[name].base.type_expr),
                 info={'facet': name, 'type': base.type},
             )
 
@@ -816,7 +817,7 @@ def make_pattern_property(raml: Raml, key_node: Node, value_node: Node, location
     return PatternProperty(pattern=compile_pattern(raml, chomped[1:-1], key_node, location), base=base)
 
 
-def _parse_data_type(raml: Raml, base: BaseShape, type_node: Node, location: str) -> DataTypeFragment:
+def _parse_data_type(raml: Raml, base: BaseShape, type_node: Node) -> DataTypeFragment:
     """Parse the DataType fragment an `!include` at a type position names.
 
     `base`, the declaration it is written in, is marked if the fragment failed
@@ -827,6 +828,7 @@ def _parse_data_type(raml: Raml, base: BaseShape, type_node: Node, location: str
     """
     from fastraml.parser.fragments import DataTypeFragment, FragmentKind, parse_included_fragment  # noqa: PLC0415
 
+    location = base.location
     content = content_include(raml, type_node, location, schema=True)
     if content is not None:
         # A file without a header is the declaration, written there
@@ -847,13 +849,14 @@ def _parse_data_type(raml: Raml, base: BaseShape, type_node: Node, location: str
     return fragment
 
 
-def _parse_named_example(raml: Raml, base: BaseShape, value_node: Node, location: str) -> NamedExample:
+def _parse_named_example(raml: Raml, base: BaseShape, value_node: Node) -> NamedExample:
     """Parse the NamedExample fragment an `!include` at `examples:` names.
 
     Deferred, and `base` marked, as in `_parse_data_type`.
     """
     from fastraml.parser.fragments import FragmentKind, NamedExample, parse_included_fragment  # noqa: PLC0415
 
+    location = base.location
     target = note_include_ref(raml, value_node, location)
     fragment = parse_included_fragment(raml, target, FragmentKind.NAMED_EXAMPLE, value_node, location, referrer=base)
     if not isinstance(fragment, NamedExample):  # pragma: no cover - the kind check guarantees this

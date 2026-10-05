@@ -19,6 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import cache
 from typing import TYPE_CHECKING, Any, Final
+from urllib.parse import urldefrag, urljoin
 
 from fastraml.errors import ErrorKind, RamlError
 from fastraml.types.values import as_fraction, is_multiple_of
@@ -37,12 +38,12 @@ if TYPE_CHECKING:
 #: Keywords whose values are user data rather than subschemas. A `$ref` written
 #: inside a `default` is a value that happens to look like a reference, and
 #: resolving it would reject a document the spec allows.
-_DATA_KEYWORDS: Final = frozenset({'const', 'default', 'enum', 'example', 'examples'})
+DATA_KEYWORDS: Final = frozenset({'const', 'default', 'enum', 'example', 'examples'})
 
 
 #: Keywords whose value is a *mapping of* subschemas. The mapping itself is not
 #: a schema, so its keys must not be read as keywords.
-_SCHEMA_MAPS: Final = frozenset(
+SCHEMA_MAPS: Final = frozenset(
     {'$defs', 'definitions', 'dependencies', 'dependentSchemas', 'patternProperties', 'properties'}
 )
 
@@ -225,13 +226,7 @@ class SchemaRegistry:
         while stack:
             node, depth = stack.pop()
             if depth > limit:
-                raise RamlError.new(
-                    'JSON schema nesting too deep',
-                    location,
-                    position,
-                    kind=ErrorKind.PARSING,
-                    info={'limit': limit},
-                )
+                raise _too_deep(location, position, limit)
             if isinstance(node, dict):
                 stack.extend((value, depth + 1) for value in node.values())
             elif isinstance(node, list):
@@ -327,8 +322,8 @@ class SchemaRegistry:
         type nothing validates against would never be reported. The reference
         implementation compiles eagerly and the TCK expects that, so the walk is
         done here — best-effort by design: it skips the keywords whose values are
-        data (`_DATA_KEYWORDS`) and the ones whose values are maps of subschemas
-        (`_SCHEMA_MAPS`), which is enough to keep a user value that looks like a
+        data (`DATA_KEYWORDS`) and the ones whose values are maps of subschemas
+        (`SCHEMA_MAPS`), which is enough to keep a user value that looks like a
         reference from being resolved as one.
 
         `depth` counts levels of this recursion and `seen` counts documents; they
@@ -340,13 +335,7 @@ class SchemaRegistry:
             # `_check_nesting` already bounded each document on its own. What is
             # left to bound is a chain of `$ref`s through many shallow documents,
             # which nests as deep as the chain is long.
-            raise RamlError.new(
-                'JSON schema nesting too deep',
-                location,
-                position,
-                kind=ErrorKind.PARSING,
-                info={'limit': self._raml.max_depth},
-            )
+            raise _too_deep(location, position, self._raml.max_depth)
         if isinstance(node, list):
             for item in node:
                 self._prefetch(item, resolver, specification, location, position, seen, depth + 1)
@@ -366,13 +355,20 @@ class SchemaRegistry:
                 self._prefetch(resolved.contents, resolved.resolver, specification, location, position, seen, depth + 1)
 
         for key, value in node.items():
-            if key == '$ref' or key in _DATA_KEYWORDS:
+            if key == '$ref' or key in DATA_KEYWORDS:
                 continue
-            if key in _SCHEMA_MAPS and isinstance(value, dict):
+            if key in SCHEMA_MAPS and isinstance(value, dict):
                 for member in value.values():
                     self._prefetch(member, resolver, specification, location, position, seen, depth + 1)
             else:
                 self._prefetch(value, resolver, specification, location, position, seen, depth + 1)
+
+
+def _too_deep(location: str, position: Position | None, limit: int) -> RamlError:
+    """A schema document, or a `$ref` chain through several, nested past the ceiling (docs/12 § 3)."""
+    return RamlError.new(
+        'JSON schema nesting too deep', location, position, kind=ErrorKind.PARSING, info={'limit': limit}
+    )
 
 
 def _check_schema(validator_class: Any, contents: Any, location: str, position: Position | None) -> None:
@@ -501,6 +497,28 @@ def escape_json_pointer_segment(segment: str) -> str:
 def document_of(resolver: Resolver[Any]) -> str | None:
     """The document a resolver is based on. `lookup` re-bases onto its target."""
     return getattr(resolver, '_base_uri', None) or None
+
+
+def ref_target(resolver: Resolver[Any], reference: str) -> tuple[str, str]:
+    """Where `reference` lands from `resolver`'s document: the document, and the JSON Pointer.
+
+    Split the way `Resolver.lookup` splits it. `urljoin` needs no special case
+    for a bare `#...`: it appends the fragment to the base, which is what
+    `lookup` shortcuts to.
+    """
+    document, pointer = urldefrag(urljoin(document_of(resolver) or '', reference))
+    return document, pointer
+
+
+def canonical(raml: Raml, document: str | None, pointer: str) -> str | None:
+    """The canonical URI of the subschema at `pointer` in `document`, or `None`.
+
+    Document plus JSON Pointer, which is the subschema's identity and the key
+    its projection is shared under. `None` where the document is not the
+    schema (`is_one_schema`): every schema written inline in an API or a
+    library compiles under that one URI, so it identifies none of them.
+    """
+    return f'{document}#{pointer}' if is_one_schema(raml, document) else None
 
 
 def is_one_schema(raml: Raml, document: str | None) -> bool:

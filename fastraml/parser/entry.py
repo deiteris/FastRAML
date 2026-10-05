@@ -213,6 +213,7 @@ def _parse(raml: Raml, uri: str, text: str, options: ParseOptions) -> Raml:
             # (docs/03 § 4.3).
             if not raml.retain_source:
                 raml.include_nodes.clear()
+                raml.caching_includes = False
 
 
 def _run_passes(raml: Raml, uri: str, text: str, options: ParseOptions) -> Raml:

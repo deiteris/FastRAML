@@ -406,6 +406,60 @@ class TestInstanceValidation:
         assert validator.is_valid({'home': 'x', 'friend': {'home': 'y'}})
         assert not validator.is_valid({'home': 1})
 
+    def test_a_pulled_definition_is_named_by_its_unescaped_key(self, workspace):
+        # RFC 6901: `a~1b` is the pointer segment of the key `a/b`. The bundle
+        # names the pulled definition by that key and points at it escaped.
+        from jsonschema import Draft7Validator
+
+        files = {
+            'api.raml': API + 'types:\n  T: !include a.json\n',
+            'a.json': json.dumps({'properties': {'p': {'$ref': 'b.json#/definitions/a~1b'}}}),
+            'b.json': json.dumps({'definitions': {'a/b': {'type': 'string'}}}),
+        }
+        raml = parsed(workspace, files)
+        bundle = raml.types_in(raml.location)['T'].shape.as_schema()
+        assert bundle['properties']['p'] == {'$ref': '#/definitions/a~1b'}
+        assert bundle['definitions'] == {'a/b': {'type': 'string'}}
+        assert not Draft7Validator(bundle).is_valid({'p': 1})
+
+    def test_a_reference_at_the_root_is_pulled_in(self, workspace):
+        # A schema file that is only a `$ref` to another file is bundled like
+        # a `$ref` anywhere below the root (docs/10 § 7).
+        from jsonschema import Draft7Validator
+
+        files = {
+            'api.raml': API + 'types:\n  T: !include a.json\n',
+            'a.json': json.dumps({'$ref': 'b.json'}),
+            'b.json': json.dumps({'type': 'string'}),
+        }
+        raml = parsed(workspace, files)
+        bundle = raml.types_in(raml.location)['T'].shape.as_schema()
+        assert bundle == {'$ref': '#/definitions/b', 'definitions': {'b': {'type': 'string'}}}
+        validator = Draft7Validator(bundle)
+        assert validator.is_valid('x')
+        assert not validator.is_valid(1)
+
+    def test_a_reference_inside_a_data_keyword_is_left_as_written(self, workspace):
+        # `DATA_KEYWORDS`: a `default` that looks like a reference is a value,
+        # so the bundle neither pulls nor rewrites it, as `_prefetch` does not
+        # resolve it. A property named like a data keyword is still a schema.
+        files = {
+            'api.raml': API + 'types:\n  T: !include a.json\n',
+            'a.json': json.dumps(
+                {
+                    'type': 'object',
+                    'default': {'$ref': 'b.json'},
+                    'properties': {'default': {'$ref': 'b.json'}},
+                }
+            ),
+            'b.json': json.dumps({'type': 'string'}),
+        }
+        raml = parsed(workspace, files)
+        bundle = raml.types_in(raml.location)['T'].shape.as_schema()
+        assert bundle['default'] == {'$ref': 'b.json'}
+        assert bundle['properties']['default'] == {'$ref': '#/definitions/b'}
+        assert bundle['definitions'] == {'b': {'type': 'string'}}
+
     def test_a_referenced_document_claims_its_own_definition_aliases(self, workspace):
         from jsonschema import Draft7Validator
 

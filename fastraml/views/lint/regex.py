@@ -11,9 +11,9 @@ from __future__ import annotations
 import re
 from typing import Final
 
-__all__ = ['REGEX_TOKEN', 'fully_anchored']
+__all__ = ['fully_anchored', 'nested_quantifier']
 
-REGEX_TOKEN: Final = re.compile(
+_TOKEN: Final = re.compile(
     r'\\.'  # an escape
     r'|\[\^?\]?(?:\\.|[^\]\\])*\]'  # a character class
     r'|\{\d+(?:,\d*)?\}'  # a counted quantifier
@@ -45,7 +45,7 @@ def fully_anchored(pattern: str) -> bool:
         pattern = pattern[flags.end() :]
     branches: list[list[str]] = [[]]
     depth = 0
-    for piece in REGEX_TOKEN.findall(pattern):
+    for piece in _TOKEN.findall(pattern):
         if piece.startswith('('):
             depth += 1
         elif piece == ')':
@@ -55,3 +55,68 @@ def fully_anchored(pattern: str) -> bool:
             continue
         branches[-1].append(piece)
     return all(branch and branch[0] in _START_ANCHORS and branch[-1] in _END_ANCHORS for branch in branches)
+
+
+_QUANTIFIERS: Final = frozenset({'*', '+', '?'})
+
+
+def _is_quantifier(piece: str) -> bool:
+    return piece in _QUANTIFIERS or (piece.startswith('{') and piece.endswith('}'))
+
+
+def _unbounded(piece: str) -> bool:
+    return piece in {'*', '+'} or (piece.startswith('{') and piece.endswith(',}'))
+
+
+class _Group:
+    """What one group's direct content can do, for `nested_quantifier`."""
+
+    __slots__ = ('mandatory', 'unbounded')
+
+    def __init__(self) -> None:
+        #: Something inside must match exactly once: a separator, such as `-` in `(-[a-z]+)*`.
+        self.mandatory = False
+        #: Something inside repeats without limit.
+        self.unbounded = False
+
+    def settle(self, atom: _Group | None) -> None:
+        """An unquantified atom: a group passes on what it holds, anything else must match."""
+        if atom is None:
+            self.mandatory = True
+        else:
+            self.mandatory |= atom.mandatory
+            self.unbounded |= atom.unbounded
+
+
+def nested_quantifier(pattern: str) -> bool:
+    r"""An unboundedly repeated group whose content repeats and has no separator: `(a+)+`, `(\w+\s?)*`.
+
+    A separator that must match once per repetition, as in `(-[a-z]+)*`, fixes
+    where each repetition starts, so the group is not reported. That misses a
+    separator the repeated part can also match; this is a heuristic.
+    """
+    stack = [_Group()]
+    pending = False  # an atom is waiting to learn whether a quantifier follows
+    atom: _Group | None = None  # that atom, when it is a group
+    for piece in _TOKEN.findall(pattern):
+        frame = stack[-1]
+        if _is_quantifier(piece):
+            if pending and _unbounded(piece):
+                if atom is not None and atom.unbounded and not atom.mandatory:
+                    return True
+                frame.unbounded = True
+            elif pending and atom is not None:
+                frame.unbounded |= atom.unbounded
+            pending, atom = False, None
+            continue
+        if pending:
+            frame.settle(atom)
+            pending, atom = False, None
+        if piece.startswith('('):
+            stack.append(_Group())
+        elif piece == ')':
+            if len(stack) > 1:
+                atom, pending = stack.pop(), True
+        elif piece not in {'|', '^', '$'}:
+            pending = True
+    return False

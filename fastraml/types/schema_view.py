@@ -9,11 +9,12 @@ instance type.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Final
 
 from fastraml.datanode import DataNode, value_node_of
 from fastraml.errors import ErrorKind, RamlError
+from fastraml.parser.facets import regex_engine
 from fastraml.types.base import (
     TYPE_ARRAY,
     TYPE_NUMBER,
@@ -21,10 +22,12 @@ from fastraml.types.base import (
     TYPE_STRING,
     BaseShape,
 )
-from fastraml.types.schema_compile import document_of, escape_json_pointer_segment, is_one_schema
+from fastraml.types.schema_compile import canonical, document_of, escape_json_pointer_segment
 from fastraml.uris import uri_stem
 
 if TYPE_CHECKING:
+    import re
+
     from referencing._core import Resolver
 
     from fastraml.types.base import Shape
@@ -47,14 +50,12 @@ class Projection:
 
     def at(self, resolver: Resolver[Any], pointer: str) -> Projection:
         """The same walk, moved into another document at `pointer`."""
-        return Projection(self.parent, self.validator, resolver, self.defs, pointer, self.allow_empty)
+        return replace(self, resolver=resolver, pointer=pointer)
 
     def into(self, *segments: str) -> Projection:
         """One step deeper in the current document."""
         suffix = ''.join(f'/{escape_json_pointer_segment(segment)}' for segment in segments)
-        return Projection(
-            self.parent, self.validator, self.resolver, self.defs, self.pointer + suffix, self.allow_empty
-        )
+        return replace(self, pointer=self.pointer + suffix)
 
 
 type Visiting = dict[int, BaseShape | None]
@@ -70,21 +71,43 @@ def unsupported(context: Projection, what: str) -> RamlError:
     )
 
 
-def _subschema_uri(context: Projection, document: str | None) -> str | None:
-    """The canonical URI of the subschema being walked, or `None`.
+def check_depth(context: Projection, depth: int) -> None:
+    """Refuse a walk nested past the parse's ceiling (docs/12 § 3)."""
+    limit = context.parent._raml.max_depth  # noqa: SLF001 - the projection shares the parse's ceiling
+    if depth > limit:
+        raise RamlError.new(
+            'JSON schema nesting too deep',
+            context.parent.location,
+            context.parent.value_pos,
+            kind=ErrorKind.RESOLVING,
+            info={'limit': limit},
+        )
 
-    Document plus JSON Pointer, so `location` *is* the identity — one field, and
-    a URI with a fragment, which `location` already carries for a RAML type
-    declared from `schema.json#/definitions/User`.
 
-    `None` where the document is not the schema: every schema written inline in
-    an API or a library compiles under that one URI, so it identifies none of
-    them. The absence of a `#` is then what tells a consumer to fall back to
-    addressing by containment.
+def try_compile(context: Projection, text: str) -> re.Pattern[str] | None:
+    """A schema's pattern compiled with the parse's engine, or `None` where it does not compile.
+
+    A pattern the schema library accepts under ECMA-262 semantics may not
+    compile here, and `re2` rejects strictly more than `re` does; each caller
+    decides what an uncompilable pattern costs its projection. A missing `re2`
+    is not the pattern's fault: it fails the projection with the diagnostic
+    `compile_pattern` gives a RAML pattern, never an `ImportError` out of a
+    view (docs/01 § 4.2).
     """
-    if not is_one_schema(context.parent._raml, document):  # noqa: SLF001 - the parse's index
+    try:
+        engine = regex_engine(context.parent._raml)  # noqa: SLF001 - the parse's engine
+    except ImportError as err:
+        raise RamlError.new(
+            're2 engine requested but google-re2 is not installed',
+            context.parent.location,
+            context.parent.value_pos,
+            kind=ErrorKind.RESOLVING,
+        ) from err
+    try:
+        compiled: re.Pattern[str] = engine.compile(text)
+    except Exception:  # noqa: BLE001 - whatever the selected engine raises
         return None
-    return f'{document}#{context.pointer}'
+    return compiled
 
 
 def view_base(context: Projection, name: str | None = None) -> BaseShape:
@@ -106,8 +129,11 @@ def view_base(context: Projection, name: str | None = None) -> BaseShape:
     name -- so naming it from the caller left the same type named or nameless
     depending on walk order.
     """
-    document = document_of(context.resolver)
-    location = _subschema_uri(context, document)
+    # The canonical URI, so `location` *is* the identity: one field, and a URI
+    # with a fragment, which `location` already carries for a RAML type
+    # declared from `schema.json#/definitions/User`. Without one, the absence
+    # of a `#` tells a consumer to fall back to addressing by containment.
+    location = canonical(context.parent._raml, document_of(context.resolver), context.pointer)  # noqa: SLF001
     base = BaseShape(
         id=context.parent._raml.next_id(),  # noqa: SLF001 - one counter per parse (docs/02 § 3)
         raml=context.parent._raml,  # noqa: SLF001 - as above

@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING, Any
 
-from fastraml.cli.common import EXIT_INVALID, EXIT_OK, build_or_report, emit_document
+from fastraml.cli.common import EXIT_INVALID, EXIT_OK, build_or_report, emit_document, fail
 
 if TYPE_CHECKING:
     import argparse
@@ -31,8 +31,7 @@ def _query(args: argparse.Namespace) -> int:
     if text is None:
         return EXIT_INVALID
     if not args.files:
-        print('query needs a FILE', file=sys.stderr)
-        return EXIT_INVALID
+        return fail('query needs a FILE')
     built = build_or_report(args)
     return EXIT_INVALID if built is None else _run_sparql(args, built[0], text)
 
@@ -48,8 +47,7 @@ def _run_sparql(args: argparse.Namespace, graph: Graph, text: str) -> int:
     try:
         import pyoxigraph  # noqa: PLC0415 - optional: a module-level import would make it required
     except ImportError:
-        print('query needs an RDF store: install pyoxigraph', file=sys.stderr)
-        return EXIT_INVALID
+        return fail('query needs an RDF store: install pyoxigraph')
 
     store = pyoxigraph.Store()
     store.load(io.StringIO('\n'.join(graph.to_ntriples())), format=pyoxigraph.RdfFormat.N_TRIPLES)

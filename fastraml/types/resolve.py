@@ -367,7 +367,8 @@ def _site(raml: Raml, base: BaseShape, offset: int, length: int = 1) -> tuple[st
     (docs/08 § 5.1); elsewhere, in the expression's own scalar. Exact for a
     plain scalar and a quoted one on one line (docs/11 § 3).
     """
-    expression = base.type_expr
+    # Still a node: `entry._detach_type_expressions` runs after P7.
+    expression = cast('Node | None', base.type_expr)
     if expression is None:
         return base.location, base.key_pos
     site = substituted_site(raml.substitutions, expression, offset, offset + length)

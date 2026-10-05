@@ -228,7 +228,7 @@ class ContractSchema:
             for key in found.optional:
                 yield record, key, True
 
-    def shape_projection(self) -> tuple[Emitted, tuple[str, ...]]:
+    def _shape_projection(self) -> tuple[Emitted, tuple[str, ...]]:
         """`_Projector.shape` and the keys its delegates merge in, checked.
 
         Including what it delegates to. `shape()` merges two methods' results
@@ -250,7 +250,7 @@ class ContractSchema:
 
     def shape_layout(self) -> ShapeLayout:
         """Where each `ShapeBase` key is declared, in the order `shape()` writes it."""
-        found, delegated = self.shape_projection()
+        found, delegated = self._shape_projection()
         moved = {key for keys in _VARIANT_ONLY.values() for key in keys}
         # A variant-only key is taken off the base wherever `shape()` writes it,
         # itself or through a delegate, so it is looked for in both.

@@ -269,8 +269,8 @@ def _add_serve(commands: argparse._SubParsersAction[argparse.ArgumentParser]) ->
 def _add_lsp(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """`lsp`: a language server on stdin and stdout. The editor names the folders."""
     lsp = commands.add_parser('lsp', help='a language server over stdio (needs pygls)')
-    lsp.add_argument('--config', metavar='FILE', help='common FastRAML configuration in YAML')
-    lsp.add_argument('-r', '--remote', action='store_true', help='allow http(s) includes')
+    _add_config(lsp)
+    _add_remote(lsp)
 
 
 def _add_navigation(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -341,11 +341,19 @@ def _add_join(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> 
 
 
 def _add_common(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument('--config', metavar='FILE', help='common FastRAML configuration in YAML')
+    _add_config(parser)
     parser.add_argument('-w', '--workspace-root', metavar='ROOT', help='confine file reads to this directory')
     parser.add_argument(
         '--no-workspace-guard',
         action='store_true',
         help='read any path the process can reach; disables the sandbox',
     )
+    _add_remote(parser)
+
+
+def _add_config(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument('--config', metavar='FILE', help='common FastRAML configuration in YAML')
+
+
+def _add_remote(parser: argparse.ArgumentParser) -> None:
     parser.add_argument('-r', '--remote', action='store_true', help='allow http(s) includes')

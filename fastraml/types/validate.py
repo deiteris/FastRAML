@@ -21,14 +21,15 @@ from typing import TYPE_CHECKING
 
 from fastraml.datanode import at_value, locate
 from fastraml.errors import Accumulator, ErrorKind, RamlError, Trace
+from fastraml.parser.facets import media_parts
 from fastraml.types.base import TYPE_JSON, checks_memoized
-from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
+from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape, nested
 from fastraml.types.examples import examples_of
 from fastraml.types.unwrap import unwrap_detached
 from fastraml.types.values import failure, key_path
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
     from typing import Any
 
     from fastraml.datanode import DataNode
@@ -140,11 +141,8 @@ def _validate_query_strings(raml: Raml, cache: dict[int, BaseShape], acc: Accumu
     one that cannot be unwrapped has already been reported by `_validate_types`.
     """
     for base in _query_strings(raml):
-        try:
-            flattened = _ensure_unwrapped(raml, base, cache)
-        except RamlError:
-            continue
-        if _admits_array(flattened):
+        flattened = _flattened(raml, base, cache)
+        if flattened is not None and _some_member(flattened, lambda member: isinstance(member.shape, ArrayShape)):
             acc.add(failure('query string must be a scalar or object type', base.location, base.key_pos))
 
 
@@ -213,7 +211,7 @@ def _validate_json_schema_placement(raml: Raml, cache: dict[int, BaseShape], acc
 
 def _allows_json(media_type: str) -> bool:
     """`application/json`, a `+json` suffix (RFC 6839 § 3.1), or a range that admits one."""
-    kind, _, subtype = media_type.partition(';')[0].strip().casefold().partition('/')
+    kind, _, subtype = media_parts(media_type)[0].partition('/')
     if kind == '*' or (kind == 'application' and subtype in {'json', '*'}):
         return True
     return subtype.endswith('+json')
@@ -221,14 +219,19 @@ def _allows_json(media_type: str) -> bool:
 
 def _holds_json_schema(raml: Raml, base: BaseShape, cache: dict[int, BaseShape]) -> bool:
     """Whether the flattened declaration is a JSON schema, or a union with one among its members."""
-    try:
-        flattened = _ensure_unwrapped(raml, base, cache)
-    except RamlError:
-        return False
-    pending = [flattened]
+    flattened = _flattened(raml, base, cache)
+    return flattened is not None and _some_member(flattened, lambda member: member.type == TYPE_JSON)
+
+
+def _some_member(base: BaseShape, holds: Callable[[BaseShape], bool]) -> bool:
+    """Whether `base`, or a member anywhere in its flattened `any_of` closure, `holds`.
+
+    Flattened, a union holds its members in `any_of` and never itself.
+    """
+    pending = [base]
     while pending:
         current = pending.pop()
-        if current.type == TYPE_JSON:
+        if holds(current):
             return True
         if isinstance(current.shape, UnionShape):
             pending.extend(current.shape.any_of or ())
@@ -267,14 +270,6 @@ def _parameters(raml: Raml) -> Iterator[Parameter]:
             yield from response.headers.values()
 
 
-def _admits_array(base: BaseShape) -> bool:
-    """Flattened, a union holds its members in `any_of` and never itself."""
-    shape = base.shape
-    if isinstance(shape, UnionShape):
-        return any(_admits_array(member) for member in shape.any_of or ())
-    return isinstance(shape, ArrayShape)
-
-
 def _ensure_unwrapped(raml: Raml, base: BaseShape, cache: dict[int, BaseShape]) -> BaseShape:
     """The flattened form of `base`, without flattening the caller's model.
 
@@ -295,6 +290,16 @@ def _ensure_unwrapped(raml: Raml, base: BaseShape, cache: dict[int, BaseShape]) 
     copy = unwrap_detached(raml, base)
     cache[base.id] = copy
     return copy
+
+
+def _flattened(raml: Raml, base: BaseShape, cache: dict[int, BaseShape]) -> BaseShape | None:
+    """`_ensure_unwrapped`, or None where unwrapping fails: `_validate_types`
+    reports that failure, so a later check has nothing to add.
+    """
+    try:
+        return _ensure_unwrapped(raml, base, cache)
+    except RamlError:
+        return None
 
 
 def _validate_commons(base: BaseShape, known: DiscriminatorIndex, acc: Accumulator, seen: set[int]) -> None:
@@ -320,19 +325,8 @@ def _validate_commons(base: BaseShape, known: DiscriminatorIndex, acc: Accumulat
     _validate_examples(base, known, acc)
     _validate_custom_facets(base, acc)
 
-    if isinstance(shape, ObjectShape):
-        for prop in (shape.properties or {}).values():
-            _validate_commons(prop.base, known, acc, seen)
-        for pattern in (shape.pattern_properties or {}).values():
-            _validate_commons(pattern.base, known, acc, seen)
-    elif isinstance(shape, ArrayShape):
-        if shape.items is not None:
-            _validate_commons(shape.items, known, acc, seen)
-    elif isinstance(shape, UnionShape):
-        for member in shape.any_of or ():
-            _validate_commons(member, known, acc, seen)
-    for prop in base.custom_facet_defs.values():
-        _validate_commons(prop.base, known, acc, seen)
+    for child in nested(base):
+        _validate_commons(child, known, acc, seen)
 
 
 # -- discriminator values (docs/05 § 6, docs/10 § 6) ---------------------------
@@ -361,11 +355,8 @@ def _discriminator_values(raml: Raml, cache: dict[int, BaseShape]) -> Discrimina
     for source in (raml.fragment_types, raml.fragment_annotations):
         for declared in source.values():
             for name, base in declared.items():
-                try:
-                    flattened = _ensure_unwrapped(raml, base, cache)
-                except RamlError:
-                    # The failure is reported by the pass that unwraps for
-                    # validation; this index simply has nothing to add.
+                flattened = _flattened(raml, base, cache)
+                if flattened is None:
                     continue
                 shape = flattened.shape
                 if not isinstance(shape, ObjectShape) or shape.discriminator is None:

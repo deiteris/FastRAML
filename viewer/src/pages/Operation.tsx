@@ -63,7 +63,7 @@ export function OperationPage({ document, index }: Props) {
           ))}
         </div>
       )}
-      <Prose>{operation.description}</Prose>
+      <Prose links={operation.doc_links}>{operation.description}</Prose>
       <Annotations applied={operation.annotations} index={index} />
 
       <Boundary what="request">

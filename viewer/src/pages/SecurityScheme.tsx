@@ -23,7 +23,7 @@ export function SecuritySchemePage({ document, index }: Props) {
       <p className="subtitle">
         <Chip tone="type">{scheme.type}</Chip>
       </p>
-      <Prose>{scheme.description}</Prose>
+      <Prose links={scheme.doc_links}>{scheme.description}</Prose>
       <Annotations applied={scheme.annotations} index={index} />
 
       {/* The OAuth 2.0 URLs, grants and scopes. Without them a reader knows a

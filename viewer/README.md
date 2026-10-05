@@ -206,6 +206,16 @@ Code blocks are syntax highlighted. Structured values and JSON Schemas are known
 to be JSON; string examples and unlabelled Markdown fences use conservative
 language detection, while a fence's language label takes precedence.
 
+**A description links to what the document declares.** `` [`Book`] ``,
+`[list them][GET /books]` and `[Getting started]` are links fastRAML resolved,
+and the tree sends each description's targets as `doc_links` (fastRAML's
+`docs/16-graph.md` § 11). The viewer puts them in markdown-it's reference table
+before rendering, as the author's own `[Book]: …` would be, so markdown-it
+decides what is a link and the viewer resolves no name. A label that names
+nothing stays bracketed text, as it does in any other renderer. A method's row
+in a resource's list shows its description without links: the row is a link
+already.
+
 **Security is a selector, because `securedBy` is a disjunction** — a caller
 satisfies any one entry, not all of them. One line of chips read as a single
 requirement made of parts, which is the opposite.

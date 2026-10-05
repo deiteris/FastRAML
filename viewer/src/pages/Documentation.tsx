@@ -8,8 +8,7 @@
  * overview they were four collapsed rows below the type counts, and a reader
  * arriving from the nav had no way to link anyone to one of them.
  *
- * Keyed by position, because a documentation item is the one thing in the tree
- * with no address: it is a title and a body, and two may share a title.
+ * Keyed by position, as its address is: two items may share a title.
  */
 
 import { Link, useParams } from 'react-router';
@@ -28,7 +27,7 @@ export function DocumentationPage({ document }: Props) {
   return (
     <article>
       <h1>{item.title}</h1>
-      <Prose>{item.content}</Prose>
+      <Prose links={item.doc_links}>{item.content}</Prose>
     </article>
   );
 }
@@ -44,7 +43,9 @@ export function DocumentationList({ document }: Props) {
           <li key={at}>
             <Link to={`/documentation/${at}`}>{item.title}</Link>
             {/* `ProseInline` takes the first paragraph itself. */}
-            <ProseInline className="gloss">{item.content}</ProseInline>
+            <ProseInline className="gloss" links={item.doc_links}>
+              {item.content}
+            </ProseInline>
           </li>
         ))}
       </ul>

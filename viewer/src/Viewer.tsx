@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigationType } from 'react-router';
 import { SearchDialog } from './components/Search';
+import { LinkIndex } from './components/markdown';
 import { Sidebar } from './components/Sidebar';
 import { MenuIcon, storedTheme } from './components/ui';
 import { parseDocument } from './load';
@@ -81,7 +82,9 @@ function ViewerDocument({ document, managePage, themeToggle }: { document: Docum
         <Sidebar document={document} index={index} onSearch={openSearch} shortcuts={managePage} projectLink={managePage} themeToggle={themeToggle} />
         {navOpen && <div className="scrim" onClick={close} />}
         <main ref={main} tabIndex={-1}>
-          <Pages key={revision.current.number} document={document} index={index} />
+          <LinkIndex.Provider value={index}>
+            <Pages key={revision.current.number} document={document} index={index} />
+          </LinkIndex.Provider>
         </main>
         {searching && (
           <SearchDialog
@@ -178,7 +181,6 @@ function useArrival(document: Document, index: Index, managePage: boolean) {
       const [method, ...path] = entry.name.split(' ');
       named.set(decoded(entry.href), entry.section === 'operation' ? `${method!.toUpperCase()} ${path.join(' ')}` : entry.name);
     }
-    for (const [at, item] of (document.entry_point?.documentation ?? []).entries()) named.set(`/documentation/${at}`, item.title);
     return named;
   }, [document, index, managePage]);
 

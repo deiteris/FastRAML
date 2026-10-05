@@ -19,7 +19,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router';
 import { Pages } from './pages/Routes';
 import { highlightCode } from './components/highlighting';
-import { renderMarkdown } from './components/markdown';
+import { LinkIndex, Prose, renderMarkdown } from './components/markdown';
 import {
   Index,
   Tree,
@@ -67,9 +67,9 @@ const routes = [
   '/security',
   '/documentation',
   '/nonsense',
-  // Every documentation item, by the position its route is keyed on. An item
-  // is the one thing in the tree with no address, so this is the only check
-  // that the numbering the nav writes and the numbering the page reads agree.
+  // Every documentation item, by the position its route is keyed on, which is
+  // also how the tree addresses one: the numbering the nav writes and the
+  // numbering the page reads have to agree.
   ...(document.entry_point?.documentation ?? []).map((_, at) => `/documentation/${at}`),
   ...Object.keys(document.endpoints).map((path) => `/endpoints/${encodeURIComponent(path)}`),
   // Every operation, which is the page with the most on it. `/n/<address>`
@@ -91,7 +91,9 @@ for (const route of routes) {
   try {
     const html = renderToStaticMarkup(
       <MemoryRouter initialEntries={[route]}>
-        <Pages document={document} index={index} />
+        <LinkIndex.Provider value={index}>
+          <Pages document={document} index={index} />
+        </LinkIndex.Provider>
       </MemoryRouter>,
     );
     // An empty render is the quiet failure: a page that resolved nothing looks
@@ -118,6 +120,48 @@ process.stdout.write(
   `${routes.length - failed}/${routes.length} routes rendered ` +
     `(smallest ${smallest.size} bytes at ${smallest.route})\n`,
 );
+
+// A description's links (fastRAML's docs/16-graph.md § 11). The sample links a
+// documentation item by its bare title from the root, and the `collection`
+// resource type contributes `[`<<item>>`]`, which `/books` resolves to `Book`.
+// Each must arrive as a link to the route the nav writes for its target.
+{
+  const linked = (route: string, children: React.ReactNode) =>
+    renderToStaticMarkup(
+      <MemoryRouter initialEntries={[route]}>
+        <LinkIndex.Provider value={index}>{children}</LinkIndex.Provider>
+      </MemoryRouter>,
+    );
+  const book = index.get(document.types['sample/api.raml']?.Book?.id);
+  const expected: [string, string, string][] = [
+    ['/', '<a href="/documentation/0">Getting started</a>', 'the root links Getting started'],
+    [operationHref('/books', 'get'), `<a href="${book?.href}"><code>Book</code></a>`, 'GET /books links Book'],
+  ];
+  for (const [route, link, what] of expected) {
+    if (!linked(route, <Pages document={document} index={index} />).includes(link)) {
+      process.stderr.write(`LINKS  ${what}: no ${link} at ${route}\n`);
+      failed += 1;
+    }
+  }
+  // What the renderer itself decides: a label absent from `doc_links`, or one
+  // whose address has no page here, stays text, and a label in a code span is
+  // never a link. (That an author's own `[Book]: …` wins is the tree's to
+  // keep: it never sends that label, docs/16-graph.md § 11.4.)
+  const address = document.types['sample/api.raml']?.Book?.id ?? '';
+  const prose = (text: string) => linked('/', <Prose links={{ BOOK: address, '`NOWHERE`': 'fastraml://id#/nowhere' }}>{text}</Prose>);
+  const cases: [string, string, string][] = [
+    ['A [`Other`].', '[<code>Other</code>]', 'a label the tree did not resolve stays text'],
+    ['A [`Nowhere`].', '[<code>Nowhere</code>]', 'an address with no page stays text'],
+    ['Write `[Book]`.', '<code>[Book]</code>', 'a label in a code span stays code'],
+  ];
+  for (const [text, html, what] of cases) {
+    const rendered = prose(text);
+    if (!rendered.includes(html) || rendered.includes('<a ')) {
+      process.stderr.write(`LINKS  ${what}: ${rendered}\n`);
+      failed += 1;
+    }
+  }
+}
 
 // The sample's second parent declares reviewWindow. Rendering a page is not
 // enough to catch its lost type and declaration link: the value still appears.

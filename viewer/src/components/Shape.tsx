@@ -133,7 +133,9 @@ function RefView({ node, index }: { node: Ref; index: Index }) {
       <Link to={entry.href} className="typelink">
         {entry.name}
       </Link>
-      <ProseInline className="reference-desc">{target?.description}</ProseInline>
+      <ProseInline className="reference-desc" links={target?.doc_links}>
+        {target?.description}
+      </ProseInline>
       {detailed(target) && (
         <Expandable what={behind(target)}>
           <Body shape={target} index={index} hideType hideDescription />
@@ -442,10 +444,10 @@ function Body({
           ))}
         </div>
       )}
-      {!hideDescription && <Prose>{shape.description}</Prose>}
+      {!hideDescription && <Prose links={shape.doc_links}>{shape.description}</Prose>}
       {/* A schema describes itself, and the RAML declaring it describes why
           it is here. Both are authored text and neither is the other. */}
-      {content !== shape && <Prose>{content.description}</Prose>}
+      {content !== shape && <Prose links={content.doc_links}>{content.description}</Prose>}
 
       {facets.length > 0 && (
         <div className="facets">
@@ -577,7 +579,7 @@ export function Attribute({
   const ref = shape !== null && shape !== undefined && isRef(shape) ? shape : null;
   const target = ref ? index.shape(ref.$ref) : undefined;
   const inline = shape !== null && shape !== undefined && !isRef(shape) && !isRecursive(shape) ? shape : null;
-  const described = inline ? inline.description : target?.description;
+  const described = inline ?? target;
 
   return (
     <div className="attr">
@@ -603,7 +605,9 @@ export function Attribute({
           belongs to the target and is shown without opening the attribute
           list. The expanded body suppresses it, so it appears once either
           way. */}
-      <ProseInline className="attr-desc">{described}</ProseInline>
+      <ProseInline className="attr-desc" links={described?.doc_links}>
+        {described?.description}
+      </ProseInline>
       {/* `hideInherits` where the head line is already a link to the one
           supertype: a query parameter typed `Search` read `Search` above
           `EXTENDS Search`, the same word twice with nothing between them. */}
@@ -772,7 +776,9 @@ function OneExample({ label, example }: { label: string; example: Example }) {
         {example.display_name && <span className="attr-display">{example.display_name}</span>}
         {example.strict === false && <Chip tone="warn">not validated</Chip>}
       </div>
-      <ProseInline className="attr-desc">{example.description}</ProseInline>
+      <ProseInline className="attr-desc" links={example.doc_links}>
+        {example.description}
+      </ProseInline>
       <Code>{example.value}</Code>
     </div>
   );
@@ -787,7 +793,9 @@ function ExampleBody({ example }: { example: Example }) {
           <Chip tone="warn">not validated</Chip>
         </div>
       )}
-      <ProseInline className="attr-desc">{example.description}</ProseInline>
+      <ProseInline className="attr-desc" links={example.doc_links}>
+        {example.description}
+      </ProseInline>
       <Code>{example.value}</Code>
     </>
   );

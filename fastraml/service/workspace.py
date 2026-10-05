@@ -407,9 +407,13 @@ def _decoded_head(data: bytes) -> str | None:
     the parser rejects (`decode_source`). A character the head read cuts is
     held back, not an error; bytes past the head are not read, so they are
     the parser's to reject.
+
+    Final only where the loader returned fewer bytes than asked for: that is
+    the end of the file whether it honours the extra byte `max_bytes` allows
+    or stops at the limit.
     """
     try:
-        return getincrementaldecoder('utf-8')().decode(data, final=len(data) <= _HEAD_BYTES)
+        return getincrementaldecoder('utf-8')().decode(data, final=len(data) < _HEAD_BYTES)
     except UnicodeDecodeError:
         return None
 

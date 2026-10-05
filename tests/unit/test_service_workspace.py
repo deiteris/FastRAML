@@ -153,6 +153,27 @@ class TestHeaderLine:
             data[: _HEAD_BYTES + 1].decode('utf-8')
         assert self._is_root(memory_workspace, data)
 
+    def test_a_head_of_exactly_the_limit_is_not_taken_for_the_whole_file(self, memory_workspace):
+        # A loader that returns `max_bytes` of a longer file, not the extra
+        # byte, has not signalled the end: a character it cuts is held back.
+        prefix = (API + 'description: ').encode()
+        prefix += b'x' * ((_HEAD_BYTES - 1 - len(prefix)) % 2)
+        data = prefix + ('é' * 200 + '\n').encode()
+        with pytest.raises(UnicodeDecodeError):
+            data[:_HEAD_BYTES].decode('utf-8')
+
+        class Exact:
+            def load(self, uri, *, max_bytes=None):
+                whole = memory_workspace.load(uri)
+                return whole if max_bytes is None else whole[:max_bytes]
+
+        folder = memory_workspace({})
+        uri = path_to_file_uri(folder / 'api.raml')
+        memory_workspace.files[uri] = data
+        workspace = Workspace([path_to_file_uri(folder)])
+        workspace._disks = dict.fromkeys(workspace._disks, Exact())  # type: ignore[arg-type]
+        assert workspace._is_root(canonical(uri))
+
 
 class TestSnapshots:
     FILES = {  # noqa: RUF012 - read once per test

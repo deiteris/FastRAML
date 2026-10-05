@@ -146,6 +146,12 @@ changes. See `fastraml skills get backward`.
 
 Print the whole effective document as addressed JSON.
 
+A record whose description links by name, such as `` [`Book`] ``, carries
+`doc_links`. It maps each link's label, upper-cased with whitespace collapsed
+as CommonMark matches labels, to the address of what it names. A label that
+names nothing is left out. A documentation item carries an `id` so that a link
+can name it.
+
 - `--positions` — print the source span of every declaration instead of the
   document.
 - `-o FILE`, `--output FILE` — write to a file, UTF-8 with LF newlines.

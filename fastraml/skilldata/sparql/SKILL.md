@@ -1,6 +1,6 @@
 ---
 name: sparql
-description: Write your own SPARQL query against a RAML model with fastraml query. Covers the built-in catalogue, the urn:fastraml:ns:raml# namespace, all 14 node kinds and 22 edges, the three traps that produce plausible wrong answers (the range hop, aliasOf, and JSON Schema types), and the four SPARQL result shapes. Use when auditing a whole API document and no catalogue query fits the question. Not for one named type or endpoint (fastraml refs, deps, show) or for defects with a severity (fastraml lint).
+description: Write your own SPARQL query against a RAML model with fastraml query. Covers the built-in catalogue, the urn:fastraml:ns:raml# namespace, all 15 node kinds and 23 edges, the three traps that produce plausible wrong answers (the range hop, aliasOf, and JSON Schema types), and the four SPARQL result shapes. Use when auditing a whole API document and no catalogue query fits the question. Not for one named type or endpoint (fastraml refs, deps, show) or for defects with a severity (fastraml lint).
 license: MIT
 allowed-tools: Bash(fastraml:*) Read
 ---
@@ -72,9 +72,13 @@ long-lived in Python, read `RAML_NS` from the package instead of hard-coding it.
 
 ## Node kinds
 
-`Unit`, `Api`, `EndPoint`, `Operation`, `Request`, `Response`, `Payload`,
-`Parameter`, `Property`, `PatternProperty`, `Type`, `SecurityScheme`, `Trait`,
-`ResourceType`.
+`Unit`, `Api`, `Documentation`, `EndPoint`, `Operation`, `Request`, `Response`,
+`Payload`, `Parameter`, `Property`, `PatternProperty`, `Type`, `SecurityScheme`,
+`Trait`, `ResourceType`.
+
+A `Documentation` node is one item of the root `documentation:` list. Its
+`name` is the item's title, its IRI ends in the item's position
+(`#/web-api/documentation/0`), and its content is not exported.
 
 A `Type` node carries a second `rdf:type` that names its shape class, such as
 `ObjectShape`, `ArrayShape`, `UnionShape`, `StringShape`, `JsonShape` or
@@ -88,6 +92,7 @@ is `Type` and `kinds[1]` the shape class.
 | --- | --- | --- |
 | `declares` | `Unit` | any declaration |
 | `unit` | `Api` | `Unit` |
+| `documentation` | `Api` | `Documentation` |
 | `endpoint` | `Api` | `EndPoint` |
 | `parent` | `EndPoint` | `EndPoint` |
 | `supportedOperation` | `EndPoint` | `Operation` |

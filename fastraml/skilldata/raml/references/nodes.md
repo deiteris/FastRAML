@@ -1,7 +1,9 @@
 # Node reference
 
 The exact spelling of every key, by the construct that accepts it. A `?` marks
-an optional node.
+an optional node. A `description` and a documentation item's `content` may link
+by name to what the document declares, such as `` [`Book`] ``: see the raml
+guide's links section.
 
 ## Root
 

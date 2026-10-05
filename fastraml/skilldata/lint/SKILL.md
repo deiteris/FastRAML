@@ -81,6 +81,25 @@ lint:
   extends: [recommended, security, http, problem-details]
 ```
 
+Add `documentation` when descriptions link by name, as in `` [`Book`] `` or
+`[list them][GET /books]` (the raml guide's links section). Its one rule,
+`broken-doc-link`, is a `style` rule but is not in the `style` set. It warns
+at a link written in backticks or as `[text][Name]`, never at a bare `[Name]`.
+Its message says why:
+
+- `link names nothing`
+- `link names more than one target` (the candidates are in `info.targets`)
+- `library prose links into an API`
+
+The finding sits on the `description:` or `content:` key, once per text and
+label. A description that a subtype inherits or a trait contributes is
+reported once, in the file that wrote it.
+
+```yaml
+lint:
+  extends: [recommended, documentation]
+```
+
 `recommended` is the `spec` set. `all` is every rule registered, including any
 a plugin contributed.
 

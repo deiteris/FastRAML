@@ -305,7 +305,8 @@ class TestNavigation:
             )
         )
         (hint,) = found
-        assert hint.kind is None
+        assert hint.kind == types.InlayHintKind.Type
+        assert ''.join(part.value for part in hint.label) == '[string; length: ≥2]'
         assert all(part.location is None and part.tooltip is None for part in hint.label)
         assert 'minLength: 2' in hint.tooltip.value
 

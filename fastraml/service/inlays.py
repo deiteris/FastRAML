@@ -8,13 +8,17 @@ from dataclasses import dataclass
 from fractions import Fraction
 from typing import TYPE_CHECKING, Final
 
+from fastraml.types.complex_ import ArrayShape, RecursiveShape, UnionShape
+from fastraml.types.jsonschema_ import projected
 from fastraml.types.values import decimal_text
+from fastraml.views.render import type_name
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from fastraml.positions import Position
     from fastraml.service.workspace import Snapshot
+    from fastraml.types.base import BaseShape
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -30,7 +34,6 @@ class Hint:
     position: Position
     parts: tuple[Part, ...]
     tooltip: str
-    is_type: bool = True
     note: str | None = None
 
     @property
@@ -53,6 +56,17 @@ def type_label(name: str) -> str:
     return name if len(name) <= LABEL_LIMIT else name[: LABEL_LIMIT - 1] + '…'
 
 
+def underlying_type(base: BaseShape) -> str:
+    """Name the effective kind, rather than repeating the authored reference."""
+    view = projected(base.shape.head if isinstance(base.shape, RecursiveShape) else base)
+    if isinstance(view.shape, UnionShape) and view.shape.any_of:
+        return ' | '.join(type_name(member, nested=True) for member in view.shape.any_of)
+    if isinstance(view.shape, ArrayShape) and view.shape.items is not None:
+        member = type_name(view.shape.items)
+        return f'({member})[]' if ' | ' in member else f'{member}[]'
+    return view.type or 'any'
+
+
 def facet_value(value: object) -> str:
     if isinstance(value, Fraction):
         return decimal_text(value)
@@ -60,7 +74,7 @@ def facet_value(value: object) -> str:
     return json.dumps(pattern if isinstance(pattern, str) else value, ensure_ascii=False, default=str)
 
 
-def constraint_summary(values: Mapping[str, object]) -> str | None:
+def constraint_summary(values: Mapping[str, object], *, limit: int) -> str | None:
     """Whole, concrete facts that fit beside a reference; never a vague badge."""
     parts = []
     used: set[str] = set()
@@ -79,7 +93,7 @@ def constraint_summary(values: Mapping[str, object]) -> str | None:
     parts.extend(f'{name}: {facet_value(value)}' for name, value in values.items() if name not in used)
     fitting: list[str] = []
     for part in parts:
-        if len('; '.join((*fitting, part))) <= LABEL_LIMIT:
+        if len('; '.join((*fitting, part))) <= limit:
             fitting.append(part)
     return '; '.join(fitting) or None
 

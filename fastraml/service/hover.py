@@ -23,7 +23,15 @@ from fastraml.parser.syntax import METHODS, NAME_MAPS, Key, Site, child_site, fr
 from fastraml.parser.templates import TemplateDefinition
 from fastraml.service.datahover import DataHover, DataRoot, DataTarget
 from fastraml.service.hoverdocs import BUILTINS, METHOD_DOCS, field_doc
-from fastraml.service.inlays import LABEL_LIMIT, Hint, Part, constraint_details, constraint_summary, type_label
+from fastraml.service.inlays import (
+    LABEL_LIMIT,
+    Hint,
+    Part,
+    constraint_details,
+    constraint_summary,
+    type_label,
+    underlying_type,
+)
 from fastraml.service.text import Lines
 from fastraml.types.base import BaseShape, Parameter, facets_of
 from fastraml.types.complex_ import ObjectShape, UnknownShape
@@ -315,7 +323,7 @@ class Hover:
             key = source.node.position
             yield Hint(
                 key.shifted(key.end_column - key.column, 0),
-                (Part('[' + type_label(type_name(base)) + ']'),),
+                (Part('[' + type_label(underlying_type(base)) + ']'),),
                 self._describe(subject),
             )
         inherited = {
@@ -325,16 +333,26 @@ class Hover:
             and facet.key_pos.is_known
             and not authored.wrote(base, facet.location, facet.key_pos)
         }
-        summary = constraint_summary(inherited)
         expression = base.type_expr
-        if summary is not None and expression is not None and expression.position.is_known:
+        if (
+            expression is not None
+            and expression.position.is_known
+            and any(ref.resolved is not None for ref in base.type_expr_refs)
+        ):
             key = expression.position
-            if key.line == key.end_line and authored.wrote(base, uri, key):
+            name = underlying_type(base)
+            if key.line == key.end_line and authored.wrote(base, uri, key) and name != expression.value:
+                label = type_label(name)
+                summary = constraint_summary(inherited, limit=LABEL_LIMIT - len(label) - 2)
+                if summary is not None:
+                    label += '; ' + summary
+                tooltip = self._describe(subject)
+                if inherited:
+                    tooltip += '\n\n' + constraint_details(inherited)
                 yield Hint(
                     key.shifted(key.end_column - key.column, 0),
-                    (Part('[' + summary + ']'),),
-                    self._describe(subject) + '\n\n' + constraint_details(inherited),
-                    is_type=False,
+                    (Part('[' + label + ']'),),
+                    tooltip,
                 )
 
     def _node(self, uri: str) -> Node | None:

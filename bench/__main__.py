@@ -115,6 +115,9 @@ BENCHES: tuple[Bench, ...] = (
         'annotation-targets', lambda root, scale: corpus.write_annotation_targets(root, family_count=_at(250, scale))
     ),
     Bench('doc-links', lambda root, scale: corpus.write_doc_links(root, resource_count=_at(250, scale))),
+    Bench('hover', lambda root, scale: corpus.write_hover(root, family_count=_at(400, scale))),
+    Bench('effective-types', lambda root, scale: corpus.write_hover(root, family_count=_at(300, scale))),
+    Bench('inlays', lambda root, scale: corpus.write_hover(root, family_count=_at(400, scale))),
 )
 
 _BY_NAME = {bench.name: bench for bench in BENCHES}
@@ -147,6 +150,9 @@ def run_one(bench: str, config: str, entry: Path, repeat: int) -> Measurement:
         'datatype-fragments',
         'projections',
         'doc-links',
+        'hover',
+        'effective-types',
+        'inlays',
     }:
         return _measure_view(bench, entry, repeat)
     if config == 'service':
@@ -176,6 +182,13 @@ def run_one(bench: str, config: str, entry: Path, repeat: int) -> Measurement:
 def _measure_view(bench: str, entry: Path, repeat: int) -> Measurement:
     from fastraml import ParseOptions, parse_from_path  # noqa: PLC0415 - feature workload only
 
+    service_workload = {
+        'hover': _measure_hover,
+        'effective-types': _measure_effective_types,
+        'inlays': _measure_inlays,
+    }.get(bench)
+    if service_workload is not None:
+        return service_workload(entry, repeat)
     if bench == 'projections':
         from fastraml.views.jsonschema import to_json_schema  # noqa: PLC0415 - feature workload only
         from fastraml.views.openapi import to_openapi  # noqa: PLC0415 - feature workload only
@@ -234,6 +247,96 @@ def _measure_view(bench: str, entry: Path, repeat: int) -> Measurement:
         return raml, [json.dumps(to_json_schema(base)[0]) for base in raml.types_in(raml.location).values()]
 
     return measure(bench, 'unwrap', export_json, repeat=repeat)
+
+
+def _measure_hover(entry: Path, repeat: int) -> Measurement:
+    """A cold snapshot followed by repeated, differently targeted authoring hovers."""
+    from fastraml.gctuning import tuned_gc  # noqa: PLC0415 - feature workload only
+    from fastraml.service import queries  # noqa: PLC0415 - feature workload only
+    from fastraml.service.workspace import Workspace  # noqa: PLC0415 - feature workload only
+    from fastraml.uris import path_to_file_uri  # noqa: PLC0415 - feature workload only
+
+    text = entry.read_text(encoding='utf-8')
+    uri, folder = path_to_file_uri(entry), path_to_file_uri(entry.parent)
+    probes = []
+    for line, raw in enumerate(text.splitlines(), start=1):
+        stripped = raw.lstrip()
+        if stripped == 'type: string':
+            probes.append((line, raw.index('string') + 1))
+        elif stripped.startswith('note:'):
+            probes.append((line, len(raw) - len(stripped) + 1))
+            if not stripped.startswith('note: {'):
+                probes.append((line, raw.index(':') + 3))
+        elif (
+            raw.startswith('  Name')
+            or stripped.startswith(('minLength:', 'label?:', '404:', 'summary:'))
+            or stripped == 'get:'
+        ):
+            probes.append((line, len(raw) - len(stripped) + 1))
+
+    def hover() -> object:
+        workspace = Workspace([folder])
+        workspace.open(uri, text, 1)
+        snapshot = workspace.snapshot(uri)
+        answers = [queries.hover(snapshot, uri, line, column) for line, column in probes]
+        if snapshot.error is not None or any(answer is None for answer in answers):
+            message = 'hover workload no longer reaches every authoring query'
+            raise RuntimeError(message)
+        return snapshot, answers
+
+    with tuned_gc():
+        return measure('hover', 'unwrap', hover, repeat=repeat)
+
+
+def _measure_effective_types(entry: Path, repeat: int) -> Measurement:
+    from fastraml.gctuning import tuned_gc  # noqa: PLC0415 - feature workload only
+    from fastraml.service import lenses  # noqa: PLC0415 - feature workload only
+    from fastraml.service.workspace import Workspace  # noqa: PLC0415 - feature workload only
+    from fastraml.uris import path_to_file_uri  # noqa: PLC0415 - feature workload only
+
+    text = entry.read_text(encoding='utf-8')
+    uri, folder = path_to_file_uri(entry), path_to_file_uri(entry.parent)
+
+    def effective() -> object:
+        workspace = Workspace([folder])
+        workspace.open(uri, text, 1)
+        snapshot = workspace.snapshot(uri)
+        sites = lenses.code_lenses(snapshot, uri)
+        answers = [
+            lenses.effective_type(snapshot, uri, site.span.line, site.span.column, name=site.name) for site in sites
+        ]
+        if snapshot.error is not None or not sites or any(answer is None for answer in answers):
+            message = 'effective-type workload no longer reaches each lens rendering'
+            raise RuntimeError(message)
+        return snapshot, answers
+
+    with tuned_gc():
+        return measure('effective-types', 'unwrap', effective, repeat=repeat)
+
+
+def _measure_inlays(entry: Path, repeat: int) -> Measurement:
+    from fastraml.gctuning import tuned_gc  # noqa: PLC0415 - feature workload only
+    from fastraml.positions import Position  # noqa: PLC0415 - feature workload only
+    from fastraml.service import inlays  # noqa: PLC0415 - feature workload only
+    from fastraml.service.workspace import Workspace  # noqa: PLC0415 - feature workload only
+    from fastraml.uris import path_to_file_uri  # noqa: PLC0415 - feature workload only
+
+    text = entry.read_text(encoding='utf-8')
+    uri, folder = path_to_file_uri(entry), path_to_file_uri(entry.parent)
+    span = Position(1, 1, len(text.splitlines()) + 1, 1)
+
+    def hints() -> object:
+        workspace = Workspace([folder])
+        workspace.open(uri, text, 1)
+        snapshot = workspace.snapshot(uri)
+        result = inlays.inlay_hints(snapshot, uri, span)
+        if snapshot.error is not None or not result:
+            message = 'inlay workload no longer reaches inline type and inherited-facet hints'
+            raise RuntimeError(message)
+        return snapshot, result
+
+    with tuned_gc():
+        return measure('inlays', 'unwrap', hints, repeat=repeat)
 
 
 def _measure_edit(bench: str, entry: Path, repeat: int) -> Measurement:
@@ -399,6 +502,9 @@ LINEARITY_CONFIGS: dict[str, str] = {
     'projections': 'unwrap',
     'datatype-fragments': 'unwrap',
     'doc-links': 'unwrap',
+    'hover': 'unwrap',
+    'effective-types': 'unwrap',
+    'inlays': 'unwrap',
 }
 
 

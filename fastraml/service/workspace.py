@@ -29,6 +29,8 @@ from fastraml.errors import ErrorKind, RamlError
 from fastraml.loaders import SafeFileLoader
 from fastraml.parser.entry import ParseOptions, parse_lenient
 from fastraml.parser.fragments import FragmentKind, identify_fragment
+from fastraml.service.hover import Hover
+from fastraml.service.lenses import EffectiveViews
 from fastraml.service.text import Lines
 from fastraml.uris import file_uri_to_path, path_to_file_uri, relative_to
 from fastraml.views.lint import configured_linter
@@ -98,6 +100,22 @@ class Snapshot:
     linter: Linter | None = None
     _occurrences: Occurrences | None = field(default=None, repr=False)
     _findings: list[Finding] | None = field(default=None, repr=False)
+    _hover: Hover | None = field(default=None, repr=False)
+    _effective_views: EffectiveViews | None = field(default=None, repr=False)
+
+    @property
+    def effective_views(self) -> EffectiveViews | None:
+        if self._effective_views is None and self.raml is not None:
+            self._effective_views = EffectiveViews(self.raml)
+        return self._effective_views
+
+    @property
+    def hover(self) -> Hover | None:
+        """The source and model indices used by author-facing hover."""
+        occurrences = self.occurrences
+        if self._hover is None and self.raml is not None and occurrences is not None:
+            self._hover = Hover(self.raml, self.root, occurrences)
+        return self._hover
 
     @property
     def occurrences(self) -> Occurrences | None:

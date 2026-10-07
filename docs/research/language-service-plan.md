@@ -338,6 +338,30 @@ As done so far:
 
 M4 is done.
 
+Author-facing hover now adds contextual field and built-in documentation,
+full Markdown descriptions and compact type signatures
+(docs/21 § 4.2). Source-key positions share the extension merge's structural
+grammar in `parser/syntax.py`. This is not G4's full accepted-key/value-kind
+catalogue. Typed `DataNode` descent now supplies hover for custom-facet,
+annotation, example, default and enum data (docs/21 § 4.2); G10's completion
+behavior remains M5 work.
+
+Hover documentation follows the full-documentation approach of
+[gopls](https://github.com/golang/tools/blob/3e15c990d6868f3369d69fcc9bcb565f12eeeba8/gopls/internal/golang/hover.go#L1697):
+the symbol's identity is separate from its complete declaration documentation,
+and built-ins have explanatory documentation too. The
+[YAML language server](https://github.com/redhat-developer/yaml-language-server/blob/19631beac1137c18ce26883d476d6e370306df89/src/languageservice/services/yamlHover.ts#L85)
+likewise shows a property's schema description on its key, with examples and
+allowed values. In fastRAML, supplied custom-facet keys use the declaration
+P7 bound, and built-in help explains effects, examples and important distinctions.
+
+Effective expansion now uses a code-lens action and a read-only virtual document
+(docs/21 § 4.3). This follows rust-analyzer's split between
+[code-lens commands](https://github.com/rust-lang/rust-analyzer/blob/3131751eaf1c3b5da6e618acdc2148ad7db65bc7/crates/rust-analyzer/src/handlers/request.rs#L1687)
+and client-side virtual documents for expanded representations. Hover remains
+documentation; navigation and explicit reading views carry location and
+effective-model details.
+
 ## M5: Completion
 
 - Code (one commit each):

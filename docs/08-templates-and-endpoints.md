@@ -39,7 +39,8 @@ method bodies as YAML mappings. It consumes the three directive keys:
 | `is` | resource or method | trait `DirectiveRef`s |
 | `securedBy` | resource or method | security `DirectiveRef`s and explicitness |
 
-HTTP-method and subresource keys recurse into source IR. Every other pair,
+The HTTP-method vocabulary is shared in `parser/syntax.py`. HTTP-method and
+subresource keys recurse into source IR. Every other pair,
 including all type-bearing declarations and annotations, remains in `body`.
 A resource or method whose value is an `!include` of content
 ([03](03-yaml-and-io.md) § 4.2) keeps `location` at its key and records the

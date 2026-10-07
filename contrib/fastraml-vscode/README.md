@@ -32,6 +32,22 @@ Restart Language Server** does so by hand.
 
 ## Preview
 
+Named type declarations have a **Show effective type** code lens when parsing
+reaches unwrap. Clicking it opens the existing effective RAML rendering in a
+read-only document beside the source. Clicking again refreshes the view from
+the current parse. It expands all structural levels and keeps recursive
+references finite. Hover stays focused on documentation and type information;
+go-to-definition opens the declaration, including for custom-facet values and
+nested typed data fields (`docs/21` § 4.2, `docs/21` § 4.3).
+
+Inline inlay hints show inferred declaration types, expected types on typed
+data fields and inherited constraints that are absent from the local source.
+The compact `[inherited constraints]` label keeps full constraint values in its
+tooltip. Typed-field labels offer documentation tooltips and navigation when
+the field declaration is unambiguous. Hints are display labels, not inserted
+YAML. Use VS Code's
+**Editor: Inlay Hints** setting to control their visibility (`docs/21` § 4.4).
+
 **fastRAML: Preview**, or the editor title button, opens the viewer beside
 a RAML file. A root document shows itself; any other file shows the first
 root that reads it. The page asks for the model once it has loaded, through the

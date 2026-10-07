@@ -76,9 +76,10 @@ name inside a caller's value a template substituted, the application's, at
 the caller's text ([08](08-templates-and-endpoints.md) § 5.1). A diagnostic
 about that name is placed there too.
 Qualified names produce one entry for the library prefix and one for the
-referenced declaration. A name is qualified only when its prefix names a
-`uses:` entry: `Dot.Type`, declared under that name, is one entry at the
-name's start.
+referenced declaration. A complete dotted local name takes precedence even
+when its prefix is also a `uses:` alias (docs/04 § 3). `Dot.Type`, resolved to
+the local declaration under that complete name, is one entry at the name's
+start, rather than a library-prefix entry followed by a type entry.
 
 ## 4. JSON Schema operands
 

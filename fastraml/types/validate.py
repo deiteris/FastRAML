@@ -16,13 +16,13 @@ See docs/10-validation.md.
 
 from __future__ import annotations
 
-from collections import deque
 from typing import TYPE_CHECKING
 
 from fastraml.datanode import at_value, locate
 from fastraml.errors import Accumulator, ErrorKind, RamlError, Trace
 from fastraml.types.base import checks_memoized
 from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape, nested
+from fastraml.types.custom_facets import facet_ancestors, referent
 from fastraml.types.examples import examples_of
 from fastraml.types.unwrap import unwrap_detached
 from fastraml.types.values import failure, key_path
@@ -428,13 +428,7 @@ def _facet_declarations(base: BaseShape, acc: Accumulator) -> dict[str, Property
     """
     declared: dict[str, Property] = {}
     owners: dict[str, BaseShape] = {}
-    seen: set[int] = set()
-    queue = deque(base.inherits)
-    while queue:
-        current = queue.popleft()
-        if current.id in seen:
-            continue
-        seen.add(current.id)
+    for current in facet_ancestors(base):
         for name, prop in current.custom_facet_defs.items():
             existing = declared.get(name)
             if existing is None:
@@ -455,7 +449,6 @@ def _facet_declarations(base: BaseShape, acc: Accumulator) -> dict[str, Property
                         info={'facet': name},
                     )
                 )
-        queue.extend(current.inherits)
     return declared
 
 
@@ -465,24 +458,8 @@ def _inherits_from(shape: BaseShape, ancestor: BaseShape) -> bool:
     Through alias edges: a parent written in `type: [A, B]` is an alias of the
     declaration it names, which shares that declaration's parents (docs/07 § 3).
     """
-    wanted = _referent(ancestor)
-    seen: set[int] = set()
-    queue = deque(shape.inherits)
-    while queue:
-        current = _referent(queue.popleft())
-        if current is wanted:
-            return True
-        if current.id not in seen:
-            seen.add(current.id)
-            queue.extend(current.inherits)
-    return False
-
-
-def _referent(base: BaseShape) -> BaseShape:
-    """The declaration an alias chain ends at, or `base` itself."""
-    while base.alias is not None:
-        base = base.alias
-    return base
+    wanted = referent(ancestor)
+    return any(current is wanted for current in facet_ancestors(shape))
 
 
 def _redeclared_facets(base: BaseShape, declared: dict[str, Property], acc: Accumulator) -> None:

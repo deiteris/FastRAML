@@ -32,6 +32,7 @@ __all__ = [
     'write_endpoints',
     'write_enums',
     'write_facets',
+    'write_hover',
     'write_include_content',
     'write_includes',
     'write_inheritance',
@@ -58,6 +59,41 @@ def _write(root: Path, files: dict[str, str]) -> None:
 
 
 # -- types --------------------------------------------------------------------
+
+
+def write_hover(root: Path, *, family_count: int = 400) -> Path:
+    """Repeated authoring hovers: grammar, primitives, inheritance and properties."""
+    declarations = []
+    resources = []
+    annotations = []
+    annotation_values = []
+    for index in range(family_count):
+        declarations.append(
+            f'  Metadata{index}:\n    properties:\n'
+            '      note: {type: string, description: Explains the nested note.}\n'
+            '      entries?: {type: array, items: {type: string, minLength: 3}}\n'
+            f'      variant?: MetadataLeaf{index} | nil\n'
+            f'  MetadataLeaf{index}:\n    properties:\n      children?: Metadata{index}[]\n'
+            f'  Word{index}:\n    type: string\n    minLength: 2\n'
+            '    facets:\n      summary:\n        type: string\n'
+            '        description: Explains how this name is used.\n'
+            f'      detail?: Metadata{index}\n'
+            f'  Name{index}:\n    type: Word{index}\n    maxLength: 40\n    summary: A display name.\n'
+            '    detail:\n      note: Facet note.\n'
+            '    description: A **human-readable** name.\n'
+            f'  Object{index}:\n    properties:\n      label?: Name{index}\n'
+        )
+        resources.append(f'/r{index}:\n  get:\n    responses:\n      404: {{description: Not found.}}\n')
+        annotations.append(f'  metadata{index}: Metadata{index}\n')
+        annotation_values.append(f'(metadata{index}):\n  note: Annotation note.\n')
+    source = (
+        '#%RAML 1.0\ntitle: Hover\ntypes:\n'
+        + ''.join(declarations)
+        + 'annotationTypes:\n'
+        + ''.join(annotations + annotation_values + resources)
+    )
+    _write(root, {'api.raml': source})
+    return root / 'api.raml'
 
 
 def write_projections(root: Path, *, family_count: int = 200) -> Path:

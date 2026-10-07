@@ -22,7 +22,7 @@ from pygls.lsp.client import LanguageClient
 
 from fastraml.cli import main
 from fastraml.gctuning import FULL_COLLECTION_THRESHOLD
-from fastraml.service.lsp import TREE, RamlServer
+from fastraml.service.lsp import EFFECTIVE_TYPE, SHOW_EFFECTIVE, TREE, RamlServer
 from fastraml.uris import path_to_file_uri
 from tests.unit.conftest import write_files
 
@@ -77,13 +77,14 @@ class _Client:
     def run[T](self, work: Coroutine[object, object, T]) -> T:
         return self.loop.run_until_complete(asyncio.wait_for(work, WAIT))
 
-    def start(self) -> types.InitializeResult:
+    def start(self, *, commands: tuple[str, ...] = (SHOW_EFFECTIVE,)) -> types.InitializeResult:
         self.run(self.client.start_io(sys.executable, '-m', 'fastraml.cli', 'lsp'))
         result = self.run(
             self.client.initialize_async(
                 types.InitializeParams(
                     capabilities=types.ClientCapabilities(),
                     workspace_folders=[types.WorkspaceFolder(self.folder, 'root')],
+                    initialization_options={'commands': list(commands)},
                 )
             )
         )
@@ -224,6 +225,61 @@ class TestDiagnostics:
 
 
 class TestNavigation:
+    def test_inlay_hints_use_utf16_positions_and_clickable_type_labels(self, lsp):
+        uri = _uri(lsp, 'hints.raml')
+        document = (
+            '#%RAML 1.0\ntitle: T\nannotationTypes:\n  Info:\n    properties:\n'
+            '      name: string\n(Info): {"😀": 0, name: Ada}\n'
+        )
+        lsp.open(uri, document)
+        start = _position(document, '(Info):')
+        end = _position(document, 'Ada', len('Ada'))
+        found = lsp.run(
+            lsp.client.text_document_inlay_hint_async(
+                types.InlayHintParams(_document(uri), types.Range(start, end)),
+            )
+        )
+        (hint,) = found
+        assert hint.position == _position(document, 'name: Ada', len('name'))
+        assert hint.kind == types.InlayHintKind.Type
+        assert hint.label[0].value == '[string]'
+        assert hint.label[0].location.uri == uri
+        assert hint.label[0].location.range.start == _position(document, 'name: string')
+
+    def test_clients_without_the_effective_command_get_no_dead_lenses(self, tmp_path):
+        write_files(tmp_path, {'api.raml': API, 'lib.raml': LIBRARY})
+        client = _Client(path_to_file_uri(tmp_path))
+        client.start(commands=())
+        try:
+            uri = _uri(client, 'api.raml')
+            client.open(uri, API)
+            assert not client.run(client.client.text_document_code_lens_async(types.CodeLensParams(_document(uri))))
+        finally:
+            client.stop()
+
+    def test_code_lens_opens_an_on_demand_effective_type(self, lsp):
+        uri = _uri(lsp, 'api.raml')
+        found = lsp.run(lsp.client.text_document_code_lens_async(types.CodeLensParams(_document(uri))))
+        lens = next(lens for lens in found if lens.command.arguments[0]['name'] == 'Admin')
+        assert lens.command.title == 'Show effective type'
+        assert lens.command.command == SHOW_EFFECTIVE
+        at = lens.command.arguments[0]
+
+        async def request():
+            return await lsp.client.protocol.send_request_async(
+                EFFECTIVE_TYPE,
+                {
+                    'textDocument': {'uri': at['uri']},
+                    'root': at['root'],
+                    'position': at['position'],
+                    'name': at['name'],
+                },
+            )
+
+        text = lsp.run(request())
+        assert text.startswith('#%RAML 1.0 DataType\n')
+        assert 'name:' in text
+
     def test_definition_across_files(self, lsp):
         (found,) = lsp.run(
             lsp.client.text_document_definition_async(
@@ -266,7 +322,23 @@ class TestNavigation:
             )
         )
         assert found.contents.kind == types.MarkupKind.Markdown
+        assert 'data type' in found.contents.value
+        assert 'Effective summary' not in found.contents.value
+        assert 'Specializes `User`' in found.contents.value
         assert (found.range.start, found.range.end) == (_position(API, 'Admin'), _position(API, 'Admin', 5))
+
+    def test_hover_explains_a_raml_key_with_an_exact_range(self, lsp):
+        found = lsp.run(
+            lsp.client.text_document_hover_async(
+                types.HoverParams(_document(_uri(lsp, 'api.raml')), _position(API, 'type: lib.User'))
+            )
+        )
+        assert found.contents.kind == types.MarkupKind.Markdown
+        assert 'base data type or type expression' in found.contents.value
+        assert (found.range.start, found.range.end) == (
+            _position(API, 'type: lib.User'),
+            _position(API, 'type: lib.User', len('type')),
+        )
 
     def test_the_type_hierarchy_reaches_a_library_type(self, lsp):
         (item,) = lsp.run(

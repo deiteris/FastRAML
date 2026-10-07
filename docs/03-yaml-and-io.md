@@ -239,6 +239,17 @@ annotation values, custom facets, and discriminator values. It retains a
 position-bearing structure and a plain Python `raw` projection. Scalar values
 are derived from their YAML tag and literal text; timestamp values retain text.
 
+Each `ValueNode` also carries its own `location` URI and `position`. This
+keeps children of nested data includes in their authored file, rather than
+borrowing the enclosing `DataNode`'s location. Mapping entries keep the key's
+span in the mapping's file; their value can be in another file. Values built
+from plain Python data have `location=None` and `position=UNKNOWN`. Inline JSON
+retains the encoded scalar's root span, but does not fabricate nested spans.
+`DataNode.key_location` names the file holding its pair's key, when known.
+For an included value this is the including file, while `location` identifies
+the included data. Navigation never pairs an including key span with the
+included value's URI.
+
 At a data-value root, scalar text enclosed by a matching pair of `{` and `}`,
 `[` and `]`, or `"` and `"` is parsed as inline JSON exactly once. The opening
 delimiter must be the first character; the end check ignores trailing JSON

@@ -18,14 +18,10 @@ from typing import TYPE_CHECKING, Any, Final
 
 from fastraml.errors import RamlError
 from fastraml.parser.fragments import LibraryLink, every_declaration
-from fastraml.parser.security import SecuritySchemeDefinition
-from fastraml.parser.templates import TemplateDefinition
 from fastraml.positions import Position
 from fastraml.types.base import BaseShape
-from fastraml.uris import relative_to
 from fastraml.views.occurrences import DECLARATION_KINDS as _OCCURRENCE_KINDS
 from fastraml.views.occurrences import Kind, Link, Role
-from fastraml.views.render import render
 from fastraml.views.tree import build_tree
 from fastraml.yamlnode import Node, NodeKind, compose, pairs
 
@@ -259,6 +255,11 @@ def definition(snapshot: Snapshot, uri: str, line: int, column: int) -> list[Sit
             found.append(Site(occurrence.resolved, _START))
         elif occurrence.target is not None:
             found += [_site(other) for other in occurrences.of(occurrence.target) if other.role is Role.DEFINITION]
+    if not found and snapshot.hover is not None:
+        for target in snapshot.hover.data_at(uri, line, column):
+            base = target.base
+            if base.key_pos.is_known:
+                found.append(Site(base.location, base.key_pos.within(base.name or target.name)))
     return found
 
 
@@ -304,54 +305,9 @@ def _targets(snapshot: Snapshot, uri: str, line: int, column: int) -> list[int]:
 
 
 def hover(snapshot: Snapshot, uri: str, line: int, column: int) -> tuple[str, Position] | None:
-    """Markdown for the name under the cursor, and the span it covers."""
-    raml = snapshot.raml
-    found = _at(snapshot, uri, line, column)
-    if raml is None or not found:
-        return None
-    occurrence = found[0]
-    text = _describe(snapshot, raml, occurrence)
-    return None if text is None else (text, occurrence.span)
-
-
-def _describe(snapshot: Snapshot, raml: Raml, occurrence: Occurrence) -> str | None:
-    if occurrence.role is Role.BUILTIN:
-        return f'built-in type `{occurrence.written}`'
-    # Paths in the text are relative to the root's directory.
-    root = snapshot.root.rpartition('/')[0] + '/'
-    if isinstance(occurrence, Link):
-        return f'`{relative_to(occurrence.resolved, root)}`'
-    target = occurrence.target
-    if target is None:
-        return None
-    entity = _entity(raml, target)
-    if entity is None:
-        return None
-    if isinstance(entity, BaseShape):
-        return '```yaml\n' + '\n'.join(render(entity, root=root)) + '\n```'
-    return _declaration_text(occurrence, entity)
-
-
-def _declaration_text(occurrence: Occurrence, entity: Declaration | LibraryLink) -> str:
-    """A declaration's kind and name, and what its body says of it."""
-    kind = occurrence.kind.replace('_', ' ')
-    if isinstance(entity, LibraryLink):
-        return f'**{kind}** `{occurrence.written}`\n\n`{entity.value}`'
-    lines = [f'**{kind}** `{entity.name}`']
-    # What an `!include` names holds the body: its type, its parameters.
-    if isinstance(entity, SecuritySchemeDefinition):
-        scheme = entity.resolved()
-        if scheme.type:
-            lines.append(f'type: {scheme.type}')
-        if scheme.description is not None:
-            lines.append(str(scheme.description.value))
-    elif isinstance(entity, TemplateDefinition):
-        template = entity.resolved()
-        if template.declared_variables:
-            lines.append('parameters: ' + ', '.join(f'`{name}`' for name in sorted(template.declared_variables)))
-        if template.usage is not None:
-            lines.append(str(template.usage.value))
-    return '\n\n'.join(lines)
+    """Explain the source token and, where available, its effective meaning."""
+    context = snapshot.hover
+    return None if context is None else context.at(uri, line, column)
 
 
 def _entity(raml: Raml, target: int) -> Declaration | LibraryLink | None:

@@ -336,6 +336,18 @@ class ObjectShape(ComplexKind):
     def _count_failure(self, message: str, path: str, count: int, bound: ScalarFacet[int]) -> RamlError:
         return broken(message, bound, info={'path': path, 'count': count, 'bound': bound.value})
 
+    def property_for(self, name: str) -> Property | PatternProperty | None:
+        """The declaration governing a field: explicit first, then the first
+        matching pattern in effective order (docs/05 § 4).
+        """
+        declared = (self.properties or {}).get(name)
+        if declared is not None:
+            return declared
+        return next(
+            (prop for prop in (self.pattern_properties or {}).values() if prop.pattern.search(name) is not None),
+            None,
+        )
+
     def _validate_extra(self, name: str, item: Any, path: str) -> None:
         r"""A key the declaration did not name: a pattern property, refused, or open.
 
@@ -343,12 +355,10 @@ class ObjectShape(ComplexKind):
         own example accepts `note: 123` beside `/^note\d+$/: string` "as it
         does not match the pattern" (docs/05 § 4).
         """
-        for pattern in (self.pattern_properties or {}).values():
-            # Effective declaration order, first match prevails (docs/05 § 4):
-            # inherited patterns stand before the type's own (docs/07 § 4).
-            if pattern.pattern.search(name) is not None:
-                pattern.base.validate_at(item, key_path(path, name))
-                return
+        prop = self.property_for(name)
+        if prop is not None:
+            prop.base.validate_at(item, key_path(path, name))
+            return
         if self.additional_properties is not None and not self.additional_properties.value:
             raise broken(
                 'additional properties are not allowed',
@@ -728,7 +738,7 @@ class UnionShape(ComplexKind):
         """The dispatch table, or `None` where this union validates by scan."""
         return self._dispatch
 
-    def _select(self, value: Any, path: str) -> BaseShape | None:
+    def select(self, value: Any, path: str = '$') -> BaseShape | None:
         """The member this payload's tag names, or `None` to fall back to a scan.
 
         Three ways to reach `None`, and each one has a better report waiting in
@@ -805,7 +815,7 @@ class UnionShape(ComplexKind):
         because a reader given one complaint cannot tell which member it was
         meant to satisfy (docs/05 § 6).
         """
-        selected = self._select(value, path)
+        selected = self.select(value, path)
         if selected is not None:
             # The one member the tag names. Its failures surface as its own
             # rather than under "matches no member", which is what writing a

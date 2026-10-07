@@ -126,6 +126,11 @@ cannot be combined with pattern properties, written or inherited. A subtype's
 effective order lists inherited patterns before its own
 ([07](07-resolution-and-inheritance.md) § 4).
 
+`ObjectShape.property_for(name)` returns the declaration governing a field:
+its explicit property, otherwise the first matching pattern, otherwise none.
+Validation and typed-value navigation share this rule; callers must not infer
+a type for an ordinary additional property.
+
 ## 5. Examples, custom facets, and XML
 
 `type` and `schema` accept the annotated-scalar spelling with `value` and
@@ -180,6 +185,13 @@ booleans retain their distinct meanings. A present unknown scalar tag fails;
 missing, null, nonscalar, or non-uniform cases use ordinary member scanning.
 Optional discriminator properties remain legal. The recommended
 `optional-discriminator` lint rule reports their ambiguity risk (docs/18 § 2).
+
+`UnionShape.select(value, path='$')` returns the member selected by a known
+discriminator, raises for a present unknown scalar tag, and returns none when
+ordinary validation must scan alternatives. Typed-value navigation uses the
+same selection, but preserves all possible structural alternatives when no
+discriminator selects one; it does not validate the whole value to guess a
+branch.
 
 RAML field names shared by fragment, endpoint, and type decoders are defined in
 `facet_names.py`; diagnostic fields and JSON Schema keywords are separate.

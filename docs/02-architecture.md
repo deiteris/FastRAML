@@ -13,7 +13,7 @@ Parsing uses one `Raml` registry and a fixed pass order.
 | P4 | Build endpoints: merge source IR directives, then materialize the result. |
 | P6 | Propagate URI parameters. |
 | P5 | Bind and inherit security schemes. |
-| P7 | Resolve type expressions and shape references. |
+| P7 | Resolve type expressions, shape references and supplied custom-facet bindings. |
 | P8 | Bind domain extensions to annotation types. |
 | P9 | Optionally unwrap inheritance and mark recursion. |
 | P10 | Optionally check declarations and validate examples, defaults, facets, and annotation values. |
@@ -51,6 +51,7 @@ in `Raml.stopped_at` (`Stage` in `registry.py`; docs/13 § 1):
 | Scalar facets, annotated scalars, and regex compilation | `parser/facets.py` | [03](03-yaml-and-io.md), [05](05-type-model.md), [13](13-public-api.md) |
 | Overlays and Extensions | `parser/extensions.py`, `parser/extension_merge.py` | [19](19-overlays-and-extensions.md) |
 | Endpoints and templates | `parser/source_ir.py`, `parser/structural_merge.py`, `parser/source_decode.py`, `parser/endpoint_build.py`, `parser/endpoints.py`, `parser/traits.py`, `parser/resourcetypes.py`, `parser/templates.py`, `parser/substitutions.py`, `parser/uritemplates.py` | [08](08-templates-and-endpoints.md) |
+| Structural source grammar | `parser/syntax.py` | [08](08-templates-and-endpoints.md), [19](19-overlays-and-extensions.md), [21](21-language-service.md) |
 | Security and annotations | `parser/security.py`, `parser/annotations.py`, `parser/directives.py` | [09](09-security-and-annotations.md) |
 | Type system | `types/` | [05](05-type-model.md) through [10](10-validation.md) |
 | JSON Schema types: the kind, compilation and registry, projection to RAML, `allOf` intersection, bundling | `types/jsonschema_.py`, `types/schema_compile.py`, `types/schema_view.py`, `types/schema_projection.py`, `types/schema_intersection.py`, `types/schema_bundle.py` | [10](10-validation.md) |
@@ -104,7 +105,7 @@ One `Raml` instance owns one parse. It holds:
 
 - parse configuration and the scheme loader;
 - fragment, include-node, mapping-key, expression, and JSON Schema caches;
-- declaration, resolver, endpoint, shape, annotation, and include-reference
+- declaration, resolver, endpoint, shape, annotation, custom-facet binding, and include-reference
   indices;
 - the unresolved-shape worklist and parse-context/provenance state;
 - the stages that finished and the one that raised (§ 1); and

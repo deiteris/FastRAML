@@ -42,6 +42,14 @@ P7 resolves these forms:
 - an RDT expression is parsed through the per-parse cache and built as described
   in [06](06-type-expressions.md#3-building-shapes).
 
+After draining the worklist, P7 binds supplied custom-facet `DataNode`s to
+their known declarations in `Raml.custom_facet_refs`. The shared ancestor
+walk in `types/custom_facets.py` starts at semantic parents, follows aliases
+and DataType links, and preserves breadth-first declaration order. Unknown
+values remain unbound; multiple declarations remain candidates for tooling.
+P10 owns missing, unknown, duplicate and invalid-value diagnostics, and never
+creates or mutates these bindings. They are available with `validate=False`.
+
 ## 3. Shape edges
 
 | Edge | Created by | Meaning before P9 |
@@ -65,6 +73,9 @@ particularly when a union merge collapses; callers must use that return value.
 P9 refreshes both declaration-name indices and typed fragments' root pointers
 with replacement shapes, so a fragment and every inclusion site expose the same
 effective root after a collapse.
+P9 also refreshes custom-facet bindings over the effective public shapes,
+including facet values materialized while distributing union siblings.
+Private copies used for validation do not publish binding changes.
 
 All parents are unwrapped before a child. Multiple inheritance folds parents
 into a fresh shape (`fold_parents` in `types/inherit.py`), so merges cannot mutate or

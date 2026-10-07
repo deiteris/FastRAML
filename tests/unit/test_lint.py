@@ -45,6 +45,19 @@ def parsed(source: str, tmp_path, *, http_client=None):
     )
 
 
+def test_lenient_lint_skips_unresolved_references_and_still_checks_sound_types(workspace):
+    raml, error = workspace.lenient_document(
+        '#%RAML 1.0\ntitle: T\ntypes:\n  Word: string\n'
+        'securedBy: [missing]\n/r:\n  get:\n    queryParameters: {q: Word}\n',
+        ParseOptions(unwrap=True, retain_source=True),
+    )
+    assert error is not None
+    assert raml.unwrapped
+    config = Config(extends=(), rules=(RuleSetting(id='unbounded-string'),))
+    findings = Linter(builtin_registry(), config).run(raml)
+    assert any(finding.rule == 'unbounded-string' for finding in findings)
+
+
 class TestOptionalDiscriminator:
     """docs/18 § 2: legal optional tags are a configurable warning."""
 

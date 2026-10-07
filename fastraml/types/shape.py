@@ -751,12 +751,17 @@ def make_declarations(
     accumulator.raise_if_any()
 
 
-def make_parameter_map(raml: Raml, value_node: Node, location: str, binding: Binding) -> dict[str, Parameter]:
+def make_parameter_map(
+    raml: Raml, value_node: Node, location: str, binding: Binding, declared: dict[str, Parameter]
+) -> None:
     """A parameter declaration where a `/regex/` key carries no meaning.
 
     Headers, query parameters, URI parameters and base-URI parameters. Each one
     joins the flat per-file index, which is what unwrap and validation iterate
     instead of walking the model graph (docs/04 § 5).
+
+    Fill the holder's own map and accumulate per declaration: a failed entry
+    is absent, while the good entries on both sides stay attached (docs/11 § 2).
 
     The binding comes from the caller because only the caller knows it: one
     syntax declares all four, and which one it is is a fact about the map that
@@ -764,25 +769,28 @@ def make_parameter_map(raml: Raml, value_node: Node, location: str, binding: Bin
     """
     value_node, location = inline_include(raml, value_node, location)
     if is_null(value_node):
-        return {}
+        return
     if value_node.kind is not NodeKind.MAPPING:
         raise node_error('parameter declarations must be a mapping', location, value_node)
     location = raml.location_of(value_node, location)
-    declared: dict[str, Parameter] = {}
+    accumulator = Accumulator()
     # make_property establishes TypeDeclaration for each parameter.
     for key, value in pairs(value_node):
-        prop = make_property(raml, key, value, location)
-        declared[prop.name] = Parameter(
-            id=raml.next_id(),
-            binding=binding,
-            declaration=prop,
-            key_pos=key.position,
-            value_pos=value.position,
-        )
-        # Indexed under the shape's own file, which provenance may have made
-        # a different one from the map's.
-        raml.put_typedef(prop.base.location, prop.base)
-    return declared
+        try:
+            prop = make_property(raml, key, value, location)
+            declared[prop.name] = Parameter(
+                id=raml.next_id(),
+                binding=binding,
+                declaration=prop,
+                key_pos=key.position,
+                value_pos=value.position,
+            )
+            # Indexed under the shape's own file, which provenance may have made
+            # a different one from the map's.
+            raml.put_typedef(prop.base.location, prop.base)
+        except RamlError as error:
+            accumulator.add(error)
+    accumulator.raise_if_any()
 
 
 def make_property(raml: Raml, key_node: Node, value_node: Node, location: str) -> Property:

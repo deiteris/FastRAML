@@ -214,7 +214,7 @@ def _decode_response(raml: Raml, key: Node, value: Node, location: str, attach: 
                     elif name == FACET_DESCRIPTION:
                         response.description = make_string_facet(raml, child_key, child_value, location)
                     elif name == FACET_HEADERS:
-                        response.headers = make_parameter_map(raml, child_value, location, 'header')
+                        make_parameter_map(raml, child_value, location, 'header', response.headers)
                     elif name == FACET_BODY:
                         _decode_bodies(
                             raml, child_key, child_value, location, DomainLocation.RESPONSE_BODY, response.bodies
@@ -222,7 +222,7 @@ def _decode_response(raml: Raml, key: Node, value: Node, location: str, attach: 
                     elif is_annotation_key(name):
                         add_domain_extension(raml, response.annotations, location, child_key, child_value)
                     else:
-                        raise node_error('unknown field', location, child_key, info={'field': name})
+                        raml.recover(node_error('unknown field', location, child_key, info={'field': name}))
                 except RamlError as err:
                     accumulator.add(err)
         accumulator.raise_if_any()
@@ -264,9 +264,9 @@ def decode_request_facet(raml: Raml, into: RequestFacets, key: Node, value: Node
     """`headers`, `queryParameters` or `queryString`. Returns whether it was one."""
     name = key.value
     if name == FACET_HEADERS:
-        into.headers = make_parameter_map(raml, value, location, 'header')
+        make_parameter_map(raml, value, location, 'header', into.headers)
     elif name == FACET_QUERY_PARAMETERS:
-        into.query_parameters = make_parameter_map(raml, value, location, 'query')
+        make_parameter_map(raml, value, location, 'query', into.query_parameters)
     elif name == FACET_QUERY_STRING:
         with raml.target_scope(DomainLocation.TYPE_DECLARATION):
             into.query_string = make_shape(raml, key, value, location)
@@ -308,7 +308,7 @@ def _decode_operation_field(  # noqa: PLR0913, PLR0917 - one pass over the metho
     elif is_annotation_key(name):
         add_domain_extension(raml, operation.annotations, location, key, value)
     else:
-        raise node_error('unknown field', location, key, info={'field': name})
+        raml.recover(node_error('unknown field', location, key, info={'field': name}))
 
 
 def decode_source_operation(raml: Raml, source: SourceOperation, attach: Callable[[Operation], None]) -> None:
@@ -368,11 +368,11 @@ def _decode_endpoint_field(raml: Raml, endpoint: EndPoint, key: Node, value: Nod
     elif name == FACET_DESCRIPTION:
         endpoint.description = make_string_facet(raml, key, value, location)
     elif name == FACET_URI_PARAMETERS:
-        endpoint.uri_parameters = make_parameter_map(raml, value, location, 'uri')
+        make_parameter_map(raml, value, location, 'uri', endpoint.uri_parameters)
     elif is_annotation_key(name):
         add_domain_extension(raml, endpoint.annotations, location, key, value)
     else:
-        raise node_error('unknown field', location, key, info={'field': name})
+        raml.recover(node_error('unknown field', location, key, info={'field': name}))
 
 
 def decode_source_endpoint(raml: Raml, source: SourceEndPoint, attach: Callable[[EndPoint], None]) -> None:

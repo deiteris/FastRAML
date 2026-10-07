@@ -42,6 +42,8 @@ from bench.harness import Measurement, measure
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
+    from fastraml.registry import Raml
+
 BASELINE_PATH = Path(__file__).parent / 'baselines.json'
 
 #: The eight configurations every bench runs (docs/12 § 4). `unwrap+graph`,
@@ -103,6 +105,7 @@ BENCHES: tuple[Bench, ...] = (
     Bench('diamonds', lambda root, scale: corpus.write_diamonds(root, family_count=_at(20, scale))),
     Bench('templates', lambda root, scale: corpus.write_templates(root, resource_count=_at(250, scale))),
     Bench('template-scopes', lambda root, scale: corpus.write_template_scopes(root, resource_count=_at(500, scale))),
+    Bench('lenient-recovery', lambda root, scale: corpus.write_lenient_recovery(root, family_count=_at(200, scale))),
     Bench('sequence-merge', lambda root, scale: corpus.write_sequence_merge(root, resource_count=_at(60, scale))),
     Bench(
         'reference-namespaces',
@@ -163,20 +166,28 @@ def run_one(bench: str, config: str, entry: Path, repeat: int) -> Measurement:
         retain_source='lint' in config,
         retain_text='occurrences' in config,
     )
+
+    def parse() -> Raml:
+        if bench == 'lenient-recovery':
+            from fastraml import parse_lenient  # noqa: PLC0415 - feature workload only
+
+            return parse_lenient(entry, options)[0]
+        return parse_from_path(entry, options)
+
     if 'lint' in config:
         from fastraml.views.lint import Config, Linter, builtin_registry  # noqa: PLC0415 - as above
 
         linter = Linter(builtin_registry(), Config(extends=('all',)))
-        return measure(bench, config, lambda: linter.report(parse_from_path(entry, options)), repeat=repeat)
+        return measure(bench, config, lambda: linter.report(parse()), repeat=repeat)
     if 'graph' in config:
         from fastraml.views.graph import build_graph  # noqa: PLC0415 - as above
 
-        return measure(bench, config, lambda: build_graph(parse_from_path(entry, options)), repeat=repeat)
+        return measure(bench, config, lambda: build_graph(parse()), repeat=repeat)
     if 'occurrences' in config:
         from fastraml.views.occurrences import build_occurrences  # noqa: PLC0415 - as above
 
-        return measure(bench, config, lambda: build_occurrences(parse_from_path(entry, options)), repeat=repeat)
-    return measure(bench, config, lambda: parse_from_path(entry, options), repeat=repeat)
+        return measure(bench, config, lambda: build_occurrences(parse()), repeat=repeat)
+    return measure(bench, config, parse, repeat=repeat)
 
 
 def _measure_view(bench: str, entry: Path, repeat: int) -> Measurement:
@@ -490,6 +501,7 @@ def compare(results: Sequence[Measurement], tolerance: float) -> int:
 #: The configuration each workload's linearity is measured in: the one that
 #: runs the code it exists for (docs/12 § 4).
 LINEARITY_CONFIGS: dict[str, str] = {
+    'lenient-recovery': 'unwrap+validate',
     'large': 'parse',
     'enums': 'unwrap+validate',
     'unions': 'unwrap+validate',

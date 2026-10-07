@@ -24,8 +24,8 @@ are optional parser passes: validation without public unwrapping uses private
 unwrapped copies.
 
 The driver (`parser/entry.py`) runs the passes as seven stages, in this order,
-and records each one that finishes in `Raml.completed` and the one that raised
-in `Raml.stopped_at` (`Stage` in `registry.py`; docs/13 § 1):
+and records each one that finishes in `Raml.completed` and the one that stopped
+parsing in `Raml.stopped_at` (`Stage` in `registry.py`; docs/13 § 1):
 
 | Stage | Passes |
 |---|---|
@@ -141,9 +141,11 @@ A model `parse_lenient()` returns holds these for the stages in
 
 ## 5. Errors and recovery
 
-Strict entry points raise accumulated errors. `parse_lenient()` returns a partial
-model unless entry loading fails, or its outermost failure has one of the entry
-classifications at the entry URI described in [11](11-diagnostics.md). The same
+Strict entry points raise accumulated errors. `parse_lenient()` collects errors
+at safe local boundaries and continues independent work (docs/11 § 2).
+It returns a partial model unless entry loading fails, or its outermost failure
+has one of the entry classifications at the entry URI described in
+[11](11-diagnostics.md). The same
 classification in an included fragment remains recoverable.
 
 ## 6. Endpoint construction

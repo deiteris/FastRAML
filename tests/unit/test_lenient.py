@@ -200,6 +200,10 @@ class TestTheModelSaysHowFarItGot:
     def test_a_failure_names_its_stage_and_everything_before_it(self, workspace, stage):
         raml, error = workspace.lenient_document(API + self.FAILURES[stage], BOTH)
         assert error is not None
+        if stage in (Stage.SECURITY, Stage.ANNOTATIONS):
+            assert raml.stopped_at is None
+            assert raml.completed == list(self.ORDER)
+            return
         assert raml.stopped_at is stage
         assert raml.completed == list(self.ORDER[: self.ORDER.index(stage)])
 
@@ -415,6 +419,29 @@ class TestABrokenDefinitionIsKeptAndMarked:
         raml, _ = workspace.lenient(root / 'api.raml', BOTH)
         fragment = raml.fragments[raml.entry_point.security_schemes['s'].link_uri]
         assert fragment.definition.name == 'scheme.raml', 'named after the file, as on success'
+        assert fragment.definition.id in raml.broken
+
+    @pytest.mark.parametrize(
+        ('kind', 'key', 'attribute', 'body'),
+        [
+            ('Trait', 'traits', 'traits', 'usage: {wrong: kind}\n'),
+            ('ResourceType', 'resourceTypes', 'resource_types', 'usage: {wrong: kind}\n'),
+            ('SecurityScheme', 'securitySchemes', 'security_schemes', 'type: Nope\n'),
+        ],
+    )
+    def test_a_failed_loaded_definition_keeps_its_partial_include_link(self, workspace, kind, key, attribute, body):
+        root = workspace(
+            {
+                'api.raml': API + f'{key}:\n  d: !include definition.raml\n',
+                'definition.raml': f'#%RAML 1.0 {kind}\n' + body,
+            }
+        )
+        raml, error = workspace.lenient(root / 'api.raml', BOTH)
+        assert error is not None
+        declaration = getattr(raml.entry_point, attribute)['d']
+        fragment = raml.fragments[path_to_file_uri(root / 'definition.raml')]
+        assert declaration.link is fragment.definition
+        assert declaration.id in raml.broken
         assert fragment.definition.id in raml.broken
 
 
@@ -657,9 +684,10 @@ class TestACheckThatBuildsNothingMarksNothing:
             BOTH,
         )
         assert error.head.message == 'discriminator on an inline type declaration'
-        assert raml.stopped_at is Stage.RESOLVED
+        assert raml.stopped_at is None
+        assert raml.completed == list(Stage)
         assert raml.broken == {}
-        # Stopped at RESOLVED, but P7 finished: every shape has its kind (I5).
+        # The declaration check recovered after P7 settled every kind (I5).
         assert not [shape for shape in raml.shapes if type(shape.shape).__name__ == 'UnknownShape']
 
     def test_validation(self, workspace):
@@ -785,8 +813,8 @@ class TestItStopsWhereStrictStops:
     new one. One missing library used by twenty types produced **41**
     diagnostics instead of one.
 
-    So the error is exactly what a strict parse would have raised, and the
-    model is the difference. Recovering the genuinely independent diagnostics
+    Outside the safe local recovery boundaries (docs/11 § 2), the error is
+    exactly what a strict parse would have raised. Recovering other independent diagnostics
     means skipping the broken *entities* inside P9 and P10, not the passes;
     `docs/research/partial-models.md` § 7 proposes it, gated on measurement.
     """

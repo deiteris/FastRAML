@@ -1,6 +1,6 @@
 # 18. Linting
 
-Linting is policy over a successfully parsed RAML document. Parsing and
+Linting is policy over an effective RAML model. Parsing and
 validation answer whether a document is legal RAML; lint rules report useful
 judgements about an effective document. `fastraml/views/lint/` runs after parsing,
 holds no parser pass, and decides no RAML conformance rule.
@@ -22,6 +22,12 @@ organisation belongs in a plugin, not in the default built-ins.
 The linter runs over the effective, unwrapped model and graph. It can therefore
 judge the result of inheritance, traits, resource types, security inheritance,
 and resolution without reimplementing those operations.
+
+A lenient model can finish unwrap while retaining failed security references
+(docs/11 § 2). The visitor walk skips unresolved reference graph
+placeholders: they have no resolved entity to judge, and the parser has already
+reported their failures. Sound entities still receive the ordinary policy checks.
+An unknown graph-node kind remains an engine error.
 
 ## 2. Rules and rulesets
 

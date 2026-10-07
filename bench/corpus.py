@@ -39,6 +39,7 @@ __all__ = [
     'write_inline_json',
     'write_jsonschema',
     'write_large',
+    'write_lenient_recovery',
     'write_projections',
     'write_reference_namespaces',
     'write_schema_allof',
@@ -59,6 +60,36 @@ def _write(root: Path, files: dict[str, str]) -> None:
 
 
 # -- types --------------------------------------------------------------------
+
+
+def write_lenient_recovery(root: Path, *, family_count: int = 200) -> Path:
+    """Contained declaration, endpoint and binding errors beside sound types."""
+    schemes = ['  good: {type: Basic Authentication}\n']
+    types = []
+    resources = []
+    files = {}
+    for index in range(family_count):
+        schemes.append(
+            f'  bad{index}:\n    type: OAuth 2.0\n    settings:\n'
+            '      accessTokenUri: https://e.test/token\n'
+            f'  included{index}: !include scheme{index}.raml\n'
+        )
+        files[f'scheme{index}.raml'] = '#%RAML 1.0 SecurityScheme\ntype: Nope\n'
+        types.append(f'  Name{index}: {{type: string, minLength: 2}}\n')
+        resources.append(
+            f'/r{index}:\n  get:\n'
+            '    unknown: true\n'
+            f'    securedBy: [{{bad{index}: {{scopes: [read]}}}}, included{index}, missing{index}, good]\n'
+            f'    queryParameters: {{name: Name{index}, after: integer}}\n'
+        )
+    files['api.raml'] = (
+        '#%RAML 1.0\ntitle: Lenient recovery\nunknown: true\n(missing): 1\nsecuritySchemes:\n'
+        + ''.join(schemes)
+        + 'types:\n'
+        + ''.join(types + resources)
+    )
+    _write(root, files)
+    return root / 'api.raml'
 
 
 def write_hover(root: Path, *, family_count: int = 400) -> Path:

@@ -527,7 +527,7 @@ class TestDiagnostics:
         assert root not in queries.diagnostics(workspace.snapshot(root))
 
 
-#: One mistake that stops the parse at each stage.
+#: One mistake at each stage, including locally recovered failures.
 FAILURES = _Lenient.FAILURES
 
 
@@ -549,7 +549,11 @@ class TestAStoppedParseAnswersFromItsStages:
         root = f'{folder}/api.raml'
         snapshot = workspace.snapshot(root)
         assert snapshot.raml is not None
-        assert snapshot.raml.stopped_at is stage
+        if stage in (Stage.SECURITY, Stage.ANNOTATIONS):
+            assert snapshot.raml.stopped_at is None
+            assert snapshot.raml.completed == list(Stage)
+        else:
+            assert snapshot.raml.stopped_at is stage
         for line, column in (_where(text, 'Book\n'), _where(text, 'paged: {'), _where(text, 'lib.Person')):
             queries.definition(snapshot, root, line, column)
             queries.references(snapshot, root, line, column)

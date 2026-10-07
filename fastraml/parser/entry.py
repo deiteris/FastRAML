@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Literal
 
-from fastraml.errors import ErrorKind, RamlError
+from fastraml.errors import Accumulator, ErrorKind, RamlError
 from fastraml.gctuning import tuned_gc
 from fastraml.loaders import build_loader
 from fastraml.parser.annotations import resolve_domain_extensions
@@ -152,9 +152,9 @@ def parse_lenient(path: str | os.PathLike[str], options: ParseOptions | None = N
     For an editor integration: a document with a mistake still yields the
     fragments, endpoints and types decoded before the failing construct.
 
-    Runs the same passes in the same order and stops where a strict parse
-    stops, returning the half-built `Raml` with the error `parse_from_path`
-    would have raised (docs/11 § 2).
+    Runs the same passes in the same order. Safe local boundaries recover
+    diagnostics; prerequisite failures stop at the failing stage
+    (docs/11 § 2).
 
     Entry loading, unknown or unsupported headers, fragment-kind mismatches, and
     non-mapping entry roots still raise, because they leave no trustworthy entry
@@ -162,6 +162,8 @@ def parse_lenient(path: str | os.PathLike[str], options: ParseOptions | None = N
     """
     options = options or _DEFAULT_OPTIONS
     raml, uri, text = _open(path, options)
+    errors = Accumulator()
+    raml.recovered_errors = errors
     try:
         _parse(raml, uri, text, options)
     except RamlError as err:
@@ -172,8 +174,10 @@ def parse_lenient(path: str | os.PathLike[str], options: ParseOptions | None = N
         # still be returned.
         if raml.entry_point is None:
             raml.entry_point = raml.get_fragment(uri)
-        return raml, err
-    return raml, None
+        errors.add(err)
+    finally:
+        raml.recovered_errors = None
+    return raml, errors.result()
 
 
 #: The failures `parse_lenient` re-raises. Each leaves no model, or a shell
@@ -236,7 +240,7 @@ def _run_passes(raml: Raml, uri: str, text: str, options: ParseOptions) -> Raml:
     # P8 — bind every `(annotation)` application to the type it names.
     # Unconditional: an undeclared annotation is malformed input whether or not
     # the caller asked to unwrap or validate.
-    with raml.stage(Stage.ANNOTATIONS):
+    with raml.stage(Stage.ANNOTATIONS, recover=True):
         resolve_domain_extensions(raml)
 
     # P9 — flatten every inheritance chain, then mark the cycles. Opt-in: the
@@ -299,7 +303,7 @@ def _resolve(raml: Raml, uri: str, text: str) -> None:
 
     # P5 — resolve `securedBy:` inheritance and bind every reference to the
     # scheme it names. After P4 because it walks `raml.endpoints`.
-    with raml.stage(Stage.SECURITY):
+    with raml.stage(Stage.SECURITY, recover=True):
         apply_security_schemes(raml)
 
     with raml.stage(Stage.RESOLVED):
@@ -311,4 +315,7 @@ def _resolve(raml: Raml, uri: str, text: str) -> None:
         # The one declaration rule that cannot wait for P10: a discriminator is
         # inherited, so after P9 every subtype of a discriminated type looks
         # like an inline declaration that wrote one (docs/05 § 6).
-        check_declared_discriminators(raml)
+        try:
+            check_declared_discriminators(raml)
+        except RamlError as error:
+            raml.recover(error)

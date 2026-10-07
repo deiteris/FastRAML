@@ -203,3 +203,6 @@ def test_long_union_labels_remain_short_without_losing_alternative_documentation
     assert '…' in hint.label
     assert 'Alpha' in hint.label
     assert all(f'Uses `{name}`' in hint.tooltip for name in names)
+    ellipsis = next(part for part in hint.parts if '…' in part.label)
+    assert ellipsis.tooltip is not None
+    assert 'Uses `Zeta`' in ellipsis.tooltip

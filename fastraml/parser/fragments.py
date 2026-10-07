@@ -591,7 +591,7 @@ class Library(_DeclaringFragment):
                 elif name == FACET_USAGE:
                     self.usage = make_string_facet(raml, key, value, self.location)
                 elif not self._decode_declarations(key, value, declarations):
-                    raise node_error('unknown field', self.location, key, info={'field': name})
+                    raml.recover(node_error('unknown field', self.location, key, info={'field': name}))
             except RamlError as err:
                 accumulator.add(err)
         accumulator.raise_if_any()
@@ -699,7 +699,7 @@ class APIFragment(_DeclaringFragment):
             # because the trait and resource-type merge runs on the YAML tree.
             self._raw_endpoints.append((key, value))
         else:
-            raise node_error('unknown field', self.location, key, info={'field': key.value})
+            self._raml.recover(node_error('unknown field', self.location, key, info={'field': key.value}))
 
     def _decode_root_facet(self, key: Node, value: Node) -> bool:
         """The API root's own facets. Returns whether the key was one of them."""
@@ -724,7 +724,7 @@ class APIFragment(_DeclaringFragment):
             check_uri_reference(facet.value, self.location, facet.value_pos)
             self.base_uri = facet
         elif name == FACET_BASE_URI_PARAMETERS:
-            self.base_uri_parameters = make_parameter_map(raml, value, self.location, 'uri')
+            make_parameter_map(raml, value, self.location, 'uri', self.base_uri_parameters)
         elif name == FACET_DOCUMENTATION:
             self.documentation = unmarshal_documentation_items(raml, key, value, self.location)
         elif name == FACET_USES:
@@ -1043,7 +1043,17 @@ def _one_definition(  # noqa: PLR0913 - the declaration, its kind, and where to 
     # Linked already when the file was content, not a fragment (docs/03 § 4.2).
     if definition.link_uri and definition.link is None:
         with raml.marking(definition):
-            fragment = parse_included_fragment(raml, definition.link_uri, kind, value, location, referrer=definition)
+            try:
+                fragment = parse_included_fragment(
+                    raml, definition.link_uri, kind, value, location, referrer=definition
+                )
+            except RamlError:
+                # A loaded definition fragment can still hold partial content.
+                # Preserve the link just as a second include from the cache does.
+                cached = raml.get_fragment(definition.link_uri)
+                if isinstance(cached, _DefinitionFragment) and cached.kind is kind:
+                    definition.link = cached.definition
+                raise
         definition.link = getattr(fragment, 'definition', None)
 
 
@@ -1081,7 +1091,12 @@ def decode_resource_type_definitions(
 def decode_security_scheme_definitions(
     raml: Raml, node: Node, location: str, declared: dict[str, SecuritySchemeDefinition]
 ) -> None:
-    _definitions(raml, node, location, FragmentKind.SECURITY_SCHEME, declared)
+    try:
+        _definitions(raml, node, location, FragmentKind.SECURITY_SCHEME, declared)
+    except RamlError as err:
+        # Security definitions do not supply prerequisites for endpoint building
+        # or type resolution. Their partial entities already carry broken marks.
+        raml.recover(err)
 
 
 class _Declarations:

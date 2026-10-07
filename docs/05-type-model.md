@@ -115,6 +115,11 @@ parameters, base-URI parameters, and `facets:` declarations.
 and base-URI parameters are `Parameter` entities that wrap a property with a
 binding of `header`, `query`, or `uri`, source positions, and an ID.
 
+Parameter maps are filled in place, with errors accumulated per declaration.
+A malformed parameter is absent, while valid parameters before and after it
+remain in their holder's map. The enclosing decoder reports the failures through
+its ordinary recovery boundary (docs/11 § 2).
+
 A `/regex/` key in `properties:` is a pattern property. It is always optional;
 `required:` and a trailing `?` are errors. Explicit names win, then the first
 matching pattern in declaration order wins. Patterns use unanchored search. A

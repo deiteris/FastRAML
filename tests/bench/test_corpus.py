@@ -64,6 +64,45 @@ class TestFeatureCorporaReachTheirCode:
     """
 
     @pytest.mark.parametrize('count', [2, 4])
+    def test_lenient_recovery_reaches_local_and_stage_boundaries(self, tmp_path, monkeypatch, count):
+        from bench.__main__ import run_one
+        from fastraml import Stage, parse_lenient
+
+        results = []
+
+        def parse(entry, options):
+            raml, error = parse_lenient(entry, options)
+            assert error is not None
+            assert len(list(error.chains())) == count * 4 + 2
+            assert raml.stopped_at is None
+            assert Stage.UNWRAPPED in raml.completed
+            assert (Stage.VALIDATED in raml.completed) is options.validate
+            assert len(raml.endpoints) == count
+            for endpoint in raml.endpoints.values():
+                operation = endpoint.operations['get']
+                bad, included, missing, good = operation.secured_by
+                assert bad.id in raml.broken
+                assert bad.compiled_params is None
+                assert included.id in raml.broken
+                assert included.definition.link is not None
+                assert missing.id in raml.broken
+                assert missing.definition is None
+                assert good.id not in raml.broken
+                assert operation.id in raml.broken
+                assert list(operation.request.query_parameters) == ['name', 'after']
+                name = operation.request.query_parameters['name'].base
+                assert name.validate('Alice') is None
+                assert name.validate('A') is not None
+            results.append(raml)
+            return raml, error
+
+        monkeypatch.setattr('fastraml.parse_lenient', parse)
+        entry = corpus.write_lenient_recovery(tmp_path, family_count=count)
+        run_one('lenient-recovery', 'unwrap+validate', entry, repeat=1)
+        run_one('lenient-recovery', 'unwrap+lint', entry, repeat=1)
+        assert len(results) == 4, 'timing and allocation both reach recovery and lint'
+
+    @pytest.mark.parametrize('count', [2, 4])
     def test_inlays_reaches_inferred_types_data_types_and_inherited_facets(self, tmp_path, monkeypatch, count):
         from bench.__main__ import run_one
         from fastraml.service import inlays

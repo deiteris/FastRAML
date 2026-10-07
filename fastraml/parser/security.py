@@ -169,10 +169,6 @@ class SecuritySchemeDefinition:
 # -- decoding a declaration ---------------------------------------------------
 
 
-def _detached(_definition: SecuritySchemeDefinition) -> None:
-    """A linked body is reached through its declaration, not declared itself."""
-
-
 def make_security_scheme_definition(  # noqa: PLR0912 - one pass over the declaration's key vocabulary
     raml: Raml,
     key_node: Node | None,
@@ -205,7 +201,7 @@ def make_security_scheme_definition(  # noqa: PLR0912 - one pass over the declar
             # (docs/03 § 4.2), linked as a SecurityScheme fragment's would be.
             body, written = content
             definition.link_uri = written
-            definition.link = make_security_scheme_definition(raml, None, body, written, attach=_detached)
+            make_security_scheme_definition(raml, None, body, written, attach=partial(setattr, definition, 'link'))
             return definition
         if is_null(value_node):
             raise node_error('security scheme must declare a type', location, value_node)
@@ -241,7 +237,7 @@ def make_security_scheme_definition(  # noqa: PLR0912 - one pass over the declar
             accumulator.add(node_error('security scheme must declare a type', location, value_node))
         else:
             try:
-                definition.settings = _make_settings(raml, definition.type, type_node, settings_node, location)
+                _make_settings(raml, definition, type_node, settings_node, location)
             except RamlError as err:
                 accumulator.add(err)
         accumulator.raise_if_any()
@@ -284,9 +280,10 @@ def _decode_described_by(
 
 
 def _make_settings(
-    raml: Raml, scheme_type: str, type_node: Node, settings_node: Node | None, location: str
-) -> SecuritySchemeSettings:
+    raml: Raml, definition: SecuritySchemeDefinition, type_node: Node, settings_node: Node | None, location: str
+) -> None:
     """Decode `settings:` for the declared type, then check what it requires."""
+    scheme_type = definition.type
     allowed = SCHEME_TYPES.get(scheme_type)
     if allowed is None:
         if not scheme_type.startswith('x-'):
@@ -296,6 +293,7 @@ def _make_settings(
         allowed = frozenset()
 
     settings = SecuritySchemeSettings(scheme_type=scheme_type, location=location)
+    definition.settings = settings
     if settings_node is not None and not is_null(settings_node):
         if not allowed:
             raise node_error(
@@ -304,7 +302,6 @@ def _make_settings(
         settings.value_pos = settings_node.full_position
         _decode_settings(raml, settings, allowed, settings_node, location)
     _validate_settings(settings, settings_node if settings_node is not None else type_node, location)
-    return settings
 
 
 #: Which of the accepted keys hold a sequence rather than a scalar.
@@ -483,6 +480,13 @@ def _bind(raml: Raml, scheme: SecurityScheme) -> None:
             'get security scheme definition', err, scheme.location, scheme.value_pos, info={'scheme': scheme.name}
         ) from err
     scheme.definition = definition
+    if raml.recovered_errors is not None:
+        failure = raml.broken.get(definition.id) or raml.broken.get(definition.resolved().id)
+        if failure is not None:
+            # Keep the reference and the partial definition. Its declaration
+            # already reported the fault; incomplete settings cannot narrow scopes.
+            raml.mark(scheme, failure)
+            return
     if scheme.params:
         _apply_params(scheme, definition.resolved())
 

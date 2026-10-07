@@ -129,10 +129,42 @@ mistake. Below a declaration, a failed property, `items` or `anyOf` member
 is absent from its declaration, which keeps its kind and the children that
 built, and is marked.
 
-`parse_lenient()` runs the same passes as `parse_from_path()` and stops at the
-same failing pass. It returns the registry built up to that point and the error
-that strict parsing would raise. Successfully decoded siblings remain available;
-the construct that failed can be absent or incomplete.
+`parse_lenient()` runs the same passes as `parse_from_path()`, using one shared
+diagnostic accumulator at explicitly chosen recovery boundaries. `Raml.recover`
+raises in strict parsing and records a diagnostic in lenient parsing. A stage
+with `recover=True` completes after its local errors are recorded. Incomplete
+entities are recorded only in the ordinary `Raml.broken` map. Recoverability
+comes from the boundary, never from matching an error message.
+
+The boundaries that let later passes run are:
+
+- unknown fields at API and Library roots, resources, methods and responses:
+  no prerequisite was changed; an endpoint field's error marks its enclosing
+  entities through the ordinary marking scopes;
+- `securitySchemes:` decoding (docs/09 § A7): definitions are independent of
+  endpoint construction and type resolution;
+- P5 security binding and P8 annotation binding: failed references stay marked,
+  and validation skips an unbound annotation;
+- the discriminator inline-declaration check: it reports a declaration rule
+  without changing the model, so it does not prevent unwrap.
+
+Composition, loading, other declaration and endpoint decoding, P7 type resolution
+and P9 inheritance failures still stop parsing. Continuing through an unresolved type
+graph would invent effective types or duplicate prerequisite diagnostics.
+For example, an unknown type facet is retained as a custom facet until P10,
+where `unknown facet` is reported without losing the model. By contrast,
+`minLength: two`, a malformed `description`, `type`, `properties`, `items` or
+`anyOf` can fail declaration decoding before endpoints are built. Malformed
+example wrappers, inline `examples:` maps and documentation entries can likewise
+stop fragment decoding; only the siblings a local decoder retains survive.
+P10 declaration checks, invalid examples and invalid defaults run after the
+model is built and do not discard it.
+
+The result contains all recovered diagnostics plus the error from any stage that
+stopped parsing. Successfully decoded siblings remain available; a failed
+construct can be absent or incomplete. `completed` records stages that reached
+their recovery boundary, so all requested stages may complete with a nonempty
+error and `stopped_at=None`.
 
 When P9 fails, recursion is still marked over every declaration, so a
 consumer's walk of the returned model terminates. A declaration whose merge

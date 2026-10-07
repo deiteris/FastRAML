@@ -119,6 +119,34 @@ Code: `parser/directives.py`, `parser/security.py`, and
 `parser/source_decode.py`. Tests: `tests/unit/test_security.py` and
 `tests/unit/test_source_ir.py`.
 
+### A7. Lenient recovery
+
+`parse_lenient()` uses the shared recovery mechanism (docs/11 § 2) at
+`securitySchemes:` decoding and P5 binding, then continues the pipeline.
+A malformed definition, its settings or `describedBy`, an unloadable scheme
+include, or an unknown scheme name therefore
+does not prevent endpoint construction or ordinary type resolution, unwrapping
+and validation. A malformed `securitySchemes:` container is also local to that
+declaration map. Strict entry points still stop at the first failing stage.
+
+Definitions and references remain in declaration order. A failed definition
+keeps its decoded fields, including partial settings and linked include content,
+and is marked in `Raml.broken`. A reference to it keeps `definition` and is
+marked too. P5 skips application-parameter checks for that definition: incomplete
+settings cannot reliably narrow scopes, and must not produce cascading errors.
+A reference to an unknown name keeps `definition=None` and is marked. Sound
+definitions and references bind normally; failed references are never removed
+from `secured_by`, since an empty list would imply an unsecured operation.
+
+The returned error includes the security diagnostics and any later diagnostics.
+Prerequisite failures still stop the pipeline. In particular, P7 type-resolution
+errors in `describedBy` use the ordinary stopping rule. A stage that recovers a
+security error locally is in `Raml.completed`;
+`stopped_at` is `None` if all requested stages finish, even when the returned
+error is nonempty. Check `Raml.broken` before treating a scheme as complete.
+
+Tests: `tests/unit/test_lenient_security.py`.
+
 ## Part B - Annotations (domain extensions)
 
 ### B1. Model and application

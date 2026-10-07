@@ -86,7 +86,7 @@ must receive a parser diagnostic rather than `RecursionError`.
 
 ## 4. Benchmark suite
 
-`bench/` generates deterministic corpora and measures twenty-eight workloads:
+`bench/` generates deterministic corpora and measures twenty-nine workloads:
 
 | Bench | Primary coverage |
 |---|---|
@@ -109,6 +109,7 @@ must receive a parser diagnostic rather than `RecursionError`.
 | `templates` | resource types and a trait with parameters and transforms: a collection per resource and an item child, applied as real APIs apply them ([08](08-templates-and-endpoints.md) § 5) |
 | `sequence-merge` | a trait's query-parameter `enum` of 5, 100, and 1000 values merged into the method's own, half of them shared: the structural merge's union by value ([08](08-templates-and-endpoints.md) § 1) |
 | `template-scopes` | literal included library resource types using their own security scheme, a literal included trait with parameter annotations restricted to `TypeDeclaration`, and a standalone trait using a scheme from its own imports ([09](09-security-and-annotations.md) § A6, § B4) |
+| `lenient-recovery` | shared recovery from unknown root/endpoint fields, malformed inline/included scheme definitions, and unknown security/annotation references, with sound types reaching resolution, unwrap and validation ([11](11-diagnostics.md) § 2) |
 | `reference-namespaces` | substituted resource-type, trait, security-scheme, annotation and data-type names with caller/library collisions, forwarded nested arguments, and a static annotation name with a substituted value ([08](08-templates-and-endpoints.md) § 4.2) |
 | `includes` | an example per resource from a `.json` and a `.yaml` file each: data includes, the header check, and the `.json` whitespace rule, one in four tab-indented and one in sixteen with a tab before `{`; and a Trait fragment per resource, whose header is read to tell it from content ([03](03-yaml-and-io.md) § 4.2) |
 | `include-content` | each resource, each trait, and the `types:` map, written in a file of its own and included as literal content ([03](03-yaml-and-io.md) § 4.2) |
@@ -120,7 +121,7 @@ must receive a parser diagnostic rather than `RecursionError`.
 | `inlays` | a cold snapshot, inferred declaration types, expected types at supplied custom-facet/annotation roots and nested data keys, and compact inherited constraints anchored to type references ([21](21-language-service.md) § 4.4) |
 
 The six general workloads are `small`, `large`, `endpoints`, `extensions`,
-`validate` and `jsonschema`. The other twenty-two are feature workloads:
+`validate` and `jsonschema`. The other twenty-three are feature workloads:
 each exists because no general workload runs the code it covers. Their reach
 tests (`tests/bench/test_corpus.py`) count calls or check bound results, and fail
 if a corpus stops reaching that code at every size it covers.

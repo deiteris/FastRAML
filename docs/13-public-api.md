@@ -35,17 +35,22 @@ def parse_lenient(
 need a real filesystem base. Strict entry points raise `RamlError`.
 
 `parse_lenient` runs the same pipeline and returns a partial model with a
-nonfatal accumulated error. It stops at the pass where strict parsing stops; it
-does not run later passes against incomplete prerequisites. An entry load failure
-always raises. During parsing, an unknown or unsupported fragment kind, a
+nonfatal accumulated error. Safe local boundaries recover unknown API/Library
+fields, unknown endpoint fields, security definitions, security and annotation
+binding, and the discriminator inline-declaration check (docs/11 § 2).
+Prerequisite failures stop at the pass where strict parsing stops; later passes
+do not run against their incomplete prerequisites. An entry load failure always
+raises. During parsing, an unknown or unsupported fragment kind, a
 fragment-kind mismatch, a non-mapping root, or an `extends` chain that cannot
 be loaded (`extends is required`, `extends must be a string`, `resolve
 extends`) raises only when the outer frame's location is the entry URI; the
 same failure in an included fragment is returned with the partial model.
 
 A returned model says how far it got. `Raml.completed` lists the stages that
-finished, in order, and `Raml.stopped_at` names the stage that raised, or is
-`None` (docs/02 § 1). Gate a feature on membership, as in
+finished, in order, and `Raml.stopped_at` names the stage that stopped parsing, or
+is `None` (docs/02 § 1). Locally recovered errors can leave all requested
+stages completed and `stopped_at=None` with a nonempty returned error. Gate a
+feature on membership, as in
 `Stage.RESOLVED in raml.completed`, never on a later stage having run: P9 is
 optional, so `VALIDATED` can finish without `UNWRAPPED`. A stage that did not
 run leaves its outputs at their defaults; for example, `endpoints` is empty
@@ -72,19 +77,20 @@ complete. The invariants of docs/02 § 4 hold for every entity that is not
 marked. An entity is marked if its own content failed or if the failure
 passed through it from something it contains, so a marked entity may hold
 sound and marked children. The mark carries that entity's chain; the
-returned error is still the one a strict parse raises. What is kept and
-marked today:
+returned error includes locally recovered failures and any later failure.
+What is kept and marked today:
 
 | Entity | Kept as |
 |---|---|
 | A type or annotation type declaration, or a DataType fragment's root | Its kind, and each property, `items` or `anyOf` member that built; the failed one is absent, and the other facets are not decoded. A failure before its kind was settled leaves an `UnknownShape`, never `shape is None` |
-| A trait, resource type or security scheme definition | Every key that decoded; a security scheme's `describedBy` and its responses as a resource's. One whose `!include` failed has `link is None` |
+| A trait, resource type or security scheme definition | Every key that decoded; a security scheme's `describedBy` and its responses as a resource's. An unloadable `!include` has `link is None`; a loaded definition fragment keeps its partial link |
 | A resource, an operation, a response | Every key that decoded, and every child, sound or marked |
 | A nested resource whose full URI an earlier resource took, and each resource enclosing it | In its parent's `endpoints`, but not in `Raml.endpoints`. A top-level one is absent, with every resource beneath it |
 | An operation a trait failed to apply to, and a resource a resource type failed to apply to; each resource enclosing either | Everything but that template's contribution. The `DirectiveRef` stays in `traits` or `resource_type`, with `resolved is None` if the name matched nothing |
 | A `uses:` entry whose library failed | The library as it stands, if it loaded; otherwise `link is None` |
 | A type declaration, `examples:` holder or definition whose `!include` finds a fragment that failed on an earlier include | Linked to the fragment as it stands; nothing is reported again |
 | A `securedBy:` entry whose scheme did not bind, or whose parameters failed (P5) | `definition is None` if the name bound nothing; a scheme that bound keeps `definition` when its `scopes` failed |
+| A `securedBy:` entry naming a broken security definition in a lenient parse | Its partial `definition`; application parameters are not compiled |
 | A shape whose kind P7 could not settle, and each shape the failure passed through | An `UnknownShape`; one whose kind P7 settled but whose declaration facets failed keeps its kind, as a declaration does |
 | An annotation application whose type P8 could not find | `defined_by is None` |
 | A shape whose merge P9 rejected, and each shape enclosing or inheriting from it | Its declared, unmerged form, not flagged unwrapped (docs/07 § 6) |

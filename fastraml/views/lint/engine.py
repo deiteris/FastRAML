@@ -774,7 +774,10 @@ class _FanOut:
             role = _NODE_ROLES.get(type(node))
             if role is None:
                 if isinstance(node, UnresolvedNode):
-                    raise RuntimeError(f'unresolved reference reached lint graph at {iri}: {node.entity.name}')
+                    # Lenient recovery can finish unwrap with a failed security
+                    # reference. The parser already diagnosed it;
+                    # a placeholder has no resolved entity for a rule to judge.
+                    continue
                 raise RuntimeError(f'lint has no visitor role for graph node: {type(node).__name__}')
             if isinstance(node, TypeNode):
                 self._fan(role, iri, node.entity, node.shape_kind)

@@ -144,9 +144,10 @@ class _Marking:
         self._entity = entity
 
     def __enter__(self) -> None:
-        pass
+        self._raml._marking_stack.append(self._entity)  # noqa: SLF001 - this scope owns the stack
 
     def __exit__(self, kind: object, error: BaseException | None, traceback: object) -> None:
+        self._raml._marking_stack.pop()  # noqa: SLF001 - see above
         if isinstance(error, RamlError):
             self._raml.mark(self._entity, error)
 
@@ -223,12 +224,14 @@ class Raml:
         '_scopes',
         '_id_counter',
         '_parse_ctx_stack',
+        '_marking_stack',
         'annotation_sites',
         'annotation_type_changes',
         'broken',
         'completed',
         'entry_point',
         'extensions',
+        'recovered_errors',
         'source_info',
         'source_nodes',
         'source_texts',
@@ -307,6 +310,7 @@ class Raml:
         self.global_secured_by: list[SecurityScheme] = []
 
         self._parse_ctx_stack: list[ParseCtx] = []
+        self._marking_stack: list[Identified] = []
         # Created by the annotation decoder only for retained application sites;
         # P4 releases it after materialization (docs/09 § B4).
         self.annotation_sites: AnnotationSites | None = None
@@ -335,6 +339,9 @@ class Raml:
         #: its identity (name, positions) is sound; its content is partial
         #: (docs/13 § 1).
         self.broken: dict[int, RamlError] = {}
+        #: Enabled only by the lenient driver. Safe local boundaries record
+        #: diagnostics here; incomplete entities use the ordinary `broken` map.
+        self.recovered_errors: Accumulator | None = None
         self.source_nodes: dict[str, Node] = {}
         self.source_texts: dict[str, str] = {}
         self.source_info: SourceInfo | None = {} if retain_source else None
@@ -374,14 +381,32 @@ class Raml:
         return _TargetScope(self, target)
 
     @contextmanager
-    def stage(self, stage: Stage) -> Iterator[None]:
+    def stage(self, stage: Stage, *, recover: bool = False) -> Iterator[None]:
         """Run one step of the pass driver, recording whether it finished."""
         try:
             yield
+        except RamlError as error:
+            if not recover or self.recovered_errors is None:
+                self.stopped_at = stage
+                raise
+            self.recover(error)
         except BaseException:
             self.stopped_at = stage
             raise
         self.completed.append(stage)
+
+    def recover(self, error: RamlError) -> None:
+        """Report a failure at a boundary safe for later passes (docs/11 § 2).
+
+        Strict parsing raises it. Lenient parsing records it without changing
+        the stopping stage. Callers retain and mark incomplete entities before
+        using this boundary; the error's wording never decides recoverability.
+        """
+        if self.recovered_errors is None:
+            raise error
+        self.recovered_errors.add(error)
+        for entity in self._marking_stack:
+            self.mark(entity, error)
 
     def mark(self, entity: Identified, error: RamlError) -> None:
         """Record that `entity` is in the model but incomplete (docs/13 § 1).

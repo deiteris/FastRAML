@@ -261,7 +261,7 @@ class TestContextualDocumentation:
             assert 'HTTP method' not in text
 
     def test_key_help_survives_a_semantic_error_before_binding(self, memory_workspace):
-        document = '#%RAML 1.0\ntitle: T\ntypes:\n  Data:\n    type: object\n    properties: {}\nunknown: true\n'
+        document = '#%RAML 1.0\ntitle: T\ntypes:\n  Data:\n    type: object\n    properties: []\n'
         workspace, folder = _buffered(memory_workspace, {'api.raml': document})
         snapshot = workspace.snapshot(f'{folder}/api.raml')
         assert snapshot.error is not None

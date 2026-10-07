@@ -172,7 +172,8 @@ def _stages(raml: Raml, error: RamlError | None) -> list[str]:
             return [f'clean, but stopped at {raml.stopped_at}, {len(raml.broken)} marks, completed {raml.completed}']
         return []
     if raml.stopped_at is None:
-        return ['an error, but nothing stopped']
+        # Safe local errors recover without stopping a stage (docs/11 § 2).
+        return [] if raml.completed == _STAGES else ['an error, incomplete stages, but nothing stopped']
     expected = _STAGES[: _STAGES.index(raml.stopped_at)]
     if raml.completed != expected:
         return [f'stopped at {raml.stopped_at}, but completed {raml.completed}']
@@ -332,9 +333,10 @@ def test_every_mutation_of_a_valid_tck_document_keeps_the_contract():
         text = path.read_bytes().decode('utf-8-sig')
         corpus.run(path, workspace, path, mutations(text), fixture_id(root, path))
     assert not corpus.offenders, _report(corpus)
-    # Not vacuous: every stage was reached and stopped at, marks were made,
+    # Not vacuous: every stopping boundary was reached, marks were made,
     # and the views ran.
-    assert {f'stopped at {stage.value}' for stage in Stage} <= set(corpus.tally), corpus.tally
+    stopping = (Stage.DECODED, Stage.ENDPOINTS, Stage.RESOLVED, Stage.UNWRAPPED, Stage.VALIDATED)
+    assert {f'stopped at {stage.value}' for stage in stopping} <= set(corpus.tally), corpus.tally
     assert corpus.tally['marked'] > 0, corpus.tally
     assert corpus.tally['views'] > 0, corpus.tally
 

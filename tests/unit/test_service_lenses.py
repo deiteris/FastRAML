@@ -23,12 +23,22 @@ def test_effective_view_renders_all_inherited_and_authored_members(memory_worksp
 
 
 def test_lenses_do_not_offer_an_effective_view_for_a_stopped_parse(memory_workspace):
-    document = DOCUMENT + 'unknown: true\n'
+    document = DOCUMENT + 'baseUriParameters: 3\n'
     workspace, folder = _buffered(memory_workspace, {'api.raml': document})
     uri = f'{folder}/api.raml'
     snapshot = workspace.snapshot(uri)
     assert not lenses.code_lenses(snapshot, uri)
     assert lenses.effective_type(snapshot, uri, *_where(document, 'User:'), name='User') is None
+
+
+def test_unknown_root_fields_leave_effective_views_available(memory_workspace):
+    document = DOCUMENT + 'unknown: true\n'
+    workspace, folder = _buffered(memory_workspace, {'api.raml': document})
+    uri = f'{folder}/api.raml'
+    snapshot = workspace.snapshot(uri)
+    assert snapshot.error is not None
+    assert any(lens.name == 'User' for lens in lenses.code_lenses(snapshot, uri))
+    assert lenses.effective_type(snapshot, uri, *_where(document, 'User:'), name='User') is not None
 
 
 def test_stale_name_and_location_are_not_reused_after_edit(memory_workspace):

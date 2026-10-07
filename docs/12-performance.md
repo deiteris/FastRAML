@@ -86,7 +86,7 @@ must receive a parser diagnostic rather than `RecursionError`.
 
 ## 4. Benchmark suite
 
-`bench/` generates deterministic corpora and measures twenty-nine workloads:
+`bench/` generates deterministic corpora and measures thirty workloads:
 
 | Bench | Primary coverage |
 |---|---|
@@ -116,12 +116,13 @@ must receive a parser diagnostic rather than `RecursionError`.
 | `inline-json` | JSON-encoded strings in examples, enums, defaults, annotations, and custom facets; one decoding step per value ([03](03-yaml-and-io.md) § 6) |
 | `annotation-targets` | included annotation restrictions, query strings and nested body declarations, literal and substituted template-root annotations, annotated substituted type names, and annotated default and discriminator scalars ([09](09-security-and-annotations.md) § B4) |
 | `doc-links` | description-link resolution in the tree and lint ([16](16-graph.md) § 11) |
+| `non-strict-examples` | lint warnings for single and included named examples with `strict: false`, with aliases and shared includes testing source-site deduplication ([18](18-linting.md) § 2) |
 | `hover` | a cold language-service snapshot, fourteen authoring hovers per type family and custom-facet definition queries: inherited summaries, facet explanations, built-ins, custom-facet declarations and supplied keys, nested custom-facet and annotation keys and values, property presence, methods and response statuses ([21](21-language-service.md) § 4.2) |
 | `effective-types` | a cold service snapshot, code-lens enumeration and full-depth RAML rendering for every named type and annotation type, including nested arrays, unions, scalar item constraints and recursive references ([21](21-language-service.md) § 4.3) |
 | `inlays` | a cold snapshot, inferred declaration types, expected types at supplied custom-facet/annotation roots and nested data keys, and compact inherited constraints anchored to type references ([21](21-language-service.md) § 4.4) |
 
 The six general workloads are `small`, `large`, `endpoints`, `extensions`,
-`validate` and `jsonschema`. The other twenty-three are feature workloads:
+`validate` and `jsonschema`. The other twenty-four are feature workloads:
 each exists because no general workload runs the code it covers. Their reach
 tests (`tests/bench/test_corpus.py`) count calls or check bound results, and fail
 if a corpus stops reaching that code at every size it covers.
@@ -139,6 +140,8 @@ every configuration's, its peak RSS includes tracemalloc's overhead, which
 grows with the allocation, here nearly twice `unwrap+validate`'s. Without
 tracemalloc, a run of edits on `large` settles at 75 MB. Corpus generation is outside the
 timed region.
+For `non-strict-examples`, `unwrap+lint` disables finding limits so retained
+memory scales with all produced findings rather than a fixed output cap.
 For `schema-export`, `unwrap` additionally exports each schema as RAML after
 parsing; its other configurations keep their ordinary meanings. The reach test
 guards both sides, so `parse` cannot accidentally measure the export.

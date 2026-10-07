@@ -245,6 +245,98 @@ class TestNavigation:
         assert ''.join(part.value for part in hint.label) == '[string]'
         assert hint.label[1].location.uri == uri
         assert hint.label[1].location.range.start == _position(document, 'name: string')
+        assert hint.tooltip is None  # the client obtains declaration hover through the label's location
+        assert all(part.tooltip is None for part in hint.label)
+        hover = lsp.run(
+            lsp.client.text_document_hover_async(types.HoverParams(_document(uri), hint.label[1].location.range.start))
+        )
+        assert 'object property' in hover.contents.value
+        assert 'Presence: **required**' in hover.contents.value
+
+    @pytest.mark.parametrize('same_type', [False, True])
+    def test_inlay_union_docs_have_one_owner_and_keep_ambiguity(self, lsp, same_type):
+        uri = _uri(lsp, 'union-hints.raml')
+        second_type = 'string' if same_type else 'integer'
+        document = (
+            '#%RAML 1.0\ntitle: T\ntypes:\n  A:\n    properties:\n      value:\n'
+            '        type: string\n        description: Meaning in A.\n'
+            '  B:\n    properties:\n      value:\n'
+            f'        type: {second_type}\n        description: Meaning in B.\n'
+            'annotationTypes:\n  either: A | B\n(either): {value: text}\n'
+        )
+        lsp.open(uri, document)
+        found = lsp.run(
+            lsp.client.text_document_inlay_hint_async(
+                types.InlayHintParams(
+                    _document(uri), types.Range(_position(document, 'value: text'), _position(document, 'text', 4))
+                )
+            )
+        )
+        (hint,) = found
+        assert 'no single alternative is assumed' in hint.tooltip.value
+        assert all(part.tooltip is None for part in hint.label)
+        if same_type:
+            assert all(part.location is None for part in hint.label)
+            assert 'Meaning in A.' in hint.tooltip.value
+            assert 'Meaning in B.' in hint.tooltip.value
+        else:
+            assert 'Meaning in A.' not in hint.tooltip.value
+            assert 'Meaning in B.' not in hint.tooltip.value
+            docs = [
+                lsp.run(
+                    lsp.client.text_document_hover_async(types.HoverParams(_document(uri), part.location.range.start))
+                ).contents.value
+                for part in hint.label
+                if part.location is not None
+            ]
+            assert len(docs) == 2
+            assert 'Meaning in A.' in docs[0]
+            assert 'Meaning in B.' in docs[1]
+
+    def test_inlay_constraint_details_remain_explicit(self, lsp):
+        uri = _uri(lsp, 'constraint-hints.raml')
+        document = '#%RAML 1.0\ntitle: T\ntypes:\n  Word:\n    type: string\n    minLength: 2\n  Use: Word\n'
+        lsp.open(uri, document)
+        found = lsp.run(
+            lsp.client.text_document_inlay_hint_async(
+                types.InlayHintParams(
+                    _document(uri), types.Range(_position(document, 'Use: Word'), _position(document, 'Use: Word', 9))
+                )
+            )
+        )
+        (hint,) = found
+        assert hint.kind is None
+        assert all(part.location is None and part.tooltip is None for part in hint.label)
+        assert 'minLength: 2' in hint.tooltip.value
+
+    def test_inlay_ellipsis_keeps_unlinked_alternative_docs_without_repeating_linked_docs(self, lsp):
+        uri = _uri(lsp, 'long-hints.raml')
+        names = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta']
+        declarations = ''.join(
+            f'  {name}: {{type: string, description: Meaning in {name}.}}\n'
+            f'  Wrapper{name}:\n    properties:\n      value: {name}\n'
+            for name in names
+        )
+        expression = ' | '.join(f'Wrapper{name}' for name in names)
+        document = (
+            f'#%RAML 1.0\ntitle: T\ntypes:\n{declarations}annotationTypes:\n'
+            f'  either: {expression}\n(either): {{value: text}}\n'
+        )
+        lsp.open(uri, document)
+        (hint,) = lsp.run(
+            lsp.client.text_document_inlay_hint_async(
+                types.InlayHintParams(
+                    _document(uri), types.Range(_position(document, 'value: text'), _position(document, 'text', 4))
+                )
+            )
+        )
+        assert 'no single alternative is assumed' in hint.tooltip.value
+        assert 'Meaning in Alpha.' not in hint.tooltip.value
+        ellipsis = next(part for part in hint.label if '…' in part.value)
+        assert ellipsis.location is None
+        assert 'Meaning in Zeta.' in ellipsis.tooltip.value
+        assert 'Meaning in Alpha.' not in ellipsis.tooltip.value
+        assert all(part.tooltip is None for part in hint.label if part.location is not None)
 
     def test_clients_without_the_effective_command_get_no_dead_lenses(self, tmp_path):
         write_files(tmp_path, {'api.raml': API, 'lib.raml': LIBRARY})

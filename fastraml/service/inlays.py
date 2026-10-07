@@ -22,6 +22,7 @@ class Part:
     label: str
     definition_uri: str | None = None
     definition_span: Position | None = None
+    tooltip: str | None = None
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -30,6 +31,7 @@ class Hint:
     parts: tuple[Part, ...]
     tooltip: str
     is_type: bool = True
+    note: str | None = None
 
     @property
     def label(self) -> str:

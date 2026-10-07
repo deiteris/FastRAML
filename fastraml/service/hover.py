@@ -54,6 +54,7 @@ _INLINE_LIMIT: Final = 160
 _TICKS: Final = re.compile(r'`+')
 _STATUS: Final = re.compile(r'[1-5][0-9]{2}')
 _OPERATORS: Final = re.compile(r'[\[\]|?]')
+_AMBIGUOUS: Final = '*Several typed declarations describe this token; no single alternative is assumed.*'
 
 type _Entity = BaseShape | LibraryLink | TemplateDefinition | SecuritySchemeDefinition
 
@@ -265,10 +266,11 @@ class Hover:
             parts = [Part('[')]
             targets = [target for alternatives in types.values() for target in alternatives]
             length = 0
-            for name, alternatives in types.items():
+            for index, (name, alternatives) in enumerate(types.items()):
                 label = type_label(name)
                 if length and length + len(label) + 3 > LABEL_LIMIT:
-                    parts.append(Part(' | …'))
+                    remaining = [target for group in list(types.values())[index:] for target in group]
+                    parts.append(Part(' | …', tooltip=self._data_docs(remaining, warn=False)))
                     break
                 if length:
                     parts.append(Part(' | '))
@@ -283,10 +285,19 @@ class Hover:
                     if len(definitions) == 1 and all(target.base.key_pos.is_known for target in alternatives)
                     else None
                 )
-                parts.append(Part(label, *(definition or (None, None))))
+                parts.append(
+                    Part(
+                        label,
+                        definition[0] if definition is not None else None,
+                        definition[1] if definition is not None else None,
+                        tooltip=self._data_docs(alternatives, warn=False),
+                    )
+                )
                 length += len(label)
             parts.append(Part(']'))
-            hints.append(Hint(position, tuple(parts), self._data_docs(targets)))
+            hints.append(
+                Hint(position, tuple(parts), self._data_docs(targets), note=_AMBIGUOUS if len(targets) > 1 else None)
+            )
         return sorted(hints, key=lambda hint: (hint.position.line, hint.position.column, hint.label))
 
     def _declaration_hints(self, uri: str, source: Key) -> Iterator[Hint]:
@@ -520,10 +531,10 @@ class Hover:
         self._data_descriptions[target] = text
         return text
 
-    def _data_docs(self, targets: list[DataTarget]) -> str:
+    def _data_docs(self, targets: list[DataTarget], *, warn: bool = True) -> str:
         text = '\n\n---\n\n'.join(dict.fromkeys(self._data_doc(target) for target in targets))
-        if len(targets) > 1:
-            text = '*Several typed declarations describe this token; no single alternative is assumed.*\n\n' + text
+        if warn and len(targets) > 1:
+            text = _AMBIGUOUS + '\n\n' + text
         return text
 
     def _builtin(self, name: str) -> str:

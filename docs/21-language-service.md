@@ -346,6 +346,15 @@ documentation in its tooltip. Each displayed type part carries its declaration
 location only when that target is unambiguous; same-type candidates retain all
 their documentation without choosing an arbitrary navigation target.
 
+Linked type-label parts rely on the editor's declaration hover. The adapter
+does not repeat that declaration prose in a hint or part tooltip, because
+VS Code combines both into the same popup. A linked union keeps its ambiguity
+note at hint level; any unlinked alternative keeps its own documentation at
+part level. A hint with no usable navigation locations retains its complete
+tooltip instead. An abbreviated union's ellipsis retains the omitted
+alternatives' documentation. Inferred types and constraint summaries retain their explicit
+tooltips, including full inherited constraints.
+
 Source ranges are filtered by the actual hint anchor, after a key or type
 reference, including when the range starts inside that token. Declaration
 hints are cached per file and range queries use sorted anchor indices.

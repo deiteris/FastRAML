@@ -79,7 +79,7 @@ class TestFeatureCorporaReachTheirCode:
         monkeypatch.setattr(inlays, 'inlay_hints', hints)
         entry = corpus.write_hover(tmp_path, family_count=count)
         run_one('inlays', 'unwrap', entry, repeat=1)
-        for label in ('[object]', '[string]', '[inherited constraints]'):
+        for label in ('[object]', '[string]', '[length: ≥2]'):
             assert labels.count(label) >= count
 
     @pytest.mark.parametrize('count', [2, 4])

@@ -239,12 +239,12 @@ class TestNavigation:
                 types.InlayHintParams(_document(uri), types.Range(start, end)),
             )
         )
-        (hint,) = found
+        hint = next(hint for hint in found if hint.position == _position(document, 'name: Ada', len('name')))
         assert hint.position == _position(document, 'name: Ada', len('name'))
         assert hint.kind == types.InlayHintKind.Type
-        assert hint.label[0].value == '[string]'
-        assert hint.label[0].location.uri == uri
-        assert hint.label[0].location.range.start == _position(document, 'name: string')
+        assert ''.join(part.value for part in hint.label) == '[string]'
+        assert hint.label[1].location.uri == uri
+        assert hint.label[1].location.range.start == _position(document, 'name: string')
 
     def test_clients_without_the_effective_command_get_no_dead_lenses(self, tmp_path):
         write_files(tmp_path, {'api.raml': API, 'lib.raml': LIBRARY})

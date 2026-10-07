@@ -8,12 +8,10 @@ model. Formatted subjects and declaration hints are cached.
 
 from __future__ import annotations
 
-import json
 import re
 from bisect import bisect_left, bisect_right
 from contextlib import suppress
 from dataclasses import dataclass
-from fractions import Fraction
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Final
 
@@ -25,7 +23,7 @@ from fastraml.parser.syntax import METHODS, NAME_MAPS, Key, Site, child_site, fr
 from fastraml.parser.templates import TemplateDefinition
 from fastraml.service.datahover import DataHover, DataRoot, DataTarget
 from fastraml.service.hoverdocs import BUILTINS, METHOD_DOCS, field_doc
-from fastraml.service.inlays import Hint
+from fastraml.service.inlays import LABEL_LIMIT, Hint, Part, constraint_details, constraint_summary, type_label
 from fastraml.service.text import Lines
 from fastraml.types.base import BaseShape, Parameter, facets_of
 from fastraml.types.complex_ import ObjectShape, UnknownShape
@@ -34,12 +32,11 @@ from fastraml.types.expressions import Array, Optional_, Primitive, Union, parse
 from fastraml.types.jsonschema_ import JsonShape
 from fastraml.types.scalars import DATETIME_FORMATS, INTEGER_FORMATS, NUMBER_FORMATS
 from fastraml.types.shape import TYPE_SPECIFIC_FACETS
-from fastraml.types.values import decimal_text
 from fastraml.uris import relative_to
 from fastraml.views import authored
 from fastraml.views.occurrences import DECLARATION_KINDS, Kind, Link, Occurrence, Occurrences, Role
 from fastraml.views.render import type_name
-from fastraml.yamlnode import TAG_INCLUDE, TAG_STR, Node, compose
+from fastraml.yamlnode import TAG_INCLUDE, TAG_STR, Node, NodeKind, compose, pairs
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -54,7 +51,6 @@ __all__ = ['Hover']
 
 _SPEC: Final = 'https://github.com/raml-org/raml-spec/blob/master/versions/raml-10/raml-10.md'
 _INLINE_LIMIT: Final = 160
-_HINT_LIMIT: Final = 60
 _TICKS: Final = re.compile(r'`+')
 _STATUS: Final = re.compile(r'[1-5][0-9]{2}')
 _OPERATORS: Final = re.compile(r'[\[\]|?]')
@@ -76,17 +72,6 @@ def _code(text: str) -> str:
         text = text[: _INLINE_LIMIT - 1] + '…'
     fence = '`' * (max((len(run) for run in _TICKS.findall(text)), default=0) + 1)
     return f'{fence} {text} {fence}' if fence != '`' else f'`{text}`'
-
-
-def _preview(text: str) -> str:
-    return text if len(text) <= _HINT_LIMIT else text[: _HINT_LIMIT - 2] + '…]'
-
-
-def _facet_value(value: object) -> str:
-    if isinstance(value, Fraction):
-        return decimal_text(value)
-    pattern = getattr(value, 'pattern', None)
-    return json.dumps(pattern if isinstance(pattern, str) else value, ensure_ascii=False, default=str)
 
 
 class Hover:
@@ -145,7 +130,7 @@ class Hover:
         }
         self._descriptions: dict[_Subject, str] = {}
         self._data_descriptions: dict[DataTarget, str] = {}
-        self._inlay_declarations: dict[Key, Hint | None] = {}
+        self._inlay_declarations: dict[str, tuple[list[Hint], list[tuple[int, int]]]] = {}
         self._index()
         self._data = DataHover(self._data_roots())
 
@@ -259,20 +244,15 @@ class Hover:
         """Present hidden type/facet facts using the existing authored/data indices."""
         if uri not in self._keys:
             self._source_keys(uri)
-        hints = []
-        starts = self._key_starts[uri]
-        begin = bisect_left(starts, (span.line, 1))
+        if uri not in self._inlay_declarations:
+            declared = [hint for source in self._keys[uri] for hint in self._declaration_hints(uri, source)]
+            declared.sort(key=lambda hint: (hint.position.line, hint.position.column))
+            self._inlay_declarations[uri] = declared, [(hint.position.line, hint.position.column) for hint in declared]
+        declared, starts = self._inlay_declarations[uri]
+        begin = bisect_left(starts, (span.line, span.column))
         end = bisect_right(starts, (span.end_line, span.end_column))
-        for source in self._keys[uri][begin:end]:
-            key = source.node.position
-            position = key.shifted(key.end_column - key.column, 0)
-            if not span.holds(position.line, position.column):
-                continue
-            if source not in self._inlay_declarations:
-                self._inlay_declarations[source] = self._declaration_hint(uri, source, position)
-            if (hint := self._inlay_declarations[source]) is not None:
-                hints.append(hint)
-        candidates: dict[tuple[Position, str], list[DataTarget]] = {}
+        hints = declared[begin:end]
+        candidates: dict[Position, dict[str, list[DataTarget]]] = {}
         for target in self._data.in_range(uri, span):
             if isinstance(target.base.shape, UnknownShape) or target.base.id in self._raml.broken:
                 continue
@@ -280,52 +260,71 @@ class Hover:
             position = key.shifted(key.end_column - key.column, 0)
             if not span.holds(position.line, position.column):
                 continue
-            candidates.setdefault((position, type_name(target.base)), []).append(target)
-        for (position, name), targets in candidates.items():
-            definitions = {
-                (target.base.location, target.base.key_pos.within(target.base.name or target.name))
-                for target in targets
-                if target.base.key_pos.is_known
-            }
-            definition = (
-                next(iter(definitions))
-                if len(definitions) == 1 and all(target.base.key_pos.is_known for target in targets)
-                else None
-            )
-            hints.append(
-                Hint(
-                    position,
-                    _preview('[' + name + ']'),
-                    self._data_docs(targets),
-                    definition[0] if definition is not None else None,
-                    definition[1] if definition is not None else None,
+            candidates.setdefault(position, {}).setdefault(type_name(target.base), []).append(target)
+        for position, types in candidates.items():
+            parts = [Part('[')]
+            targets = [target for alternatives in types.values() for target in alternatives]
+            length = 0
+            for name, alternatives in types.items():
+                label = type_label(name)
+                if length and length + len(label) + 3 > LABEL_LIMIT:
+                    parts.append(Part(' | …'))
+                    break
+                if length:
+                    parts.append(Part(' | '))
+                    length += 3
+                definitions = {
+                    (target.base.location, target.base.key_pos.within(target.base.name or target.name))
+                    for target in alternatives
+                    if target.base.key_pos.is_known
+                }
+                definition = (
+                    next(iter(definitions))
+                    if len(definitions) == 1 and all(target.base.key_pos.is_known for target in alternatives)
+                    else None
                 )
-            )
+                parts.append(Part(label, *(definition or (None, None))))
+                length += len(label)
+            parts.append(Part(']'))
+            hints.append(Hint(position, tuple(parts), self._data_docs(targets)))
         return sorted(hints, key=lambda hint: (hint.position.line, hint.position.column, hint.label))
 
-    def _declaration_hint(self, uri: str, source: Key, position: Position) -> Hint | None:
+    def _declaration_hints(self, uri: str, source: Key) -> Iterator[Hint]:
         subject = self._sites.get((uri, source.node.line, source.node.column))
         if subject is None or not isinstance(subject.entity, BaseShape):
-            return None
+            return
         base = subject.entity
         if base.id in self._raml.broken or isinstance(base.shape, UnknownShape):
-            return None
-        facts = [type_name(base)] if base.type_expr is None and base.type else []
-        inherited = [
-            f'{name}: {_facet_value(facet.value)}'
+            return
+        type_written = source.value.kind is NodeKind.SEQUENCE or (
+            source.value.kind is NodeKind.MAPPING
+            and any(key.value in ('type', 'schema') for key, _ in pairs(source.value))
+        )
+        if base.type_expr is None and base.type and not type_written:
+            key = source.node.position
+            yield Hint(
+                key.shifted(key.end_column - key.column, 0),
+                (Part('[' + type_label(type_name(base)) + ']'),),
+                self._describe(subject),
+            )
+        inherited = {
+            name: facet.value
             for name, facet in facets_of(base.shape)
-            if self._raml.unwrapped and not authored.wrote(base, facet.location, facet.key_pos)
-        ]
-        if inherited:
-            facts.append('inherited constraints')
-        if not facts:
-            return None
-        tooltip = self._describe(subject)
-        if inherited:
-            constraints = '\n'.join(inherited)
-            fence = '`' * max(3, max((len(run) for run in _TICKS.findall(constraints)), default=0) + 1)
-            tooltip += f'\n\n**Inherited constraints**\n\n{fence}yaml\n{constraints}\n{fence}'
-        return Hint(position, _preview('[' + '; '.join(facts) + ']'), tooltip)
+            if self._raml.unwrapped
+            and facet.key_pos.is_known
+            and not authored.wrote(base, facet.location, facet.key_pos)
+        }
+        summary = constraint_summary(inherited)
+        expression = base.type_expr
+        if summary is not None and expression is not None and expression.position.is_known:
+            key = expression.position
+            if key.line == key.end_line and authored.wrote(base, uri, key):
+                yield Hint(
+                    key.shifted(key.end_column - key.column, 0),
+                    (Part('[' + summary + ']'),),
+                    self._describe(subject) + '\n\n' + constraint_details(inherited),
+                    is_type=False,
+                )
 
     def _node(self, uri: str) -> Node | None:
         if uri in self._nodes:

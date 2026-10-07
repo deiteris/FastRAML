@@ -95,6 +95,8 @@ class DataHover:
 
 
 def _targets(root: DataRoot) -> Iterator[DataTarget]:
+    if root.data.key_location is not None and root.data.key_pos.is_known:
+        yield DataTarget(root.data.key_location, root.data.key_pos, root.base, root.name, root.role, is_key=True)
     pending: list[tuple[ValueNode, BaseShape, str, str, bool | None]] = [
         (root.data.value, root.base, root.name, root.role, None)
     ]

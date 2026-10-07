@@ -75,12 +75,13 @@ visited set, so a diamond reaches its shared ancestor once. It reports missing
 required values, unknown supplied values, values that fail their facet
 declaration, and duplicate declarations.
 
-P7 records supplied-facet bindings independently of validation, and public P9
-refreshes them when it replaces shapes (docs/07 § 2, docs/07 § 4).
+P7 publishes the supplied-facet binding index independently of validation, and
+public P9 replaces it when it replaces shapes (docs/07 § 2, docs/07 § 4).
 `Raml.custom_facet_refs` maps a supplied `DataNode` by identity to its known
 facet declarations. P10 shares the ancestor traversal for checking, but only
 reports diagnostics and validates values; it does not publish references or
-retain private validation copies in the public model.
+retain private validation copies in the public model. The index materializes
+only when a consumer reads it; P10 does not force that work.
 
 A duplicate is one facet name declared by two different ancestors. An alias
 shares its referent's declarations ([07](07-resolution-and-inheritance.md)

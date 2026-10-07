@@ -42,10 +42,12 @@ nested typed data fields (`docs/21` § 4.2, `docs/21` § 4.3).
 
 Inline inlay hints show inferred declaration types, expected types on typed
 data fields and inherited constraints that are absent from the local source.
-The compact `[inherited constraints]` label keeps full constraint values in its
-tooltip. Typed-field labels offer documentation tooltips and navigation when
-the field declaration is unambiguous. Hints are display labels, not inserted
-YAML. Use VS Code's
+Supplied custom-facet keys show the expected value type, including scalar and
+array values. Inherited constraints show compact facts such as `[length: 13]`
+after the type reference, with full values in the tooltip. Ambiguous fields
+show one union label with clickable type parts where navigation is unambiguous.
+Explicit types are not repeated. Hints are display labels, not inserted YAML.
+Use VS Code's
 **Editor: Inlay Hints** setting to control their visibility (`docs/21` § 4.4).
 
 **fastRAML: Preview**, or the editor title button, opens the viewer beside

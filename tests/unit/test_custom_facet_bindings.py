@@ -80,3 +80,45 @@ def test_included_value_definition_stays_in_the_including_file(tmp_path):
     snapshot = Snapshot(uri, raml, None, frozenset(raml.source_texts))
     sites = queries.definition(snapshot, uri, *_where(document, 'payload: !include'))
     assert [(site.uri, site.span.line) for site in sites] == [(uri, _where(document, 'payload:\n')[0])]
+
+
+@pytest.mark.parametrize('unwrap', [False, True])
+def test_binding_index_is_available_without_eager_or_repeated_materialization(tmp_path, monkeypatch, unwrap):
+    from fastraml.types import custom_facets
+
+    calls = []
+    original = custom_facets._bindings
+
+    def index(raml):
+        calls.append(raml)
+        return original(raml)
+
+    monkeypatch.setattr(custom_facets, '_bindings', index)
+    document = DOCUMENT + '  ChildAlias: Child\n'
+    raml = parse_from_string(
+        document,
+        file_name='api.raml',
+        base_dir=tmp_path,
+        options=ParseOptions(unwrap=unwrap, validate=True, retain_text=True),
+    )
+    assert not calls  # validating must not force an editor reference index
+    (value,) = raml.custom_facet_refs
+    (declared,) = raml.custom_facet_refs[value]
+    assert value.raw == {'label': 'Text'}
+    assert declared.name == 'payload'
+    assert list(raml.custom_facet_refs.items()) == [(value, (declared,))]
+    assert calls == [raml]
+
+
+@pytest.mark.parametrize('unwrap', [False, True])
+def test_binding_index_preserves_distinct_declarations_for_an_ambiguous_facet(tmp_path, unwrap):
+    document = (
+        '#%RAML 1.0\ntitle: T\ntypes:\n  A:\n    type: object\n    facets:\n      payload: string\n'
+        '  B:\n    type: object\n    facets:\n      payload: integer\n'
+        '  Child:\n    type: [A, B]\n    payload: text\n'
+    )
+    raml = parse_from_string(
+        document, file_name='api.raml', base_dir=tmp_path, options=ParseOptions(unwrap=unwrap, validate=False)
+    )
+    (value,) = raml.custom_facet_refs
+    assert [prop.base.type for prop in raml.custom_facet_refs[value]] == ['string', 'integer']

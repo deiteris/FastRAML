@@ -129,9 +129,11 @@ _START: Final = attrgetter('line', 'column')
 class Occurrences:
     """The occurrences of one parse, by file and by target."""
 
-    __slots__ = ('_by_target', '_by_uri', '_starts', 'dropped')
+    __slots__ = ('_by_target', '_by_uri', '_dropped', '_facet_occurrences', '_facet_raml', '_facet_uris', '_starts')
 
-    def __init__(self, kept: Sequence[Occurrence], dropped: Sequence[Occurrence]) -> None:
+    def __init__(
+        self, kept: Sequence[Occurrence], dropped: Sequence[Occurrence], *, facets: Raml | None = None
+    ) -> None:
         self._by_uri: dict[str, list[Occurrence]] = {}
         self._by_target: dict[int, list[Occurrence]] = {}
         for occurrence in kept:
@@ -142,14 +144,40 @@ class Occurrences:
             found.sort(key=_START)
         self._starts = {uri: list(map(_START, found)) for uri, found in self._by_uri.items()}
         #: The candidates the law rejected, in the order they were met.
-        self.dropped: tuple[Occurrence, ...] = tuple(dropped)
+        self._dropped: tuple[Occurrence, ...] = tuple(dropped)
+        self._facet_raml = facets
+        self._facet_occurrences: Occurrences | None = None
+        self._facet_uris: set[str] = set()
+
+    def _facets(self) -> Occurrences | None:
+        if self._facet_occurrences is None and self._facet_raml is not None:
+            self._facet_occurrences = _custom_facet_occurrences(self._facet_raml)
+            self._facet_raml = None
+        return self._facet_occurrences
+
+    @property
+    def dropped(self) -> tuple[Occurrence, ...]:
+        facets = self._facets()
+        return self._dropped + (facets.dropped if facets is not None else ())
 
     def __repr__(self) -> str:
-        kept = sum(len(found) for found in self._by_uri.values())
+        facets = self._facets()
+        # Both halves are this index's own representation.
+        uris = self._by_uri.keys() | facets._by_uri.keys() if facets is not None else self._by_uri.keys()  # noqa: SLF001
+        kept = sum(len(self.in_file(uri)) for uri in uris)
         return f'<Occurrences kept={kept} dropped={len(self.dropped)}>'
 
     def in_file(self, uri: str) -> Sequence[Occurrence]:
         """The occurrences written in `uri`, in source order."""
+        if uri not in self._facet_uris and (self._facet_raml is not None or self._facet_occurrences is not None):
+            facets = self._facets()
+            extra = facets.in_file(uri) if facets is not None else ()
+            if extra:
+                found = [*self._by_uri.get(uri, ()), *extra]
+                found.sort(key=_START)
+                self._by_uri[uri] = found
+                self._starts[uri] = list(map(_START, found))
+            self._facet_uris.add(uri)
         return self._by_uri.get(uri, ())
 
     def at(self, uri: str, line: int, column: int) -> list[Occurrence]:
@@ -159,15 +187,25 @@ class Occurrences:
         """
         starts = self._starts.get(uri, [])
         end = bisect_right(starts, (line, column))
-        if not end:
-            return []
         # Tokens do not overlap, so only the nearest start can hold the cursor.
-        same = self._by_uri[uri][bisect_left(starts, starts[end - 1]) : end]
-        return [found for found in same if found.line == line and column < found.end_column]
+        same = self._by_uri[uri][bisect_left(starts, starts[end - 1]) : end] if end else ()
+        found = [found for found in same if found.line == line and column < found.end_column]
+        if found or uri in self._facet_uris or (self._facet_raml is None and self._facet_occurrences is None):
+            return found
+        facets = self._facets()
+        return facets.at(uri, line, column) if facets is not None else []
 
     def of(self, target: int) -> Sequence[Occurrence]:
         """Every occurrence of the entity `target`, its definition among them."""
-        return self._by_target.get(target, ())
+        found = self._by_target.get(target, ())
+        if self._facet_occurrences is not None or (
+            self._facet_raml is not None and any(occurrence.kind is Kind.FACET for occurrence in found)
+        ):
+            facets = self._facets()
+            extra = facets.of(target) if facets is not None else ()
+            if extra:
+                return (*found, *extra)
+        return found
 
 
 @tuned_gc()
@@ -184,10 +222,17 @@ def build_occurrences(raml: Raml) -> Occurrences:
     index = _Index(raml.source_texts)
     index.declarations(raml)
     index.shapes(raml)
-    index.custom_facets(raml)
     index.applications(raml)
     index.annotations(raml)
     index.includes(raml)
+    facets = raml if any(base.custom_facets for base in raml.shapes) else None
+    return Occurrences(index.kept, index.dropped, facets=facets)
+
+
+@tuned_gc()
+def _custom_facet_occurrences(raml: Raml) -> Occurrences:
+    index = _Index(raml.source_texts)
+    index.custom_facets(raml)
     return Occurrences(index.kept, index.dropped)
 
 

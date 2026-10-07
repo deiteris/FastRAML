@@ -362,6 +362,18 @@ and client-side virtual documents for expanded representations. Hover remains
 documentation; navigation and explicit reading views carry location and
 effective-model details.
 
+Inlay-hint presentation follows the implementations rather than their hover
+UI: [gopls's type hints](https://github.com/golang/tools/blob/3e15c990d6868f3369d69fcc9bcb565f12eeeba8/gopls/internal/golang/inlay_hint.go#L276)
+add implicit types, skip explicit ones and bound label length; its parameter
+hints suppress names already written by the caller. Rust-analyzer's
+[binding hints](https://github.com/rust-lang/rust-analyzer/blob/3131751eaf1c3b5da6e618acdc2148ad7db65bc7/crates/ide/src/inlay_hints/bind_pat.rs#L29)
+skip unknown/explicit types and can suppress named constructors. Its
+[type-label renderer](https://github.com/rust-lang/rust-analyzer/blob/3131751eaf1c3b5da6e618acdc2148ad7db65bc7/crates/ide/src/inlay_hints.rs#L780)
+formats bounded type expressions with linked parts rather than serializing
+arbitrary internal values. FastRAML applies those principles to expected value
+types and concrete inherited bounds; full detail remains in tooltips and the
+effective view (docs/21 § 4.4).
+
 ## M5: Completion
 
 - Code (one commit each):

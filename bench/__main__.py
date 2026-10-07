@@ -259,6 +259,7 @@ def _measure_hover(entry: Path, repeat: int) -> Measurement:
     text = entry.read_text(encoding='utf-8')
     uri, folder = path_to_file_uri(entry), path_to_file_uri(entry.parent)
     probes = []
+    definition_probes = []
     for line, raw in enumerate(text.splitlines(), start=1):
         stripped = raw.lstrip()
         if stripped == 'type: string':
@@ -273,16 +274,23 @@ def _measure_hover(entry: Path, repeat: int) -> Measurement:
             or stripped == 'get:'
         ):
             probes.append((line, len(raw) - len(stripped) + 1))
+        if stripped.startswith('summary:'):
+            definition_probes.append((line, len(raw) - len(stripped) + 1))
 
     def hover() -> object:
         workspace = Workspace([folder])
         workspace.open(uri, text, 1)
         snapshot = workspace.snapshot(uri)
         answers = [queries.hover(snapshot, uri, line, column) for line, column in probes]
-        if snapshot.error is not None or any(answer is None for answer in answers):
+        definitions = [queries.definition(snapshot, uri, line, column) for line, column in definition_probes]
+        if (
+            snapshot.error is not None
+            or any(answer is None for answer in answers)
+            or any(not sites for sites in definitions)
+        ):
             message = 'hover workload no longer reaches every authoring query'
             raise RuntimeError(message)
-        return snapshot, answers
+        return snapshot, answers, definitions
 
     with tuned_gc():
         return measure('hover', 'unwrap', hover, repeat=repeat)

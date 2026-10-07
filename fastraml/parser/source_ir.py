@@ -19,12 +19,13 @@ See docs/08-templates-and-endpoints.md § 2.1.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING
 
 from fastraml.errors import Accumulator, RamlError
 from fastraml.facet_names import FACET_IS, FACET_SECURED_BY, FACET_TYPE
 from fastraml.parser.directives import DirectiveRef, decode_secured_by, decode_trait_refs, decode_type_ref
 from fastraml.parser.includes import inline_include
+from fastraml.parser.syntax import METHODS
 from fastraml.positions import UNKNOWN, Position
 from fastraml.yamlnode import Node, NodeKind, is_null, node_error, pairs, with_content
 
@@ -38,13 +39,6 @@ __all__ = [
     'make_source_endpoint',
     'note_failure',
 ]
-
-#: The HTTP methods a resource may declare (spec section Methods), and no
-#: others: `trace` and `connect` are unknown resource keys. `?`-suffixed
-#: spellings are legal only inside a resource type, where they mean "apply this
-#: only if the target already declares it"; the suffix is chomped by whoever
-#: compiles the template, so plain names are what reach here.
-METHODS: Final = frozenset({'get', 'patch', 'put', 'post', 'delete', 'options', 'head'})
 
 
 @dataclass(slots=True, eq=False)

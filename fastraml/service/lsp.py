@@ -22,7 +22,7 @@ from pygls.lsp.server import LanguageServer
 
 from fastraml import __version__
 from fastraml.positions import Position
-from fastraml.service import outline, queries
+from fastraml.service import inlays, lenses, outline, queries
 from fastraml.service.text import Encoding, Lines
 from fastraml.service.workspace import Workspace, canonical
 from fastraml.views.lint import configured_linter
@@ -46,12 +46,14 @@ class _AtPosition(Protocol):
     position: types.Position
 
 
-__all__ = ['DEBOUNCE', 'TREE', 'RamlServer']
+__all__ = ['DEBOUNCE', 'EFFECTIVE_TYPE', 'SHOW_EFFECTIVE', 'TREE', 'RamlServer']
 
 #: Seconds without a change before diagnostics are published.
 DEBOUNCE: Final = 0.3
 #: The request for a document's `tree` projection, as JSON text (docs/21 § 5).
 TREE: Final = 'fastraml/tree'
+EFFECTIVE_TYPE: Final = 'fastraml/effectiveType'
+SHOW_EFFECTIVE: Final = 'fastraml.showEffective'
 
 _SEVERITY: Final = {
     'error': types.DiagnosticSeverity.Error,
@@ -150,6 +152,7 @@ class RamlServer(LanguageServer):
         self._linter = configured_linter({} if config is None else config.lint)
         #: The `roots` globs the client sent at `initialize` (docs/21 § 2).
         self._globs: tuple[str, ...] = ()
+        self._client_commands: frozenset[str] = frozenset()
         self.service = Workspace([], config=config, linter=self._linter)
         #: Files whose diagnostics wait for the pause after a change.
         self._pending: set[str] = set()
@@ -299,6 +302,7 @@ class RamlServer(LanguageServer):
         def initialize(params: types.InitializeParams) -> None:
             options = params.initialization_options
             self._globs = tuple(options.get('roots', ())) if isinstance(options, dict) else ()
+            self._client_commands = frozenset(options.get('commands', ())) if isinstance(options, dict) else frozenset()
             self.reset()
 
         @feature(types.INITIALIZED)
@@ -382,6 +386,73 @@ class RamlServer(LanguageServer):
                 return None
             text, span = found
             return types.Hover(types.MarkupContent(types.MarkupKind.Markdown, text), positions.range(uri, span))
+
+        @feature(types.TEXT_DOCUMENT_INLAY_HINT, types.InlayHintOptions(resolve_provider=False))
+        def inlay_hints(params: types.InlayHintParams) -> list[types.InlayHint]:
+            if (at := self._in(params.text_document.uri)) is None:
+                return []
+            uri, positions = at
+            snapshot = next(self.service.serving(uri))
+            hints = inlays.inlay_hints(snapshot, uri, positions.span(uri, params.range))
+            result = []
+            for hint in hints:
+                location = None
+                if (
+                    hint.definition_uri is not None
+                    and hint.definition_span is not None
+                    and _file(hint.definition_uri) is not None
+                ):
+                    location = self._location(positions, queries.Site(hint.definition_uri, hint.definition_span))
+                label = types.InlayHintLabelPart(
+                    value=hint.label,
+                    location=location,
+                    tooltip=types.MarkupContent(types.MarkupKind.Markdown, hint.tooltip),
+                )
+                result.append(
+                    types.InlayHint(
+                        position=positions.range(uri, hint.position).start,
+                        label=[label],
+                        kind=types.InlayHintKind.Type,
+                        padding_left=True,
+                    )
+                )
+            return result
+
+        @feature(types.TEXT_DOCUMENT_CODE_LENS, types.CodeLensOptions(resolve_provider=False))
+        def code_lenses(params: types.CodeLensParams) -> list[types.CodeLens]:
+            if SHOW_EFFECTIVE not in self._client_commands or (at := self._in(params.text_document.uri)) is None:
+                return []
+            uri, positions = at
+            snapshot = next(self.service.serving(uri))
+            result = []
+            for lens in lenses.code_lenses(snapshot, uri):
+                span = positions.range(uri, lens.span)
+                result.append(
+                    types.CodeLens(
+                        span,
+                        types.Command(
+                            title='Show effective type',
+                            command=SHOW_EFFECTIVE,
+                            arguments=[
+                                {
+                                    'uri': self._client(uri),
+                                    'root': self._client(snapshot.root),
+                                    'position': {'line': span.start.line, 'character': span.start.character},
+                                    'name': lens.name,
+                                }
+                            ],
+                        ),
+                    )
+                )
+            return result
+
+        @feature(EFFECTIVE_TYPE)
+        def effective_type(params: Any) -> str | None:
+            if (at := self._in(params.textDocument.uri)) is None or (root := _file(params.root)) is None:
+                return None
+            uri, positions = at
+            snapshot = self.service.snapshot(root)
+            return lenses.effective_type(snapshot, uri, *positions.to_server(uri, params.position), name=params.name)
 
         @feature(types.TEXT_DOCUMENT_DOCUMENT_SYMBOL)
         def document_symbols(params: types.DocumentSymbolParams) -> list[types.DocumentSymbol] | None:

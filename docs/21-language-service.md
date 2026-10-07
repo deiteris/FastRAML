@@ -24,6 +24,10 @@ and several views, and only `cli/` imports it (`docs/02` § 2;
 | `service/text.py` | converting a column between fastRAML and a protocol |
 | `service/queries.py` | the queries, in fastRAML positions |
 | `service/outline.py` | the outline, over the authorship view (`docs/16` § 10) |
+| `service/hover.py`, `service/hoverdocs.py` | author-facing hover, source-key indices and explanatory prose (§ 4.2) |
+| `service/datahover.py` | typed `DataNode` key and value spans, shared across value-bearing sites (§ 4.2) |
+| `service/lenses.py` | code-lens sites and on-demand effective RAML type rendering (§ 4.3) |
+| `service/inlays.py` | inline type/facet labels over the shared authoring indices (§ 4.4) |
 | `service/lsp.py` | the LSP adapter, over pygls (§ 5) |
 
 ## 2. Workspace
@@ -106,14 +110,15 @@ known limit.
 ## 4. Queries
 
 Each query takes a snapshot and fastRAML positions and answers in them. None
-resolves a name. The occurrence index (`docs/16` § 9) answers every question
-about names, so a name it does not hold has no answer.
+resolves a name. The occurrence index (`docs/16` § 9) answers questions about
+bound names. Source-only hover (§ 4.2), folding and selection also read the
+composed YAML and the parser's structural grammar.
 
 | Query | Reads |
 |---|---|
 | `definition` | the `DEFINITION` occurrence of the target; for a path, the file its `Link` resolved to |
 | `references`, `highlights` | the target's occurrences |
-| `hover` | `render` for a type, annotation type, property or facet; for a path, the file it resolved to; the kind, parameters, `usage` and `description` otherwise |
+| `hover` | source keys in the parser's grammar; occurrences and typed data targets; declaration descriptions and type signatures |
 | `document_symbols` | the fragment's metadata, declaration tables, documentation and resources, grouped by section, from `key_pos` and `value_pos`; `type_expr`, else `type_name`, for a type's detail |
 | `workspace_symbols` | the declarations of every snapshot, matched case-insensitively, once each |
 | `links` | each `Link` occurrence in the file, with the file it resolved to |
@@ -204,6 +209,139 @@ file. An invalid UTF-8 include instead points to its directive (docs/03 § 4.2).
 `diagnostics(snapshot)` has an entry only for a file holding a diagnostic.
 Clearing what a client showed before is the adapter's (§ 5).
 
+### 4.2 Author-facing hover
+
+Hover leads with what the source token means: a data type, object property,
+bound parameter, library namespace, template, annotation or RAML field.
+Descriptions and template usage are rendered as Markdown, with all their
+paragraphs. A type alias is identified separately from a specializing mapping;
+a property or parameter using a named type says that it uses that type.
+Presence is shown as required or optional, separately from nullable values.
+Parameter roles distinguish base-URI, resource URI, query and header bindings.
+
+Hover focuses on the declaration's complete documentation and compact type
+information. It does not repeat the supplied data value, declaration location
+or effective member/constraint listing. Go-to-definition supplies locations;
+the effective-type lens (§ 4.3) opens the reading view on demand. Type signatures
+name array items and union alternatives without expanding their structures.
+When one authored site has several materializations, hover identifies that
+the type shown is the first.
+
+RAML keys are selected by exact source spans and the structural positions in
+`parser/syntax.py`, shared with extension merge (`docs/19` § 3.1). Thus `type`
+explains data-type specialization, a resource-type application or an
+authentication mechanism according to its context. Methods and response status
+codes have HTTP reference links. Data beneath examples, defaults, annotation
+values and application arguments is opaque to keyword help; so are unknown
+facet values. Expanded YAML alias children are not reclassified at their
+anchor's authored position. Typed fragments use their own root grammar.
+Headerless includes inherit their receiving structural position, including
+through nested includes. Conflicting receiving contexts suppress keyword help.
+External JSON Schema keywords are not presented as RAML keywords.
+
+Built-in type tokens have explanations, type-specific facet names and format
+choices from the parser's tables. Field and built-in help explains the effect
+of a declaration, illustrates its use with concrete examples, and distinguishes
+related constructs such as presence versus nullability or unions versus multiple
+inheritance. It is documentation rather than a one-line restatement of the key.
+
+User-defined facet declarations show their full authored description and the
+type of the facet value. Supplied facet keys show that same declaration
+documentation. P7 records their bindings
+(`Raml.custom_facet_refs`, docs/07 § 2); hover does not walk ancestors to decide
+which declaration accepts a name. Required custom facets are labeled as
+requirements on subtypes, not payload-property presence. A known facet's
+documentation remains available when its supplied value is invalid; unknown
+facets get no invented field documentation.
+
+Typed data hover starts from a `DataNode` and its bound shape, not the RAML
+keyword grammar. Custom-facet values use P7's binding; annotation values use
+P8's `defined_by`. Examples (including named and included examples), defaults
+and enum members use their owning type. The same traversal shows declaration
+descriptions and expected types on nested field keys and scalar
+values. Array elements follow `items`; aliases and recursive shapes follow
+their model edges while the finite data bounds traversal.
+
+`ObjectShape.property_for` decides explicit and pattern-property matching;
+`UnionShape.select` supplies discriminator selection (docs/05 § 4, docs/05 § 6).
+An invalid value does not hide a known field's documentation. Without a
+discriminator selection, hover shows the possible field declarations rather
+than choosing whichever alternative happens to validate. An unknown
+discriminator selects none. Additional fields with no governing declaration
+have no typed-field help. Data keys named `type`, `properties` or other RAML
+keywords remain data keys; they show only their type's field documentation.
+
+Every positioned value carries its own URI, so nested data includes are
+indexed in the file that authored the token (docs/03 § 6). Scalar and key
+ranges exclude surrounding comments and whitespace. A collection's whole
+extent is not a fallback for an unknown child. Inline JSON has only the
+encoded scalar's root span; hover does not invent spans for decoded children.
+
+Source-only primitive tokens, including those
+in an unapplied template, are read through the type-expression parser and
+checked against the source text. No source query binds a reference. Explanatory
+prose is a documentation catalogue, not a table that accepts fields or overrides
+parser diagnostics.
+
+Hover indices and formatted subjects are lazy per snapshot. Source keys are indexed once per queried
+file from retained nodes, or a composition of its retained text when source
+trees were not retained. These nodes and indices die with the snapshot.
+The typed-data token index is also lazy and built once per snapshot; formatted
+data targets are cached. The same typed-data targets supply go-to-definition
+for nested field keys and scalar values.
+
+### 4.3 Effective-type code lenses
+
+`code_lenses(snapshot, uri)` lists authored type and annotation-type declaration
+sites with an available effective model. It does not render them. The adapter
+returns a **Show effective type** command only to a client that advertises
+`fastraml.showEffective` in its initialization `commands` list.
+
+The command sends `fastraml/effectiveType` with `textDocument`, `root`,
+`position` and `name`. The server checks the current source site and name,
+requires completed unwrap and an unmarked subject, and uses the existing
+`views.render.render` reading view (docs/16 § 4). Source positions, not model
+IDs, survive between requests. A stale name/site or unavailable effective
+model returns null. The parse root preserves the context of a library file.
+Rendering uses `depth=None`: nested objects, array items, union alternatives
+and custom-facet declaration shapes are fully expanded. Recursive references
+remain named instead of being unfolded indefinitely.
+
+The VS Code client opens the result beside the source in a read-only
+`fastraml-effective:` RAML document. Clicking again refreshes that document's
+content from the current snapshot. A code lens is a clickable action, not a
+container for expanded prose or data. The full API viewer still uses
+`fastraml/tree` independently.
+
+### 4.4 Inlay hints
+
+Inlay hints are the inline labels beside source text, distinct from the
+clickable code lenses above declarations. `inlay_hints(snapshot, uri, span)`
+returns hints only within the requested source range. It reuses hover's
+authored source sites and typed `DataNode` token index, and never resolves a
+name or repeats type matching in the adapter.
+
+A declaration without an authored type expression can show its inferred type,
+such as `[object]`. A typed data field can show its expected type, such as
+`[string]`, even when the current supplied value is invalid. Fields with no
+governing declaration get no invented hint. Multiple union candidates retain
+their distinct expected types rather than selecting an alternative by value
+validation.
+
+An unwrapped declaration can also show `[inherited constraints]` when scalar
+constraints come from outside its own span. The tooltip lists those constraints
+in full, including regular expressions; authored constraints are not repeated.
+Labels are bounded to 60 characters so they do not obscure the source value.
+Descriptions remain in Markdown tooltips. Candidates with the same expected
+type share one label and retain all their documentation; a label links to a
+declaration only when its navigation target is unambiguous.
+Source ranges are filtered by the hint's anchor after the key, including when
+the range starts inside that key. Declaration hints are cached per source site,
+and range queries use the sorted token indices rather than scanning the file.
+The adapter reports type-kind hints, converts all
+positions in the negotiated encoding and adds display padding without editing
+the source. VS Code uses its standard **Editor: Inlay Hints** setting.
+
 ## 5. The LSP adapter
 
 `fastraml lsp [--config FILE] [-r]` serves LSP on stdin and stdout. pygls is
@@ -251,13 +389,15 @@ diagnostic's `info`.
 (§ 4.1). A parser diagnostic gets none.
 
 **Features.** Definition, references, highlight, hover, document and
-workspace symbols, links, folding and selection ranges, and type hierarchy.
+workspace symbols, links, folding and selection ranges, type hierarchy, and
+effective-type code lenses (§ 4.3), and inlay hints (§ 4.4).
 Each reads the snapshots `serving(uri)` yields (§ 2) as follows, and brings
 current only those it reads:
 
 | Request | Reads |
 |---|---|
-| document symbols, links, `fastraml/tree` | the first snapshot |
+| document symbols, links, code lenses, inlay hints, `fastraml/tree` | the first snapshot |
+| `fastraml/effectiveType` | the requested parse root, checked against the current declaration site and name |
 | definition, highlight, hover, type hierarchy, supertypes | the first snapshot that answers |
 | references, subtypes | every snapshot, answers deduplicated |
 | workspace symbols | every root |
@@ -289,6 +429,21 @@ could save.
   DataType include, a trait and a resource type; every query on a parse
   stopped at each stage; an Extension's outline; and, over the TCK, that every
   outline entry holds its selection and lies in its parent.
+- `test_service_hover.py`: contextual field meanings, full Markdown prose,
+  authored and inherited summaries, aliases, optional versus nullable values,
+  source-only template help, token boundaries, opaque data, educational examples,
+  and user-defined facet descriptions at declarations and supplied keys.
+- `test_service_data_hover.py`: shared nested-field and scalar-value help for
+  custom facets, annotations, examples, defaults and enums; array items,
+  inheritance, patterns, discriminated and ambiguous unions, recursive types,
+  nested includes, invalid values and unavailable inline-JSON child spans.
+- `test_custom_facet_bindings.py`: all unwrap/validate combinations and P10's
+  independence from binding publication.
+- `test_service_lenses.py`: on-demand effective rendering, unavailable models
+  and stale source sites; `test_lsp.py` covers the code-lens command round trip.
+- `test_service_inlays.py`: inferred declaration types, expected data-field
+  types, inherited constraints, ambiguity, range filtering and navigation;
+  `test_lsp.py` checks UTF-16 positions and clickable inlay-label locations.
 - `test_loaders.py`: `SafeFileLoader.contains` and `files`.
 - `test_lsp.py`: `fastraml lsp` driven over stdio by pygls' client, one
   request per feature, the column after an astral character, clearing, the

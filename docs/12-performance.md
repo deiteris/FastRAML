@@ -86,7 +86,7 @@ must receive a parser diagnostic rather than `RecursionError`.
 
 ## 4. Benchmark suite
 
-`bench/` generates deterministic corpora and measures twenty-four workloads:
+`bench/` generates deterministic corpora and measures twenty-eight workloads:
 
 | Bench | Primary coverage |
 |---|---|
@@ -114,9 +114,13 @@ must receive a parser diagnostic rather than `RecursionError`.
 | `include-content` | each resource, each trait, and the `types:` map, written in a file of its own and included as literal content ([03](03-yaml-and-io.md) § 4.2) |
 | `inline-json` | JSON-encoded strings in examples, enums, defaults, annotations, and custom facets; one decoding step per value ([03](03-yaml-and-io.md) § 6) |
 | `annotation-targets` | included annotation restrictions, query strings and nested body declarations, literal and substituted template-root annotations, annotated substituted type names, and annotated default and discriminator scalars ([09](09-security-and-annotations.md) § B4) |
+| `doc-links` | description-link resolution in the tree and lint ([16](16-graph.md) § 11) |
+| `hover` | a cold language-service snapshot and fourteen authoring hovers per type family: inherited summaries, facet explanations, built-ins, custom-facet declarations and supplied keys, nested custom-facet and annotation keys and values, property presence, methods and response statuses ([21](21-language-service.md) § 4.2) |
+| `effective-types` | a cold service snapshot, code-lens enumeration and full-depth RAML rendering for every named type and annotation type, including nested arrays, unions, scalar item constraints and recursive references ([21](21-language-service.md) § 4.3) |
+| `inlays` | a cold snapshot, inferred declaration types, expected custom-facet and annotation field types, and inherited scalar-facet labels ([21](21-language-service.md) § 4.4) |
 
 The six general workloads are `small`, `large`, `endpoints`, `extensions`,
-`validate` and `jsonschema`. The other eighteen are feature workloads:
+`validate` and `jsonschema`. The other twenty-two are feature workloads:
 each exists because no general workload runs the code it covers. Their reach
 tests (`tests/bench/test_corpus.py`) count calls or check bound results, and fail
 if a corpus stops reaching that code at every size it covers.
@@ -144,6 +148,9 @@ For `datatype-fragments`, `unwrap` additionally builds the graph, tree and
 positions; the tree reuses the graph's address map. Its reach test checks that
 every shared root is projected and each inclusion references that root.
 The small corpus-validity tests run in the ordinary test suite.
+For `hover`, `unwrap` builds a service snapshot with unwrap and validation,
+then queries every generated hover site. It measures the cold indices and their
+reuse; probe selection and corpus generation are outside the measured region.
 
 ```bash
 python -m bench run

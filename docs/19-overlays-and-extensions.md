@@ -103,7 +103,12 @@ An annotation key `(name)` in any non-data position holds data. Template
 parameter text such as `<<name>>` is not interpreted. A key the table does not
 list recurses as generic.
 
-Code: `parser/extension_merge.py`. Tests: `tests/unit/test_extension_merge.py`.
+The positions and their child transitions live in `parser/syntax.py`, shared
+with source-only editor queries (docs/21 § 4.2). The merge still owns property
+normalization and overlay restrictions.
+
+Code: `parser/extension_merge.py`, `parser/syntax.py`.
+Tests: `tests/unit/test_extension_merge.py`.
 
 ### 3.2 Normalization
 

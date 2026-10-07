@@ -139,11 +139,12 @@ class TestNames:
 
 
 class TestHover:
-    def test_a_type_shows_its_effective_declaration(self, parsed):
+    def test_a_type_describes_its_identity_without_an_effective_dump(self, parsed):
         snapshot, folder = parsed
         text, span = queries.hover(snapshot, f'{folder}/api.raml', *_where(API, 'Book\n'))
-        assert 'author:' in text
-        assert 'id:' in text, 'an inherited property is in the effective form'
+        assert 'data type' in text
+        assert 'Specializes `Entity`' in text
+        assert 'Effective summary' not in text
         assert (span.line, span.column) == _where(API, 'Book\n')
 
     def test_a_trait_shows_its_parameters(self, parsed):
@@ -170,12 +171,14 @@ class TestHover:
         trait, _ = queries.hover(snapshot, f'{folder}/api.raml', *_where(document, 'paged: {'))
         scheme, _ = queries.hover(snapshot, f'{folder}/api.raml', *_where(document, 'basic]'))
         assert 'parameters: `max`' in trait
-        assert 'type: Basic Authentication' in scheme
+        assert 'Mechanism: `Basic Authentication`' in scheme
 
     def test_a_built_in_says_so(self, parsed):
         snapshot, folder = parsed
         text, _ = queries.hover(snapshot, f'{folder}/api.raml', *_where(API, 'string'))
-        assert text == 'built-in type `string`'
+        assert 'built-in RAML type' in text
+        assert 'Unicode characters' in text
+        assert '`minLength`' in text
 
 
 class TestSymbols:
@@ -433,7 +436,8 @@ class TestStructure:
         assert _starts(queries.definition(snapshot, f'{folder}/api.raml', *at)) == [('notes.md', 1, 1)]
         hovered = queries.hover(snapshot, f'{folder}/api.raml', *at)
         assert hovered is not None
-        assert hovered[0] == '`notes.md`'
+        assert '`notes.md`' in hovered[0]
+        assert 'Included or imported file' in hovered[0]
 
     def test_a_block_folds_from_its_key_to_its_last_line(self):
         folded = (_where(API, 'traits:')[0], _where(API, 'Never applied')[0])

@@ -48,6 +48,9 @@ WRITERS = {
     'reference-namespaces': lambda root: corpus.write_reference_namespaces(root, resource_count=3),
     'annotation-targets': lambda root: corpus.write_annotation_targets(root, family_count=3),
     'doc-links': lambda root: corpus.write_doc_links(root, resource_count=3),
+    'hover': lambda root: corpus.write_hover(root, family_count=3),
+    'effective-types': lambda root: corpus.write_hover(root, family_count=3),
+    'inlays': lambda root: corpus.write_hover(root, family_count=3),
 }
 
 
@@ -59,6 +62,85 @@ class TestFeatureCorporaReachTheirCode:
     (docs/12 § 4). Each feature corpus pins, by counting calls, that it runs the
     code it was written for, at every size it was written to cover.
     """
+
+    @pytest.mark.parametrize('count', [2, 4])
+    def test_inlays_reaches_inferred_types_data_types_and_inherited_facets(self, tmp_path, monkeypatch, count):
+        from bench.__main__ import run_one
+        from fastraml.service import inlays
+
+        labels = []
+        original = inlays.inlay_hints
+
+        def hints(snapshot, uri, span):
+            result = original(snapshot, uri, span)
+            labels.extend(hint.label for hint in result)
+            return result
+
+        monkeypatch.setattr(inlays, 'inlay_hints', hints)
+        entry = corpus.write_hover(tmp_path, family_count=count)
+        run_one('inlays', 'unwrap', entry, repeat=1)
+        for label in ('[object]', '[string]', '[inherited constraints]'):
+            assert labels.count(label) >= count
+
+    @pytest.mark.parametrize('count', [2, 4])
+    def test_effective_types_reaches_each_code_lens_rendering(self, tmp_path, monkeypatch, count):
+        from bench.__main__ import run_one
+        from fastraml.service import lenses
+
+        calls = set()
+        original = lenses.effective_type
+
+        def effective(snapshot, uri, line, column, *, name):
+            text = original(snapshot, uri, line, column, name=name)
+            assert text is not None
+            assert text.startswith('#%RAML 1.0 DataType')
+            if name.startswith('MetadataLeaf'):
+                assert 'items: Metadata' in text
+            elif name.startswith('Metadata'):
+                assert 'anyOf:' in text
+                assert 'minLength: 3' in text
+                assert 'items:' in text
+            calls.add(name)
+            return text
+
+        monkeypatch.setattr(lenses, 'effective_type', effective)
+        entry = corpus.write_hover(tmp_path, family_count=count)
+        run_one('effective-types', 'unwrap', entry, repeat=1)
+        assert len(calls) == 6 * count
+
+    @pytest.mark.parametrize('count', [2, 4])
+    def test_hover_reaches_syntax_primitives_authorship_and_http_help(self, tmp_path, monkeypatch, count):
+        from bench.__main__ import run_one
+        from fastraml.service import queries
+
+        calls = set()
+        texts = []
+        original = queries.hover
+
+        def hover(snapshot, uri, line, column):
+            result = original(snapshot, uri, line, column)
+            assert result is not None
+            calls.add((uri, line, column))
+            texts.append(result[0])
+            return result
+
+        monkeypatch.setattr(queries, 'hover', hover)
+        entry = corpus.write_hover(tmp_path, family_count=count)
+        run_one('hover', 'parse', entry, repeat=1)
+        assert not texts
+        run_one('hover', 'unwrap', entry, repeat=1)
+        assert len(calls) == 14 * count
+        for meaning in (
+            'Specializes `Word',
+            'minimum length',
+            'Unicode characters',
+            'object property',
+            'HTTP method',
+            '404 Not Found',
+            'Explains how this name is used.',
+            'Explains the nested note.',
+        ):
+            assert any(meaning in text for text in texts), meaning
 
     @pytest.mark.parametrize('count', [2, 4])
     def test_projections_reaches_narrowing_patterns_and_typed_enums(self, tmp_path, monkeypatch, count):

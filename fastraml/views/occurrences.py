@@ -184,6 +184,7 @@ def build_occurrences(raml: Raml) -> Occurrences:
     index = _Index(raml.source_texts)
     index.declarations(raml)
     index.shapes(raml)
+    index.custom_facets(raml)
     index.applications(raml)
     index.annotations(raml)
     index.includes(raml)
@@ -348,6 +349,21 @@ class _Index:
                         kind=_type_kind(resolved),
                         target=resolved.id,
                     )
+
+    def custom_facets(self, raml: Raml) -> None:
+        """Supplied facet keys use P7's binding, even without validation."""
+        for value, declarations in raml.custom_facet_refs.items():
+            if value.key_location is None:
+                continue
+            for prop in declarations:
+                self.add_at(
+                    value.key_location,
+                    value.key_pos,
+                    prop.name,
+                    role=Role.REFERENCE,
+                    kind=Kind.FACET,
+                    target=prop.base.id,
+                )
 
     def applications(self, raml: Raml) -> None:
         """Every `type:`, `is:` and `securedBy:` name that P4 and P5 bound."""

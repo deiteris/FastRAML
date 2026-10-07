@@ -33,6 +33,7 @@ from fastraml.types.base import (
     owned,
 )
 from fastraml.types.complex_ import UnknownShape
+from fastraml.types.custom_facets import bind_custom_facets
 from fastraml.types.expressions import (
     Array,
     Optional_,
@@ -84,6 +85,7 @@ def resolve_shapes(raml: Raml) -> None:
     # Every name in a substituted scalar is now recorded where it was written,
     # so the record of the substitutions is read by nothing further.
     raml.substitutions.clear()
+    bind_custom_facets(raml)
     accumulator.raise_if_any()
 
 
@@ -402,7 +404,10 @@ def _note_reference(
     location, position = _site(raml, base, node.col)
     line, column = position.line, position.column
     prefix, _name, dotted = cut_last(node.name, '.')
-    link = resolver.library_link(prefix) if dotted and resolver is not None else None
+    # Lookup gives a complete dotted local name precedence over a library.
+    # Recording a prefix merely because that alias exists would disagree with
+    # the binding and make hover/definition name the wrong entity (docs/04 § 3).
+    link = resolver.library_link(prefix) if dotted and resolver is not None and ref.name != node.name else None
     refs = base.type_expr_refs = owned(base.type_expr_refs)
     if link is None:
         refs.append(TypeExprRef(line=line, column=column, location=location, resolved=ref))

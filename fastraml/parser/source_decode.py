@@ -44,6 +44,7 @@ from fastraml.parser.directives import make_security_schemes
 from fastraml.parser.endpoints import Body, EndPoint, Operation, Request, Response, decode_protocols
 from fastraml.parser.facets import MEDIA_RANGE, make_string_facet
 from fastraml.parser.includes import inline_include
+from fastraml.parser.syntax import is_media_type_map as _is_media_type_map
 from fastraml.types.shape import make_body_shape, make_parameter_map, make_shape
 from fastraml.yamlnode import NodeKind, is_null, node_error, pairs
 
@@ -94,20 +95,6 @@ def _secured_by(raml: Raml, source: SourceEndPoint | SourceOperation) -> list[Se
 
 
 # -- bodies and media types (docs/08 § 6.3) ------------------------------------
-
-
-def _is_media_type_map(node: Node) -> bool:
-    """A `body:` whose keys are media types rather than facets.
-
-    The test is the slash, as in go-raml: every RFC 6838
-    media type has one and no RAML facet name does.
-    """
-    if node.kind is not NodeKind.MAPPING:
-        return False
-    content = node.content
-    if not content:
-        return False
-    return all('/' in content[index].value for index in range(0, len(content), 2))
 
 
 def _decode_bodies(  # noqa: PLR0913, PLR0917 - filling the holder's map keeps what decoded when a key fails

@@ -136,6 +136,11 @@ The output is RAML-shaped YAML with source notes where model provenance is
 available. It shows effective inheritance, properties, constraints, annotations,
 custom facets, security descriptions, and structured JSON Schema projections.
 `--depth` controls structural expansion; recursion remains finite.
+The Python renderer also accepts `depth=None` for full structural expansion:
+objects, array items, union alternatives and custom-facet declaration shapes
+are opened until a recursive reference is reached. The effective-type editor
+view uses this mode (docs/21 § 4.3). Numeric depths retain the compact reading
+behavior described here.
 
 This is a human-readable display, not a RAML export. Explanatory fields such as
 `inherits` and expanded security descriptions are part of the display, and prose
@@ -280,6 +285,8 @@ the discriminator on each variant, `json_schema` and `projection` on
 `JsonShape` only), the envelope constants, and the recursion marker's keys; a
 backend iterates these and only spells them. Generation fails when the emitter
 writes an undeclared key.
+The HTTP-method vocabulary is read from `parser/syntax.py`, the same table
+used by endpoint decoding and source queries.
 `tests/unit/test_bindings.py` checks checked-in TypeScript and Python artifacts;
 `tests/unit/test_conformance.py` checks the shared cross-language corpus. CI's
 `bindings` job installs Go and Node and fails if those checks skip.
@@ -446,6 +453,8 @@ The index reads what the passes bound and resolves no name itself:
   caller wrote it. The `type:` and `is:` entries of every
   resource and method. `securedBy:` names, and the name in each
   `(annotation)` key.
+  Supplied custom-facet keys use P7's bindings (docs/07 § 2), including when
+  value validation is disabled.
 - **Links.** Each `!include` argument and each `uses:` value, as a `Link`:
   an occurrence that also records the URI its path resolved to, found or
   not, without a `#fragment`. The target is the fragment the file decoded

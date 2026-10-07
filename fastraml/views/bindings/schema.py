@@ -610,7 +610,7 @@ def contract_schema() -> ContractSchema:
         structural=_STRUCTURE,
         vocabularies=(
             Vocabulary('ShapeType', tuple(kind.name for kind in kinds)),
-            Vocabulary('HttpMethod', _set_values('fastraml/parser/source_ir.py', 'METHODS')),
+            Vocabulary('HttpMethod', _set_values('fastraml/parser/syntax.py', 'METHODS')),
             Vocabulary(
                 'FragmentKind',
                 _mapped_enum_values('fastraml/parser/fragments.py', '_FRAGMENT_CLASSES', 'FragmentKind'),

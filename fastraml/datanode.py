@@ -97,16 +97,20 @@ class ValueNode:
     answered by `is_scalar` rather than by testing `scalar` for `None`.
     """
 
-    __slots__ = ('mapping', 'raw', 'scalar', 'sequence')
+    __slots__ = ('location', 'mapping', 'position', 'raw', 'scalar', 'sequence')
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - representation and source provenance
         self,
         *,
         raw: Any,
         scalar: Any = None,
         mapping: MappingValue | None = None,
         sequence: SequenceValue | None = None,
+        location: str | None = None,
+        position: Position = UNKNOWN,
     ) -> None:
+        self.location = location
+        self.position = position
         self.scalar = scalar
         self.mapping = mapping
         self.sequence = sequence
@@ -144,6 +148,7 @@ class DataNode:
     include: IncludeInfo | None = None
     key_pos: Position = UNKNOWN
     value_pos: Position = UNKNOWN
+    key_location: str | None = None
 
     def __str__(self) -> str:
         return str(self.value.raw)
@@ -222,7 +227,9 @@ def _entry(mapping: MappingValue, rest: str) -> MappingEntry | None:
     return found
 
 
-def included_data_node(raml: Raml, key_node: Node | None, value_node: Node, target: str, content: Node) -> DataNode:
+def included_data_node(  # noqa: PLR0913 - source and target provenance
+    raml: Raml, key_node: Node | None, value_node: Node, target: str, content: Node, *, key_location: str | None = None
+) -> DataNode:
     """A value an `!include` supplied, once resolved: located in the included
     file, so a bad example reports that file's path.
     """
@@ -232,6 +239,7 @@ def included_data_node(raml: Raml, key_node: Node | None, value_node: Node, targ
         include=IncludeInfo(path=value_node.value, abs_uri=target),
         key_pos=key_node.position if key_node is not None else UNKNOWN,
         value_pos=value_node.position,
+        key_location=key_location,
     )
 
 
@@ -246,7 +254,7 @@ def make_data_node(raml: Raml, key_node: Node | None, value_node: Node, location
     location = raml.document_location(value_node, location)
     if value_node.tag == TAG_INCLUDE:
         target, content = resolve_include(raml, value_node, location)
-        return included_data_node(raml, key_node, value_node, target, content)
+        return included_data_node(raml, key_node, value_node, target, content, key_location=location)
 
     if (
         value_node.kind is NodeKind.SCALAR
@@ -261,6 +269,8 @@ def make_data_node(raml: Raml, key_node: Node | None, value_node: Node, location
         except ValueError as err:
             raise node_error('invalid inline JSON', location, value_node, info={'error': str(err)}) from err
         value = value_node_of(decoded)
+        value.location = location
+        value.position = value_node.full_position
     else:
         value = _to_value(raml, value_node, location, None)
 
@@ -269,6 +279,7 @@ def make_data_node(raml: Raml, key_node: Node | None, value_node: Node, location
         location=location,
         key_pos=key_node.position if key_node is not None else UNKNOWN,
         value_pos=value_node.full_position,
+        key_location=location if key_node is not None else None,
     )
 
 
@@ -284,7 +295,7 @@ def _to_value(raml: Raml, node: Node, location: str, visited: set[str] | None) -
                 MappingEntry(key=key.value, value=child, key_pos=key.position, value_pos=value.full_position)
             )
             raw_map[key.value] = child.raw
-        return ValueNode(mapping=MappingValue(entries), raw=raw_map)
+        return ValueNode(mapping=MappingValue(entries), raw=raw_map, location=location, position=node.full_position)
 
     if node.kind is NodeKind.SEQUENCE:
         items: list[SequenceItem] = []
@@ -293,7 +304,7 @@ def _to_value(raml: Raml, node: Node, location: str, visited: set[str] | None) -
             child = _to_value(raml, item, location, visited)
             items.append(SequenceItem(value=child, value_pos=item.full_position))
             raw_list.append(child.raw)
-        return ValueNode(sequence=SequenceValue(items), raw=raw_list)
+        return ValueNode(sequence=SequenceValue(items), raw=raw_list, location=location, position=node.full_position)
 
     return _scalar_to_value(raml, node, location, visited)
 
@@ -301,7 +312,7 @@ def _to_value(raml: Raml, node: Node, location: str, visited: set[str] | None) -
 def _scalar_to_value(raml: Raml, node: Node, location: str, visited: set[str] | None) -> ValueNode:
     if node.tag != TAG_INCLUDE:
         value = scalar_value(node)
-        return ValueNode(scalar=value, raw=value)
+        return ValueNode(scalar=value, raw=value, location=location, position=node.full_position)
 
     target, content = resolve_include(raml, node, location)
     # A scalar include may itself include, so the chain is what needs cycle

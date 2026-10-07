@@ -2,6 +2,7 @@ import * as crypto from 'crypto';
 import * as path from 'path';
 import {
     ExtensionContext,
+    EventEmitter,
     OutputChannel,
     TextEditor,
     Uri,
@@ -16,6 +17,8 @@ import { LanguageClient } from 'vscode-languageclient/node';
 
 let client: LanguageClient | undefined;
 let output: OutputChannel;
+const effectiveDocuments = new Map<string, string>();
+const effectiveChanged = new EventEmitter<Uri>();
 /** One preview per document, by its URI. */
 const previews = new Map<string, WebviewPanel>();
 
@@ -47,7 +50,10 @@ async function start(): Promise<void> {
         {
             documentSelector: [{ scheme: 'file', language: 'raml' }],
             // The server registers its own watcher for `**/*` (docs/21 § 5).
-            initializationOptions: { roots: workspace.getConfiguration('fastraml').get<string[]>('roots', []) },
+            initializationOptions: {
+                roots: workspace.getConfiguration('fastraml').get<string[]>('roots', []),
+                commands: ['fastraml.showEffective'],
+            },
             outputChannel: output,
         },
     );
@@ -140,12 +146,38 @@ function page(webview: Webview, media: Uri): string {
 </html>`;
 }
 
+/** Code lenses are actions; their expanded content opens in a read-only document. */
+async function showEffective(at: { uri: string; root: string; position: { line: number; character: number }; name: string }): Promise<void> {
+    if (client === undefined) {
+        return;
+    }
+    const text = await client.sendRequest<string | null>('fastraml/effectiveType', {
+        textDocument: { uri: at.uri }, root: at.root, position: at.position, name: at.name,
+    });
+    if (text === null) {
+        await window.showInformationMessage('This declaration no longer has an effective view. See Problems.');
+        return;
+    }
+    const uri = Uri.from({ scheme: 'fastraml-effective', path: `/${at.name.replace(/[^a-zA-Z0-9._-]/g, '_')}.raml`, query: JSON.stringify(at) });
+    effectiveDocuments.set(uri.toString(), text);
+    effectiveChanged.fire(uri);
+    const document = await workspace.openTextDocument(uri);
+    await window.showTextDocument(document, { viewColumn: ViewColumn.Beside, preview: true });
+}
+
 export async function activate(ctx: ExtensionContext): Promise<void> {
     output = window.createOutputChannel('fastRAML');
     ctx.subscriptions.push(
         output,
+        effectiveChanged,
         commands.registerCommand('fastraml.restart', restart),
         commands.registerTextEditorCommand('fastraml.preview', editor => preview(ctx, editor)),
+        commands.registerCommand('fastraml.showEffective', showEffective),
+        workspace.registerTextDocumentContentProvider('fastraml-effective', {
+            onDidChange: effectiveChanged.event,
+            provideTextDocumentContent: uri => effectiveDocuments.get(uri.toString()) ?? '',
+        }),
+        workspace.onDidCloseTextDocument(document => effectiveDocuments.delete(document.uri.toString())),
         workspace.onDidSaveTextDocument(() => {
             for (const [uri, panel] of previews) {
                 void send(panel, Uri.parse(uri));

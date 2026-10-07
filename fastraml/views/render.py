@@ -76,7 +76,7 @@ class _Level:
     step on one branch.
     """
 
-    depth: int
+    depth: int | None
     root: str
     indent: str
     #: Shapes already open further up. A type cycle is a cycle in the model by
@@ -84,16 +84,26 @@ class _Level:
     seen: frozenset[int]
 
     def inside(self, base: BaseShape, *, extra: str = '  ') -> _Level:
-        return replace(self, depth=self.depth - 1, indent=self.indent + extra, seen=self.seen | {base.id})
+        return replace(
+            self,
+            depth=None if self.depth is None else self.depth - 1,
+            indent=self.indent + extra,
+            seen=self.seen | {base.id},
+        )
 
-    def opens(self, base: BaseShape) -> bool:
+    def opens(self, base: BaseShape, *, scalar: bool = False) -> bool:
         """Whether to expand `base` in place rather than name it.
 
         Depth alone is not enough: opening a scalar produces `level:` followed
         by `type: integer`, which is two lines saying what one line said. Only
         something with structure is worth the indent.
         """
-        return self.depth > 1 and base.id not in self.seen and _has_structure(base)
+        return (
+            (self.depth is None or self.depth > 1)
+            and base.id not in self.seen
+            and not isinstance(base.shape, RecursiveShape)
+            and (_has_structure(base) or (self.depth is None and scalar))
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,13 +190,14 @@ def _aligned(lines: list[_Line]) -> Iterator[str]:
         yield f'{line.text:<{width}}  # {line.note}' if line.note else line.text
 
 
-def render(base: BaseShape, *, depth: int = 1, root: str = '') -> Iterator[str]:
+def render(base: BaseShape, *, depth: int | None = 1, root: str = '') -> Iterator[str]:
     """The effective declaration as reading YAML, one line at a time.
 
     `depth` counts levels of *expansion*: 1 shows this type's own effective
     properties and names their types without opening them; 2 opens one more
     level. A named type is worth naming rather than inlining — the reader can
     ask for it by name — so the default stops at 1.
+    `None` expands all structural levels, stopping at recursive references.
 
     `root` is the directory that the paths in the comments are relative to.
 
@@ -213,7 +224,7 @@ def _body(base: BaseShape, level: _Level) -> Iterator[_Line]:
     # schema type's only parent is named for its file, which the note gives.
     if parents and parents != [named] and view is base:
         yield _Line(f'{level.indent}inherits: [{", ".join(parents)}]')
-    yield from _facets(base, level.indent, level.root)
+    yield from _facets(base, level.indent, level.root, level=level)
 
     shape = view.shape
     if isinstance(shape, ObjectShape):
@@ -222,12 +233,18 @@ def _body(base: BaseShape, level: _Level) -> Iterator[_Line]:
         # `items: notification` under `type: notification[]` is the same fact
         # twice, as `inherits:` is above. The line earns its place when `--depth`
         # opens the member, which is more than the name.
-        if level.opens(shape.items) or not named.endswith('[]'):
+        if level.depth is None or level.opens(shape.items) or not named.endswith('[]'):
             yield from _member(shape.items, 'items', level)
     elif isinstance(shape, UnionShape) and shape.any_of:
         yield _Line(f'{level.indent}anyOf:')
         for member in shape.any_of:
-            yield _Line(f'{level.indent}  - {type_name(member)}')
+            if level.depth is None and level.opens(member, scalar=True):
+                lines = iter(_body(member, level.inside(member, extra='    ')))
+                first = next(lines)
+                yield _Line(f'{level.indent}  - {first.text.strip()}', first.note)
+                yield from lines
+            else:
+                yield _Line(f'{level.indent}  - {type_name(member)}')
 
 
 def _properties(base: BaseShape, shape: ObjectShape, level: _Level) -> Iterator[_Line]:
@@ -259,7 +276,8 @@ def _one(name: str, base: BaseShape, origin: str | None, level: _Level) -> Itera
         yield from _body(base, inner.inside(base))
         return
     schema = _from_schema(base, level)
-    facets = list(_facets(base, inner.indent + '  ', inner.root))
+    facet_level = inner.inside(base) if inner.depth is None and base.id not in inner.seen and marker is None else None
+    facets = list(_facets(base, inner.indent + '  ', inner.root, level=facet_level))
     if not facets:
         # One line, so the two notes share it.
         both = ', '.join(part for part in (note, schema) if part)
@@ -280,7 +298,7 @@ def _key(name: str) -> str:
 
 
 def _member(base: BaseShape, key: str, level: _Level) -> Iterator[_Line]:
-    if level.opens(base) and not isinstance(base.shape, RecursiveShape):
+    if level.opens(base, scalar=True):
         yield _Line(f'{level.indent}{key}:')
         yield from _body(base, level.inside(base))
     else:
@@ -403,7 +421,7 @@ def _where(base: BaseShape, root: str) -> str:
     return _at(base.location, base.key_pos, root)
 
 
-def _facets(base: BaseShape, indent: str, root: str = '') -> Iterator[_Line]:
+def _facets(base: BaseShape, indent: str, root: str = '', *, level: _Level | None = None) -> Iterator[_Line]:
     """Every constraint the kind holds, in RAML spelling.
 
     `facets_of` is shared with the graph's projection so the two cannot disagree
@@ -423,10 +441,10 @@ def _facets(base: BaseShape, indent: str, root: str = '') -> Iterator[_Line]:
     if base.description is not None and base.description.value:
         first = base.description.value.strip().splitlines()[0]
         yield _Line(f'{indent}description: {_dumped(first)}')
-    yield from _extensions(base, indent, root)
+    yield from _extensions(base, indent, root, level=level)
 
 
-def _extensions(base: BaseShape, indent: str, root: str = '') -> Iterator[_Line]:
+def _extensions(base: BaseShape, indent: str, root: str = '', *, level: _Level | None = None) -> Iterator[_Line]:
     """`facets:`, the values supplied for them, and applied annotations.
 
     None of these is recoverable from the declaration alone: a custom facet's
@@ -441,7 +459,10 @@ def _extensions(base: BaseShape, indent: str, root: str = '') -> Iterator[_Line]
         yield _Line(f'{indent}facets:')
         for name, declared in base.custom_facet_defs.items():
             key = name if declared.required else f'{name}?'
-            yield _Line(f'{indent}  {_key(key)}: {type_name(declared.base)}')
+            if level is not None and level.depth is None:
+                yield from _one(key, declared.base, None, level)
+            else:
+                yield _Line(f'{indent}  {_key(key)}: {type_name(declared.base)}')
     for name, supplied in base.custom_facets.items():
         yield _Line(f'{indent}{_key(name)}: {_dumped(_plain(supplied.raw))}')
     for name, extension in base.annotations.items():

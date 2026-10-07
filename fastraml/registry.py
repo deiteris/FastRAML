@@ -28,6 +28,7 @@ from fastraml.yamlnode import AUTHORED_NODES, DEFAULT_MAX_DEPTH, mark_subtree
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping, Sequence
 
+    from fastraml.datanode import DataNode
     from fastraml.loaders import ResourceLoader
     from fastraml.parser.annotations import AnnotationSites, DomainExtension
     from fastraml.parser.fragments import ExtensionFragment, Fragment, ReferenceResolver
@@ -35,6 +36,7 @@ if TYPE_CHECKING:
     from fastraml.parser.structural_merge import ProvenanceOverlay
     from fastraml.parser.substitutions import Substitutions
     from fastraml.positions import Position
+    from fastraml.types.base import Property
     from fastraml.types.expressions import ExprCache
     from fastraml.types.schema_compile import SchemaRegistry
     from fastraml.yamlnode import Node
@@ -198,6 +200,7 @@ class Raml:
         'json_schema_registry',
         'mapping_keys',
         # --- indices ---------------------------------------------------------
+        'custom_facet_refs',
         'domain_extensions',
         'endpoints',
         'fragment_annotations',
@@ -284,6 +287,8 @@ class Raml:
         self._discriminator_shapes: list[BaseShape] = []
         self.endpoints: dict[str, EndPoint] = {}
         self.shapes: list[BaseShape] = []
+        #: P7's supplied-value bindings, refreshed by public P9, never by P10.
+        self.custom_facet_refs: dict[DataNode, list[Property]] = {}
         self.domain_extensions: list[DomainExtension] = []
         self.include_refs: dict[str, list[IncludeRef]] = {}
         #: Each scalar a template substitution produced, and the caller's

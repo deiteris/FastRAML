@@ -20,14 +20,15 @@ unchanged is kept as the target's node, so it is neither marked nor a change.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum, auto
 from typing import TYPE_CHECKING, Final, Literal
 
 from fastraml import facet_names as fn
 from fastraml.errors import Accumulator
 from fastraml.parser.annotations import is_annotation_key
-from fastraml.parser.source_ir import METHODS
 from fastraml.parser.structural_merge import node_value_equal, union_items
+from fastraml.parser.syntax import NAME_MAPS, Site
+from fastraml.parser.syntax import child_site as _child_site
+from fastraml.parser.syntax import facet_site as _facet_site
 from fastraml.yamlnode import TAG_MAP, TAG_SEQ, Node, NodeKind, is_null, node_error, str_scalar, with_grafts
 
 if TYPE_CHECKING:
@@ -44,100 +45,8 @@ __all__ = [
 ]
 
 
-class Site(Enum):
-    """The grammar position of a mapping, which decides what its keys mean."""
-
-    ROOT = auto()
-    RESOURCE = auto()
-    METHOD = auto()
-    RESPONSE = auto()
-    #: A `body:` mapping: media-type keys, or else itself a type declaration.
-    BODY = auto()
-    TYPE = auto()
-    SECURITY_SCHEME = auto()
-    #: A resource-type, trait or security-scheme application. Always a simple
-    #: property, whatever its shape (spec section Merging Rules, Exceptions).
-    APPLICATION = auto()
-    #: User data: an example, a default, an enum, an annotation value.
-    DATA = auto()
-    DOCUMENTATION = auto()
-    GENERIC = auto()
-    # -- name maps: every key is a name, not a facet -------------------------
-    TYPES = auto()
-    ANNOTATION_TYPES = auto()
-    TRAITS = auto()
-    RESOURCE_TYPES = auto()
-    SECURITY_SCHEMES = auto()
-    #: `properties`, `facets`, and every parameter or header map.
-    NAMED_TYPES = auto()
-    RESPONSES = auto()
-    EXAMPLES = auto()
-
-
 #: What an Overlay did to the target tree, as `info['change']` reports it.
 type _Change = Literal['added', 'changed', 'removed']
-
-#: Where each name in a name map leads.
-_NAME_MAPS: Final = {
-    Site.TYPES: Site.TYPE,
-    Site.ANNOTATION_TYPES: Site.TYPE,
-    Site.NAMED_TYPES: Site.TYPE,
-    Site.TRAITS: Site.METHOD,
-    Site.RESOURCE_TYPES: Site.RESOURCE,
-    Site.SECURITY_SCHEMES: Site.SECURITY_SCHEME,
-    Site.RESPONSES: Site.RESPONSE,
-    Site.EXAMPLES: Site.DATA,
-}
-
-#: The facet keys whose value has its own grammar position, per position. A
-#: key listed nowhere recurses as `GENERIC`.
-_CHILDREN: Final[dict[Site, dict[str, Site]]] = {
-    Site.ROOT: {
-        fn.FACET_TYPES: Site.TYPES,
-        fn.FACET_SCHEMAS: Site.TYPES,
-        fn.FACET_ANNOTATION_TYPES: Site.ANNOTATION_TYPES,
-        fn.FACET_TRAITS: Site.TRAITS,
-        fn.FACET_RESOURCE_TYPES: Site.RESOURCE_TYPES,
-        fn.FACET_SECURITY_SCHEMES: Site.SECURITY_SCHEMES,
-        fn.FACET_BASE_URI_PARAMETERS: Site.NAMED_TYPES,
-        fn.FACET_DOCUMENTATION: Site.DOCUMENTATION,
-        fn.FACET_SECURED_BY: Site.APPLICATION,
-    },
-    Site.RESOURCE: {
-        fn.FACET_URI_PARAMETERS: Site.NAMED_TYPES,
-        fn.FACET_TYPE: Site.APPLICATION,
-        fn.FACET_IS: Site.APPLICATION,
-        fn.FACET_SECURED_BY: Site.APPLICATION,
-    },
-    Site.METHOD: {
-        fn.FACET_HEADERS: Site.NAMED_TYPES,
-        fn.FACET_QUERY_PARAMETERS: Site.NAMED_TYPES,
-        fn.FACET_QUERY_STRING: Site.TYPE,
-        fn.FACET_BODY: Site.BODY,
-        fn.FACET_RESPONSES: Site.RESPONSES,
-        fn.FACET_IS: Site.APPLICATION,
-        fn.FACET_SECURED_BY: Site.APPLICATION,
-    },
-    Site.RESPONSE: {
-        fn.FACET_HEADERS: Site.NAMED_TYPES,
-        fn.FACET_BODY: Site.BODY,
-    },
-    Site.TYPE: {
-        fn.FACET_PROPERTIES: Site.NAMED_TYPES,
-        fn.FACET_FACETS: Site.NAMED_TYPES,
-        fn.FACET_ITEMS: Site.TYPE,
-        fn.FACET_TYPE: Site.TYPE,
-        fn.FACET_SCHEMA: Site.TYPE,
-        fn.FACET_EXAMPLES: Site.EXAMPLES,
-        fn.FACET_EXAMPLE: Site.DATA,
-        fn.FACET_DEFAULT: Site.DATA,
-        # `enum` is not data: the spec's own example of a multi-value simple
-        # property, so an extension's values are added to the target's.
-    },
-    Site.SECURITY_SCHEME: {
-        fn.FACET_DESCRIBED_BY: Site.METHOD,
-    },
-}
 
 #: Properties that cannot coexist in one object; adding one removes the other
 #: (docs/19 § 3.4). Only pairs the spec itself declares exclusive and that
@@ -252,43 +161,10 @@ def merge_extension(
     )
 
 
-def _child_site(site: Site, name: str) -> Site:  # noqa: PLR0911 - one return per grammar rule
-    """The grammar position of the value under `name` in a mapping at `site`."""
-    named = _NAME_MAPS.get(site)
-    if named is not None:
-        return named
-    if site is Site.DATA or site is Site.APPLICATION:
-        return site
-    if is_annotation_key(name):
-        return Site.DATA
-    if site is Site.BODY:
-        # A media-type key leads to a type declaration; any other key means the
-        # body itself is one (docs/08 § 6.3).
-        return Site.TYPE if '/' in name else _child_site(Site.TYPE, name)
-    if site is Site.ROOT or site is Site.RESOURCE:
-        if name.startswith('/'):
-            return Site.RESOURCE
-        if site is Site.RESOURCE and name.removesuffix('?') in METHODS:
-            return Site.METHOD
-    children = _CHILDREN.get(site)
-    if children is not None:
-        found = children.get(name)
-        if found is not None:
-            return found
-    return Site.GENERIC
-
-
 def _canonical(site: Site, name: str) -> str:
     """The current spelling of a deprecated synonym; any other key unchanged."""
     synonyms = _SYNONYMS.get(_facet_site(site, name))
     return name if synonyms is None else synonyms.get(name, name)
-
-
-def _facet_site(site: Site, name: str) -> Site:
-    """`site`, or `TYPE` for a non-media key of a body that is itself a type."""
-    if site is Site.BODY and '/' not in name:
-        return Site.TYPE
-    return site
 
 
 class _Merger:
@@ -461,7 +337,7 @@ class _Merger:
     @staticmethod
     def _allowed_key(site: Site, name: str) -> bool:
         """Whether everything at and below `name` is free for an Overlay to change."""
-        if site in _NAME_MAPS or site is Site.DATA:
+        if site in NAME_MAPS or site is Site.DATA:
             # A key in a name map is a name — a property called `description`
             # is not the `description` facet.
             return False

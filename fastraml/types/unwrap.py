@@ -37,6 +37,7 @@ from fastraml.types.complex_ import (
     UnionShape,
     nested,
 )
+from fastraml.types.custom_facets import bind_custom_facets
 from fastraml.types.inherit import alias_to, fold_parents, inherit
 from fastraml.types.values import EnumValues
 
@@ -161,6 +162,7 @@ def unwrap_shapes(raml: Raml) -> None:
         finish_unwrap(raml)
     except RamlError as err:
         accumulator.add(err)
+    bind_custom_facets(raml)
     accumulator.raise_if_any()
 
 

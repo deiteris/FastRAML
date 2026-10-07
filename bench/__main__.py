@@ -118,6 +118,9 @@ BENCHES: tuple[Bench, ...] = (
         'annotation-targets', lambda root, scale: corpus.write_annotation_targets(root, family_count=_at(250, scale))
     ),
     Bench('doc-links', lambda root, scale: corpus.write_doc_links(root, resource_count=_at(250, scale))),
+    Bench(
+        'non-strict-examples', lambda root, scale: corpus.write_non_strict_examples(root, family_count=_at(400, scale))
+    ),
     Bench('hover', lambda root, scale: corpus.write_hover(root, family_count=_at(400, scale))),
     Bench('effective-types', lambda root, scale: corpus.write_hover(root, family_count=_at(300, scale))),
     Bench('inlays', lambda root, scale: corpus.write_hover(root, family_count=_at(400, scale))),
@@ -178,7 +181,9 @@ def run_one(bench: str, config: str, entry: Path, repeat: int) -> Measurement:
         from fastraml.views.lint import Config, Linter, builtin_registry  # noqa: PLC0415 - as above
 
         linter = Linter(builtin_registry(), Config(extends=('all',)))
-        return measure(bench, config, lambda: linter.report(parse()), repeat=repeat)
+        # Fixed output limits would cap retained memory at both corpus sizes.
+        limits = {'max_findings': None, 'max_findings_per_rule': None} if bench == 'non-strict-examples' else {}
+        return measure(bench, config, lambda: linter.report(parse(), **limits), repeat=repeat)
     if 'graph' in config:
         from fastraml.views.graph import build_graph  # noqa: PLC0415 - as above
 
@@ -522,6 +527,7 @@ LINEARITY_CONFIGS: dict[str, str] = {
     'projections': 'unwrap',
     'datatype-fragments': 'unwrap',
     'doc-links': 'unwrap',
+    'non-strict-examples': 'unwrap+lint',
     'hover': 'unwrap',
     'effective-types': 'unwrap',
     'inlays': 'unwrap',

@@ -132,6 +132,110 @@ class TestOptionalDiscriminator:
         assert main(['lint', '--rule', 'optional-discriminator', '--fail-on', 'warning', str(path)]) == EXIT_INVALID
 
 
+class TestNonStrictExample:
+    """docs/18 § 2: disabling example validation is a default warning."""
+
+    @staticmethod
+    def findings(source, tmp_path, config=None):
+        return [
+            finding
+            for finding in Linter(builtin_registry(), config).run(parsed(source, tmp_path))
+            if finding.rule == 'non-strict-example'
+        ]
+
+    @pytest.mark.parametrize(
+        ('source', 'line', 'name'),
+        [
+            ('#%RAML 1.0 DataType\ntype: string\nexample:\n  value: x\n  strict: false\n', 5, 'example'),
+            ('#%RAML 1.0 DataType\ntype: string\nexamples:\n  sample:\n    value: x\n    strict: false\n', 6, 'sample'),
+            ('#%RAML 1.0 NamedExample\nsample:\n  value: x\n  strict: false\n', 4, 'sample'),
+            (
+                (
+                    '#%RAML 1.0\ntitle: t\n/r:\n  get:\n    queryParameters:\n'
+                    '      q:\n        type: string\n        example:\n          value: x\n          strict: false\n'
+                ),
+                10,
+                'example',
+            ),
+            (
+                (
+                    '#%RAML 1.0\ntitle: t\n/r:\n  post:\n    body:\n      application/json:\n'
+                    '        type: string\n        example:\n          value: x\n          strict: false\n'
+                ),
+                10,
+                'example',
+            ),
+            (
+                (
+                    '#%RAML 1.0 DataType\nproperties:\n  p:\n    type: string\n'
+                    '    example:\n      value: x\n      strict: false\n'
+                ),
+                7,
+                'example',
+            ),
+        ],
+        ids=['single', 'named', 'fragment', 'parameter', 'body', 'nested-property'],
+    )
+    def test_warns_by_default_at_the_strict_field(self, source, line, name, tmp_path):
+        findings = self.findings(source, tmp_path)
+        assert len(findings) == 1
+        assert findings[0].severity is Severity.WARNING
+        assert findings[0].message == 'example disables validation'
+        assert findings[0].info == {'example': name}
+        assert findings[0].position.line == line
+        assert findings[0].location == (tmp_path / 'api.raml').as_uri()
+
+    @pytest.mark.parametrize(
+        'example',
+        ['x', '{value: x}', '{value: x, strict: true}', '{strict: false}', '{value: {strict: false}}'],
+    )
+    def test_enabled_validation_and_strict_in_data_are_silent(self, example, tmp_path):
+        assert not self.findings(f'#%RAML 1.0 DataType\ntype: any\nexample: {example}\n', tmp_path)
+
+    @pytest.mark.parametrize('named', [False, True], ids=['included-wrapper', 'named-fragment'])
+    def test_shared_includes_report_each_authored_strict_field_once(self, tmp_path, named):
+        included = tmp_path / 'examples.raml'
+        included.write_text(
+            '#%RAML 1.0 NamedExample\nsample:\n  value: x\n  strict: false\n' if named else 'value: x\nstrict: false\n',
+            encoding='utf-8',
+        )
+        facet = 'examples' if named else 'example'
+        source = (
+            '#%RAML 1.0\ntitle: t\ntypes:\n'
+            f'  A:\n    type: string\n    {facet}: !include examples.raml\n'
+            f'  B:\n    type: string\n    {facet}: !include examples.raml\n'
+            '  Alias: A\n  Sub:\n    type: A\n'
+        )
+        findings = self.findings(source, tmp_path)
+        assert len(findings) == 1
+        assert findings[0].location == included.as_uri()
+        assert findings[0].position.line == (4 if named else 2)
+
+    def test_each_named_example_is_checked_and_suppression_is_local(self, tmp_path):
+        source = (
+            '#%RAML 1.0 DataType\ntype: string\nexamples:\n'
+            '  ignored:\n    value: x\n    # fastraml: ignore non-strict-example\n    strict: false\n'
+            '  first: {value: x, strict: false}\n  second: {value: y, strict: false}\n'
+        )
+        assert [finding.info for finding in self.findings(source, tmp_path)] == [
+            {'example': 'first'},
+            {'example': 'second'},
+        ]
+
+    def test_warning_is_configurable_and_cli_fail_on_warning_applies(self, tmp_path, capsys):
+        source = builtin_registry().get('non-strict-example').meta.bad
+        disabled = Config(rules=(RuleSetting(id='non-strict-example', disabled=True),))
+        assert not self.findings(source, tmp_path, disabled)
+        promoted = Config(extends=(), rules=(RuleSetting(id='non-strict-example', severity=Severity.ERROR),))
+        assert self.findings(source, tmp_path, promoted)[0].severity is Severity.ERROR
+        assert self.findings(source, tmp_path, Config(extends=('style',)))
+        path = tmp_path / 'api.raml'
+        path.write_text(source, encoding='utf-8')
+        assert main(['lint', str(path)]) == EXIT_OK
+        capsys.readouterr()
+        assert main(['lint', '--fail-on', 'warning', str(path)]) == EXIT_INVALID
+
+
 class TestRuleExamples:
     @pytest.mark.parametrize('rule', builtin_registry().all(), ids=lambda rule: rule.meta.id)
     def test_good_is_silent_and_bad_fires(self, rule, tmp_path):

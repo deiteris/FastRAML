@@ -48,6 +48,7 @@ WRITERS = {
     'reference-namespaces': lambda root: corpus.write_reference_namespaces(root, resource_count=3),
     'annotation-targets': lambda root: corpus.write_annotation_targets(root, family_count=3),
     'doc-links': lambda root: corpus.write_doc_links(root, resource_count=3),
+    'non-strict-examples': lambda root: corpus.write_non_strict_examples(root, family_count=3),
     'hover': lambda root: corpus.write_hover(root, family_count=3),
     'effective-types': lambda root: corpus.write_hover(root, family_count=3),
     'inlays': lambda root: corpus.write_hover(root, family_count=3),
@@ -62,6 +63,29 @@ class TestFeatureCorporaReachTheirCode:
     (docs/12 § 4). Each feature corpus pins, by counting calls, that it runs the
     code it was written for, at every size it was written to cover.
     """
+
+    @pytest.mark.parametrize('count', [2, 64])
+    def test_non_strict_examples_reaches_warnings_and_shared_site_deduplication(self, tmp_path, monkeypatch, count):
+        from bench.__main__ import run_one
+        from fastraml.views.lint import Linter, Severity
+
+        results = []
+        original = Linter.report
+
+        def report(linter, raml, **kwargs):
+            result = original(linter, raml, **kwargs)
+            findings = [finding for finding in result.findings if finding.rule == 'non-strict-example']
+            assert len(findings) == count * 2
+            assert {finding.info['example'] for finding in findings} == {'example', 'sample'}
+            assert all(finding.severity is Severity.WARNING for finding in findings)
+            assert len({finding.where for finding in findings}) == count * 2
+            results.append(result)
+            return result
+
+        monkeypatch.setattr(Linter, 'report', report)
+        entry = corpus.write_non_strict_examples(tmp_path, family_count=count)
+        run_one('non-strict-examples', 'unwrap+lint', entry, repeat=1)
+        assert len(results) == 2, 'timing and allocation both reach the warnings'
 
     @pytest.mark.parametrize('count', [2, 4])
     def test_lenient_recovery_reaches_local_and_stage_boundaries(self, tmp_path, monkeypatch, count):

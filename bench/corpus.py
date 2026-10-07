@@ -40,6 +40,7 @@ __all__ = [
     'write_jsonschema',
     'write_large',
     'write_lenient_recovery',
+    'write_non_strict_examples',
     'write_projections',
     'write_reference_namespaces',
     'write_schema_allof',
@@ -60,6 +61,23 @@ def _write(root: Path, files: dict[str, str]) -> None:
 
 
 # -- types --------------------------------------------------------------------
+
+
+def write_non_strict_examples(root: Path, *, family_count: int = 400) -> Path:
+    """Single and shared named examples with validation explicitly disabled."""
+    types = []
+    files = {}
+    for index in range(family_count):
+        files[f'examples{index}.raml'] = '#%RAML 1.0 NamedExample\nsample:\n  value: x\n  strict: false\n'
+        types.append(
+            f'  Single{index}:\n    type: string\n    example: {{value: x, strict: false}}\n'
+            f'  Alias{index}: Single{index}\n'
+            f'  Named{index}:\n    type: string\n    examples: !include examples{index}.raml\n'
+            f'  Reused{index}:\n    type: string\n    examples: !include examples{index}.raml\n'
+        )
+    files['api.raml'] = '#%RAML 1.0\ntitle: Examples\ntypes:\n' + ''.join(types)
+    _write(root, files)
+    return root / 'api.raml'
 
 
 def write_lenient_recovery(root: Path, *, family_count: int = 200) -> Path:

@@ -12,8 +12,8 @@ A lint rule must be one of:
 - A judgement derived from RAML semantics.
 - A judgement derived from a published external standard, with that source
   recorded in the rule metadata.
-- An authoring policy, normally opt-in; the remote-fragment portability warning
-  is recommended by default (§ 2).
+- An authoring policy, normally opt-in; the remote-fragment portability and
+  non-strict-example warnings are recommended by default (§ 2).
 
 A rule that rejects a document the parser already rejects is not a lint rule.
 Put it in the appropriate parser pass. A rule that is specific to one
@@ -44,7 +44,7 @@ Built-in rulesets are:
 
 | Ruleset | Contents | Default |
 |---|---|---|
-| `recommended` | the built-in `spec` rules, the remote-fragment portability warning and `broken-doc-link` | enabled |
+| `recommended` | the built-in `spec` rules, `remote-fragment`, `non-strict-example` and `broken-doc-link` | enabled |
 | `spec` | rules derived from RAML semantics | enabled through `recommended` |
 | `security` | rules derived from published security guidance | disabled |
 | `http` | HTTP semantics from RFC 9110 and related media/URI standards | disabled |
@@ -66,6 +66,17 @@ fastraml lint --explain unbounded-string
 reference, including references in imported fragments. Remote loading remains
 valid when enabled; the warning concerns reproducibility and availability, and
 is independently configurable through `lint.rules`.
+
+`non-strict-example` warns by default when an example wrapper sets
+`strict: false`, even if its value conforms to the type. This disables ordinary
+example validation and can let the example drift from its declared type.
+The rule covers `example:`, named `examples:`, included wrappers and
+`NamedExample` fragments, and examples on nested types, parameters and bodies.
+Omitted `strict`, `strict: true`, and a `strict` property inside the example's
+data are silent. It reports each authored `strict:` field once across inherited
+or reused examples, at that field's source location. `info['example']` is the
+example's name, or `example` for a single unnamed example. This authoring policy
+belongs to `style` and `recommended` and is configurable through `lint.rules`.
 
 `optional-discriminator` warns by default when an effective discriminator
 names an optional property. RAML 1.0 does not require the tag's presence, so

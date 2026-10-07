@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastraml.views.lint.engine import Registry, Rule
 from fastraml.views.lint.rules.content import NoAmbiguousPaths
-from fastraml.views.lint.rules.document import RemoteFragment, UnusedTrait, UnusedType
+from fastraml.views.lint.rules.document import NonStrictExample, RemoteFragment, UnusedTrait, UnusedType
 from fastraml.views.lint.rules.headers import (
     ContentTypeHeader,
     DuplicateHeader,
@@ -122,6 +122,7 @@ def builtin_registry() -> Registry:
     # Portability is a policy judgement, not a RAML validity rule, but is
     # recommended even when the other opt-in style conventions are disabled.
     registry.add(RemoteFragment(), sets=('recommended', 'style'))
+    registry.add(NonStrictExample(), sets=('recommended', 'style'))
     security_rules: tuple[Rule, ...] = (
         BaseUriUserinfo(),
         BoundedAdditionalProperties(),

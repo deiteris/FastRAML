@@ -2,19 +2,64 @@
 
 from __future__ import annotations
 
+from itertools import chain
 from typing import TYPE_CHECKING, ClassVar
 
 from fastraml.nodes import TypeNode
-from fastraml.parser.fragments import APIFragment
+from fastraml.parser.fragments import APIFragment, NamedExample
+from fastraml.types.examples import examples_of
 from fastraml.views.graph import USE_EDGES, is_declaration
 from fastraml.views.lint.engine import Category, Finding, RuleMeta, Severity
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+    from fastraml.positions import Position
     from fastraml.views.lint.engine import Context
 
-__all__ = ['RemoteFragment', 'UnusedTrait', 'UnusedType']
+__all__ = ['NonStrictExample', 'RemoteFragment', 'UnusedTrait', 'UnusedType']
+
+
+class NonStrictExample:
+    meta: ClassVar = RuleMeta(
+        id='non-strict-example',
+        category=Category.STYLE,
+        summary='examples should keep validation enabled',
+        rationale=(
+            'Setting strict: false disables ordinary example validation, so an example can drift from its '
+            'declared type without being rejected. Omit strict or set it to true to keep examples checked.'
+        ),
+        severity=Severity.WARNING,
+        references=('RAML 1.0 § Single Example', 'RAML 1.0 § Multiple Examples'),
+        good='#%RAML 1.0\ntitle: t\ntypes:\n  T:\n    type: string\n    example: {value: x, strict: true}\n',
+        bad='#%RAML 1.0\ntitle: t\ntypes:\n  T:\n    type: string\n    example: {value: x, strict: false}\n',
+    )
+
+    def run(self, ctx: Context) -> Iterable[Finding]:
+        seen: set[tuple[str, Position]] = set()
+        types = ((iri, examples_of(node.entity)) for iri, node in ctx.graph.nodes.items() if isinstance(node, TypeNode))
+        # NamedExample fragments have no graph node, including at the entry point.
+        fragments = (
+            ('', fragment.examples.values())
+            for fragment in ctx.raml.fragments.values()
+            if isinstance(fragment, NamedExample)
+        )
+        for iri, examples in chain(types, fragments):
+            for example in examples:
+                strict = example.strict
+                if strict is None or strict.value:
+                    continue
+                site = (strict.location, strict.key_pos)
+                if site in seen:
+                    continue
+                seen.add(site)
+                yield ctx.on(
+                    self.meta,
+                    'example disables validation',
+                    strict,
+                    iri=iri,
+                    example=example.name or 'example',
+                )
 
 
 class RemoteFragment:

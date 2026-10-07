@@ -480,6 +480,14 @@ not a candidate, and nothing checks for one.
 `Occurrences.at(uri, line, column)` finds the occurrences under a cursor.
 `Occurrences.of(id)` lists an entity's definition and every use of it.
 
+Custom-facet references are a lazy part of the index. Building the index and
+navigating an ordinary type do not materialize the parser's facet bindings or
+allocate their reference tokens. A facet lookup, a facet target's references,
+a complete file listing, or reading `dropped` builds that part once, through
+the same source-text law. File listings merge it once in source order; cursor
+and target queries remain complete before and after that merge. This defers
+work until a consumer asks for those facts without moving binding into a view.
+
 ## 10. Authorship view
 
 `fastraml.views.authored` answers what a file, or an entity, wrote, for every

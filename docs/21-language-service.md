@@ -321,24 +321,36 @@ returns hints only within the requested source range. It reuses hover's
 authored source sites and typed `DataNode` token index, and never resolves a
 name or repeats type matching in the adapter.
 
-A declaration without an authored type expression can show its inferred type,
-such as `[object]`. A typed data field can show its expected type, such as
-`[string]`, even when the current supplied value is invalid. Fields with no
-governing declaration get no invented hint. Multiple union candidates retain
-their distinct expected types rather than selecting an alternative by value
-validation.
+A declaration without an authored type can show its inferred type, such as
+`[object]`. Explicit types, including a multiple-inheritance list, are not
+repeated. Supplied custom-facet keys and annotation, example and default roots
+show their expected value type; nested typed data fields do too. For example,
+`stewardedBy` can show `[string]`, and `sources` can show `[string[]]`.
+These facts remain available when the supplied value is invalid. Fields with
+no governing declaration get no invented hint.
 
-An unwrapped declaration can also show `[inherited constraints]` when scalar
-constraints come from outside its own span. The tooltip lists those constraints
-in full, including regular expressions; authored constraints are not repeated.
-Labels are bounded to 60 characters so they do not obscure the source value.
-Descriptions remain in Markdown tooltips. Candidates with the same expected
-type share one label and retain all their documentation; a label links to a
-declaration only when its navigation target is unambiguous.
-Source ranges are filtered by the hint's anchor after the key, including when
-the range starts inside that key. Declaration hints are cached per source site,
-and range queries use the sorted token indices rather than scanning the file.
-The adapter reports type-kind hints, converts all
+Unwrapped declarations can also show concrete inherited constraints after
+their authored type reference: `isbn: Isbn` can show `[length: 13]`, rather
+than inserting a facet dump between the field name and its colon. Length,
+item/property counts and numeric bounds use an exact value, an inclusive
+range (`2..40`), or `≥`/`≤` for a one-sided bound. Short remaining facets can
+fit too. Authored constraints and unpositioned defaults are not repeated.
+Long regexes and structured values are never cut mid-value into an inline
+preview, nor replaced with a generic badge. A tooltip preserves every inherited
+constraint in full; the effective view remains the place for a complete listing.
+
+Type components and constraint summaries are bounded to 32 characters. An
+ambiguous union shows one type expression, such as `[string | integer]`,
+abbreviating excess alternatives with `…` while retaining all their
+documentation in its tooltip. Each displayed type part carries its declaration
+location only when that target is unambiguous; same-type candidates retain all
+their documentation without choosing an arbitrary navigation target.
+
+Source ranges are filtered by the actual hint anchor, after a key or type
+reference, including when the range starts inside that token. Declaration
+hints are cached per file and range queries use sorted anchor indices.
+The adapter reports type-kind hints for types, leaves the kind unset for
+constraint summaries, converts all
 positions in the negotiated encoding and adds display padding without editing
 the source. VS Code uses its standard **Editor: Inlay Hints** setting.
 
@@ -442,7 +454,8 @@ could save.
 - `test_service_lenses.py`: on-demand effective rendering, unavailable models
   and stale source sites; `test_lsp.py` covers the code-lens command round trip.
 - `test_service_inlays.py`: inferred declaration types, expected data-field
-  types, inherited constraints, ambiguity, range filtering and navigation;
+  and supplied-facet types, concrete inherited constraints at type references,
+  explicit-type suppression, ambiguity, range filtering and navigation;
   `test_lsp.py` checks UTF-16 positions and clickable inlay-label locations.
 - `test_loaders.py`: `SafeFileLoader.contains` and `files`.
 - `test_lsp.py`: `fastraml lsp` driven over stdio by pygls' client, one

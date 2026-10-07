@@ -105,6 +105,43 @@ def _only(found: list[Occurrence]) -> Occurrence:
     return found[0]
 
 
+@pytest.mark.parametrize('query', ['at', 'of', 'in_file', 'dropped'])
+def test_custom_facet_references_are_lazy_complete_and_indexed_once(workspace, monkeypatch, query):
+    from fastraml.types import custom_facets
+
+    document = API.replace('annotationTypes:', '  Child:\n    type: User\n    tier: gold\nannotationTypes:')
+    calls = []
+    original = custom_facets._bindings
+
+    def index(raml):
+        calls.append(raml)
+        return original(raml)
+
+    monkeypatch.setattr(custom_facets, '_bindings', index)
+    raml, occurrences, uri = _parsed(workspace, document)
+    user = _only(occurrences.at(uri, *_where(document, 'User:')))
+    assert user.target is not None
+    assert occurrences.of(user.target)
+    declared = _only(occurrences.at(uri, *_where(document, 'tier: string')))
+    assert declared.target is not None
+    assert not calls  # ordinary navigation does not build facet references
+    if query == 'at':
+        reference = _only(occurrences.at(uri, *_where(document, 'tier: gold')))
+        assert reference.target == declared.target
+    elif query == 'of':
+        assert [item.role for item in occurrences.of(declared.target)] == [Role.DEFINITION, Role.REFERENCE]
+    elif query == 'in_file':
+        assert any(item.role is Role.REFERENCE and item.kind is Kind.FACET for item in occurrences.in_file(uri))
+    else:
+        assert not occurrences.dropped
+    assert calls == [raml]
+    first = occurrences.in_file(uri)
+    assert occurrences.in_file(uri) is first
+    assert [item.role for item in occurrences.of(declared.target)] == [Role.DEFINITION, Role.REFERENCE]
+    assert _only(occurrences.at(uri, *_where(document, 'tier: gold'))).target == declared.target
+    assert calls == [raml]
+
+
 class TestEachNameIsAnOccurrence:
     @pytest.mark.parametrize(
         ('expected', 'site'),

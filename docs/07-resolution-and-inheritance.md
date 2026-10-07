@@ -42,8 +42,9 @@ P7 resolves these forms:
 - an RDT expression is parsed through the per-parse cache and built as described
   in [06](06-type-expressions.md#3-building-shapes).
 
-After draining the worklist, P7 binds supplied custom-facet `DataNode`s to
-their known declarations in `Raml.custom_facet_refs`. The shared ancestor
+After draining the worklist, P7 publishes a lazy binding index for supplied
+custom-facet `DataNode`s in `Raml.custom_facet_refs`. Its first read indexes
+already-resolved parents and declarations; it resolves no name. The shared ancestor
 walk in `types/custom_facets.py` starts at semantic parents, follows aliases
 and DataType links, and preserves breadth-first declaration order. Unknown
 values remain unbound; multiple declarations remain candidates for tooling.
@@ -73,9 +74,15 @@ particularly when a union merge collapses; callers must use that return value.
 P9 refreshes both declaration-name indices and typed fragments' root pointers
 with replacement shapes, so a fragment and every inclusion site expose the same
 effective root after a collapse.
-P9 also refreshes custom-facet bindings over the effective public shapes,
+P9 also replaces the binding index with one over the effective public shapes,
 including facet values materialized while distributing union siblings.
-Private copies used for validation do not publish binding changes.
+Private copies used for validation do not publish binding changes. When no
+consumer reads P7's index before P9, it is replaced without being materialized.
+The index is a mapping, built once on first access, so ordinary parsing and
+validation do not allocate editor references that nobody reads.
+Its declaration sequences are read-only. Internally a single-candidate binding
+stores the property directly; only ambiguous values retain a candidate tuple,
+avoiding a one-element container per supplied scalar.
 
 All parents are unwrapped before a child. Multiple inheritance folds parents
 into a fresh shape (`fold_parents` in `types/inherit.py`), so merges cannot mutate or

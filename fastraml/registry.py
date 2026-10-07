@@ -288,7 +288,7 @@ class Raml:
         self.endpoints: dict[str, EndPoint] = {}
         self.shapes: list[BaseShape] = []
         #: P7's supplied-value bindings, refreshed by public P9, never by P10.
-        self.custom_facet_refs: dict[DataNode, list[Property]] = {}
+        self.custom_facet_refs: Mapping[DataNode, Sequence[Property]] = {}
         self.domain_extensions: list[DomainExtension] = []
         self.include_refs: dict[str, list[IncludeRef]] = {}
         #: Each scalar a template substitution produced, and the caller's

@@ -396,23 +396,22 @@ class RamlServer(LanguageServer):
             hints = inlays.inlay_hints(snapshot, uri, positions.span(uri, params.range))
             result = []
             for hint in hints:
-                location = None
-                if (
-                    hint.definition_uri is not None
-                    and hint.definition_span is not None
-                    and _file(hint.definition_uri) is not None
-                ):
-                    location = self._location(positions, queries.Site(hint.definition_uri, hint.definition_span))
-                label = types.InlayHintLabelPart(
-                    value=hint.label,
-                    location=location,
-                    tooltip=types.MarkupContent(types.MarkupKind.Markdown, hint.tooltip),
-                )
+                label = []
+                for part in hint.parts:
+                    location = None
+                    if (
+                        part.definition_uri is not None
+                        and part.definition_span is not None
+                        and _file(part.definition_uri) is not None
+                    ):
+                        location = self._location(positions, queries.Site(part.definition_uri, part.definition_span))
+                    label.append(types.InlayHintLabelPart(value=part.label, location=location))
                 result.append(
                     types.InlayHint(
                         position=positions.range(uri, hint.position).start,
-                        label=[label],
-                        kind=types.InlayHintKind.Type,
+                        label=label,
+                        kind=types.InlayHintKind.Type if hint.is_type else None,
+                        tooltip=types.MarkupContent(types.MarkupKind.Markdown, hint.tooltip),
                         padding_left=True,
                     )
                 )

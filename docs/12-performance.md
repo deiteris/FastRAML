@@ -115,9 +115,9 @@ must receive a parser diagnostic rather than `RecursionError`.
 | `inline-json` | JSON-encoded strings in examples, enums, defaults, annotations, and custom facets; one decoding step per value ([03](03-yaml-and-io.md) § 6) |
 | `annotation-targets` | included annotation restrictions, query strings and nested body declarations, literal and substituted template-root annotations, annotated substituted type names, and annotated default and discriminator scalars ([09](09-security-and-annotations.md) § B4) |
 | `doc-links` | description-link resolution in the tree and lint ([16](16-graph.md) § 11) |
-| `hover` | a cold language-service snapshot and fourteen authoring hovers per type family: inherited summaries, facet explanations, built-ins, custom-facet declarations and supplied keys, nested custom-facet and annotation keys and values, property presence, methods and response statuses ([21](21-language-service.md) § 4.2) |
+| `hover` | a cold language-service snapshot, fourteen authoring hovers per type family and custom-facet definition queries: inherited summaries, facet explanations, built-ins, custom-facet declarations and supplied keys, nested custom-facet and annotation keys and values, property presence, methods and response statuses ([21](21-language-service.md) § 4.2) |
 | `effective-types` | a cold service snapshot, code-lens enumeration and full-depth RAML rendering for every named type and annotation type, including nested arrays, unions, scalar item constraints and recursive references ([21](21-language-service.md) § 4.3) |
-| `inlays` | a cold snapshot, inferred declaration types, expected custom-facet and annotation field types, and inherited scalar-facet labels ([21](21-language-service.md) § 4.4) |
+| `inlays` | a cold snapshot, inferred declaration types, expected types at supplied custom-facet/annotation roots and nested data keys, and compact inherited constraints anchored to type references ([21](21-language-service.md) § 4.4) |
 
 The six general workloads are `small`, `large`, `endpoints`, `extensions`,
 `validate` and `jsonschema`. The other twenty-two are feature workloads:

@@ -38,7 +38,7 @@ def test_inherited_constraints_are_visible_without_repeating_authored_constraint
     hints = inlays.inlay_hints(workspace.snapshot(uri), uri, Position(1, 1, 100, 1))
     line, _ = _where(document, 'type: Word')
     (hint,) = [hint for hint in hints if hint.position.line == line]
-    assert hint.label == '[length: ≥2]'
+    assert hint.label == '[string; length: ≥2]'
     assert 'minLength: 2' in hint.tooltip
     assert 'maxLength' not in hint.tooltip
     assert not [hint for hint in hints if hint.position.line == _where(document, 'Word:')[0]]
@@ -88,7 +88,7 @@ def test_complex_inherited_constraints_stay_in_the_tooltip_not_the_source_line(m
         snapshot, uri, Position(line, column + len('isbn: '), line, column + len('isbn: Isbn'))
     )
     assert hint.position.column == column + len('isbn: Isbn')
-    assert hint.label == '[length: 13]'
+    assert hint.label == '[string; length: 13]'
     assert 'minLength: 13' in hint.tooltip
     assert 'maxLength: 13' in hint.tooltip
     assert pattern in hint.tooltip
@@ -150,7 +150,7 @@ def test_supplied_custom_facets_get_expected_types_at_their_keys(memory_workspac
         assert hint.parts[1].definition_span.line == _where(document, needle.split(':')[0] + ':')[0]
 
 
-def test_only_compact_concrete_constraints_are_shown_and_explicit_types_are_not_repeated(memory_workspace):
+def test_named_references_show_underlying_types_even_when_constraints_do_not_fit(memory_workspace):
     document = (
         '#%RAML 1.0\ntitle: T\ntypes:\n  Code:\n    type: string\n'
         '    pattern: ^' + 'a' * 200 + '$\n  Message:\n    type: Code\n'
@@ -158,18 +158,82 @@ def test_only_compact_concrete_constraints_are_shown_and_explicit_types_are_not_
     )
     workspace, folder = _buffered(memory_workspace, {'api.raml': document})
     uri = f'{folder}/api.raml'
-    assert not inlays.inlay_hints(workspace.snapshot(uri), uri, Position(1, 1, 100, 1))
+    snapshot = workspace.snapshot(uri)
+    hints = inlays.inlay_hints(snapshot, uri, Position(1, 1, 100, 1))
+    (hint,) = [hint for hint in hints if hint.position.line == _where(document, 'type: Code')[0]]
+    assert hint.label == '[string]'
+    assert '^' + 'a' * 200 + '$' in hint.tooltip
+    assert not [
+        hint
+        for hint in hints
+        if hint.position.line in (_where(document, 'A: object')[0], _where(document, 'B: object')[0])
+    ]
+    assert not [hint for hint in hints if hint.position.line == _where(document, 'type: [A, B]')[0]]
+
+
+@pytest.mark.parametrize(
+    ('declaration', 'expected'),
+    [
+        ('type: object\n    additionalProperties: false', '[object]'),
+        ('type: object', '[object]'),
+        ('type: string', '[string]'),
+        ('type: integer', '[integer]'),
+        ('type: string[]', '[string[]]'),
+        ('type: string | integer', '[string | integer]'),
+        ('type: (string | integer)[]', '[(string | integer)[]]'),
+        ('type: object\n    properties:\n      next?: Config', '[object]'),
+    ],
+)
+def test_property_references_show_the_underlying_type_first(memory_workspace, declaration, expected):
+    document = (
+        f'#%RAML 1.0\ntitle: T\ntypes:\n  Config:\n    {declaration}\n'
+        '  Container:\n    properties:\n      config?: Config\n'
+    )
+    workspace, folder = _buffered(memory_workspace, {'api.raml': document})
+    uri = f'{folder}/api.raml'
+    snapshot = workspace.snapshot(uri)
+    assert snapshot.error is None
+    line, column = _where(document, 'config?: Config')
+    end = column + len('config?: Config')
+    (hint,) = inlays.inlay_hints(snapshot, uri, Position(line, column, line, end))
+    assert hint.label == expected
+    assert hint.position.column == end
+    if 'additionalProperties' in declaration:
+        assert 'additionalProperties: false' in hint.tooltip
+    if 'next?' in declaration:
+        line, column = _where(document, 'next?: Config')
+        (hint,) = inlays.inlay_hints(snapshot, uri, Position(line, column, line, column + len('next?: Config')))
+        assert hint.label == '[object]'
+
+
+def test_library_references_and_pattern_properties_show_the_underlying_type(memory_workspace):
+    library = '#%RAML 1.0 Library\ntypes:\n  Config:\n    type: object\n    additionalProperties: false\n'
+    document = (
+        '#%RAML 1.0\ntitle: T\nuses:\n  config: config.raml\ntypes:\n  Container:\n'
+        '    properties:\n      parser?: config.Config\n      //: config.Config\n'
+    )
+    workspace, folder = _buffered(memory_workspace, {'api.raml': document, 'config.raml': library})
+    uri = f'{folder}/api.raml'
+    snapshot = workspace.snapshot(uri)
+    assert snapshot.error is None
+    for needle in ('parser?: config.Config', '//: config.Config'):
+        line, column = _where(document, needle)
+        end = column + len(needle)
+        (hint,) = inlays.inlay_hints(snapshot, uri, Position(line, column, line, end))
+        assert hint.label == '[object]'
+        assert hint.position.column == end
+        assert 'additionalProperties: false' in hint.tooltip
 
 
 @pytest.mark.parametrize(
     ('body', 'expected'),
     [
-        ('type: string\n    minLength: 2\n    maxLength: 40', '[length: 2..40]'),
-        ('type: array\n    items: string\n    minItems: 1\n    maxItems: 10', '[items: 1..10]'),
-        ('type: object\n    minProperties: 1\n    maxProperties: 3', '[properties: 1..3]'),
-        ('type: number\n    minimum: 0.1\n    maximum: 0.9', '[range: 0.1..0.9]'),
-        ('type: number\n    maximum: 10', '[range: ≤10]'),
-        ('type: number\n    multipleOf: 1.1', '[multipleOf: 1.1]'),
+        ('type: string\n    minLength: 2\n    maxLength: 40', '[string; length: 2..40]'),
+        ('type: array\n    items: string\n    minItems: 1\n    maxItems: 10', '[string[]; items: 1..10]'),
+        ('type: object\n    minProperties: 1\n    maxProperties: 3', '[object; properties: 1..3]'),
+        ('type: number\n    minimum: 0.1\n    maximum: 0.9', '[number; range: 0.1..0.9]'),
+        ('type: number\n    maximum: 10', '[number; range: ≤10]'),
+        ('type: number\n    multipleOf: 1.1', '[number; multipleOf: 1.1]'),
     ],
 )
 def test_hidden_bounds_show_concrete_exact_facts_at_the_reference(memory_workspace, body, expected):
@@ -183,7 +247,6 @@ def test_hidden_bounds_show_concrete_exact_facts_at_the_reference(memory_workspa
     (hint,) = inlays.inlay_hints(snapshot, uri, Position(line, end - 1, line, end))
     assert hint.label == expected
     assert hint.position.column == end
-    assert not hint.is_type
 
 
 def test_long_union_labels_remain_short_without_losing_alternative_documentation(memory_workspace):

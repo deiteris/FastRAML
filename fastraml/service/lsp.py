@@ -408,7 +408,7 @@ class RamlServer(LanguageServer):
                     label.append(types.InlayHintLabelPart(value=part.label, location=location))
                 # VS Code also requests hover at each label's location. Supply
                 # declaration prose only for parts without a usable location.
-                linked = hint.is_type and any(part.location is not None for part in label)
+                linked = any(part.location is not None for part in label)
                 if linked:
                     for rendered, part in zip(label, hint.parts, strict=True):
                         if rendered.location is None and part.tooltip is not None:
@@ -418,7 +418,7 @@ class RamlServer(LanguageServer):
                     types.InlayHint(
                         position=positions.range(uri, hint.position).start,
                         label=label,
-                        kind=types.InlayHintKind.Type if hint.is_type else None,
+                        kind=types.InlayHintKind.Type,
                         tooltip=types.MarkupContent(types.MarkupKind.Markdown, tooltip) if tooltip else None,
                         padding_left=True,
                     )

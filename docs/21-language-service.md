@@ -322,16 +322,21 @@ authored source sites and typed `DataNode` token index, and never resolves a
 name or repeats type matching in the adapter.
 
 A declaration without an authored type can show its inferred type, such as
-`[object]`. Explicit types, including a multiple-inheritance list, are not
-repeated. Supplied custom-facet keys and annotation, example and default roots
-show their expected value type; nested typed data fields do too. For example,
+`[object]`. Explicit built-in types and multiple-inheritance lists are not
+repeated. Named type references show the underlying effective type
+after the reference, such as `parser?: ParserConfig [object]`. Arrays include
+their item type, and unions show their alternatives. Supplied custom-facet
+keys and annotation, example and default roots show their expected value type;
+nested typed data fields do too. For example,
 `stewardedBy` can show `[string]`, and `sources` can show `[string[]]`.
 These facts remain available when the supplied value is invalid. Fields with
 no governing declaration get no invented hint.
 
 Unwrapped declarations can also show concrete inherited constraints after
-their authored type reference: `isbn: Isbn` can show `[length: 13]`, rather
-than inserting a facet dump between the field name and its colon. Length,
+the type name: `isbn: Isbn` can show `[string; length: 13]`. The type takes
+priority within the 32-character label budget; a constraint that does not fit
+stays in the tooltip. For example, an object with inherited
+`additionalProperties: false` shows `[object]`. Length,
 item/property counts and numeric bounds use an exact value, an inclusive
 range (`2..40`), or `≥`/`≤` for a one-sided bound. Short remaining facets can
 fit too. Authored constraints and unpositioned defaults are not repeated.
@@ -358,10 +363,9 @@ tooltips, including full inherited constraints.
 Source ranges are filtered by the actual hint anchor, after a key or type
 reference, including when the range starts inside that token. Declaration
 hints are cached per file and range queries use sorted anchor indices.
-The adapter reports type-kind hints for types, leaves the kind unset for
-constraint summaries, converts all
-positions in the negotiated encoding and adds display padding without editing
-the source. VS Code uses its standard **Editor: Inlay Hints** setting.
+The adapter reports type-kind hints for every label, converts all positions in
+the negotiated encoding and adds display padding without editing the source.
+VS Code uses its standard **Editor: Inlay Hints** setting.
 
 ## 5. The LSP adapter
 

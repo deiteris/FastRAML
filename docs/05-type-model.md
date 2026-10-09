@@ -198,6 +198,14 @@ same selection, but preserves all possible structural alternatives when no
 discriminator selects one; it does not validate the whole value to guess a
 branch.
 
+`types/navigation.py` exposes `branches(base, value)` and `children(base,
+value)` over positioned `ValueNode` data. Branches follow aliases and recursion
+markers and preserve every structural union candidate unless a discriminator
+selects one. Children report the governing declaration, expected type, source
+key span and field name or array index. Invalid values retain known field
+types; ordinary additional fields have no invented declaration. The service
+uses this API for typed-data tokens, independently of hover presentation.
+
 RAML field names shared by fragment, endpoint, and type decoders are defined in
 `facet_names.py`; diagnostic fields and JSON Schema keywords are separate.
 

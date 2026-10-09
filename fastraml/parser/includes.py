@@ -285,15 +285,19 @@ def load_include(raml: Raml, node: Node, target: str, location: str) -> Node:
     through no cache and recording nothing: for a reader outside the parse, such
     as `join` comparing a target no applied template reached (docs/20 § 2).
     """
-    return _compose_include(raml, node, _load(raml, node, target, location), target, location)[0]
+    return _compose_include(raml, node, _load(raml, node, target, location), target, location, store_text=False)[0]
 
 
-def _compose_include(raml: Raml, node: Node, data: bytes, target: str, location: str) -> tuple[Node, str]:
+def _compose_include(  # noqa: PLR0913 - include coordinates plus text retention
+    raml: Raml, node: Node, data: bytes, target: str, location: str, *, store_text: bool = True
+) -> tuple[Node, str]:
     """The include's content, and its RAML header line, `''` when it has none."""
     try:
         text = decode_source(data)
     except UnicodeDecodeError as err:
         raise node_error('include is not UTF-8', location, node, info={'path': target}) from err
+    if store_text:
+        raml.store_source_text(target, text)
     ref = node.value
     if not _composes_as_yaml(ref):
         # Spec section Resolving Includes: any other file is included as a scalar.

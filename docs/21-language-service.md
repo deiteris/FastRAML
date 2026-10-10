@@ -25,7 +25,7 @@ and several views, and only `cli/` imports it (`docs/02` § 2;
 | `service/text.py` | converting a column between fastRAML and a protocol |
 | `service/queries.py` | the queries, in fastRAML positions |
 | `service/outline.py` | the outline, over the authorship view (`docs/16` § 10) |
-| `service/hover.py`, `service/hoverdocs.py` | author-facing hover, source-key indices and explanatory prose (§ 4.2) |
+| `service/hover.py`, `service/hoverdocs.py` | author-facing hover, source-key lookup and explanatory prose (§ 4.2) |
 | `service/datahover.py` | typed `DataNode` key and value spans, shared across value-bearing sites (§ 4.2) |
 | `service/index.py` | lazy declaration, ID and reverse-hierarchy lookups shared by snapshot queries (§ 4) |
 | `service/lenses.py` | code-lens sites and on-demand effective RAML type rendering (§ 4.3) |
@@ -326,14 +326,18 @@ extent is not a fallback for an unknown child. Inline JSON has only the
 encoded scalar's root span; hover does not invent spans for decoded children.
 
 Source-only primitive tokens, including those
-in an unapplied template, are read through the type-expression parser and
-checked against the source text. No source query binds a reference. Explanatory
+in an unapplied template, are read through the type-expression parser. A
+token's offset is its column only where the scalar's one-line span is its
+text, or its text in quotes; where an escape or a tag shifts the columns, no
+token is found. No source query binds a reference. Explanatory
 prose is a documentation catalogue, not a table that accepts fields or overrides
 parser diagnostics.
 
-Hover indices and formatted subjects are lazy per snapshot. Source keys are indexed once per queried
-file from retained nodes, or a composition of its retained text when source
-trees were not retained. These nodes and indices die with the snapshot.
+Hover indices and formatted subjects are lazy per snapshot. Source keys are not
+indexed: each hover reads the path to its cursor (`syntax.keys_at`), one entry
+per mapping level found by binary search, in the file's retained nodes, or a
+composition of its retained text when source trees were not retained. Those
+nodes die with the snapshot.
 The typed-data token index is owned by the snapshot, lazy and built once; formatted
 data targets are cached by hover. The same typed-data targets supply go-to-definition
 for nested field keys and scalar values. A definition request may populate that
@@ -517,7 +521,8 @@ written. It is the preview's source in `contrib/fastraml-vscode`
 - `test_service_hover.py`: contextual field meanings, full Markdown prose,
   authored and inherited summaries, aliases, optional versus nullable values,
   source-only template help, token boundaries, opaque data, educational examples,
-  and user-defined facet descriptions at declarations and supplied keys.
+  and user-defined facet descriptions at declarations and supplied keys; over
+  the TCK, the cursor path reaches every key the grammar walk yields.
 - `test_service_data_hover.py`: shared nested-field and scalar-value help for
   custom facets, annotations, examples, defaults and enums; array items,
   inheritance, patterns, discriminated and ambiguous unions, recursive types,

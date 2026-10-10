@@ -180,7 +180,7 @@ class TestFeatureCorporaReachTheirCode:
         original = inlays.inlay_hints
 
         def source(*args, **kwargs):
-            pytest.fail('model-backed inlays must not compose source or populate grammar/builtin indices')
+            pytest.fail('model-backed inlays must not compose source or read its grammar')
 
         def hints(snapshot, uri, span):
             nonlocal passes
@@ -190,7 +190,7 @@ class TestFeatureCorporaReachTheirCode:
             return result
 
         monkeypatch.setattr(Hover, '_node', source)
-        monkeypatch.setattr(Hover, '_source_keys', source)
+        monkeypatch.setattr(Hover, '_keys_at', source)
         monkeypatch.setattr(inlays, 'inlay_hints', hints)
         entry = corpus.write_hover(tmp_path, family_count=count)
         run_one('inlays', 'unwrap', entry, repeat=1)

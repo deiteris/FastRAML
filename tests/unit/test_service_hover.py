@@ -282,6 +282,18 @@ class TestContextualDocumentation:
         assert '`pattern`' in string
         assert 'RAML reference' in integer
 
+    def test_a_builtin_is_found_in_quotes_but_not_where_an_escape_shifts_its_columns(self, memory_workspace):
+        # docs/21 § 4.2: a token's offset in the expression is its column only
+        # where the span is the text, or the text in quotes.
+        document = '#%RAML 1.0\ntitle: T\ntypes:\n  A:\n    type: "string | nil"\n  B:\n    type: "n\\x69l"\n'
+        workspace, folder = _buffered(memory_workspace, {'api.raml': document})
+        snapshot = workspace.snapshot(f'{folder}/api.raml')
+        assert snapshot.error is None
+        text, span = queries.hover(snapshot, f'{folder}/api.raml', *_where(document, 'nil'))
+        assert 'Accepts only null' in text
+        assert (span.column, span.end_column) == (_where(document, 'nil')[1], _where(document, 'nil')[1] + 3)
+        assert queries.hover(snapshot, f'{folder}/api.raml', *_where(document, 'x69')) is None
+
     def test_hover_does_not_extend_past_the_target_token(self, memory_workspace):
         document = '#%RAML 1.0\ntitle: T\ntypes:\n  Data:\n    properties: {} # comment\n'
         workspace, folder = _buffered(memory_workspace, {'api.raml': document})
@@ -496,3 +508,33 @@ class TestExplanatoryDocumentation:
         assert 'Retrieves a representation' in text
         assert 'without requesting a change to server state' in text
         assert 'possible responses' in text
+
+
+@pytest.mark.tck
+def test_the_cursor_path_finds_every_key_the_whole_file_walk_yields():
+    # docs/21 § 4.2: hover reads the path to one cursor, which must reach every
+    # key the grammar walk projects, in the same position and table.
+    from fastraml.errors import RamlError
+    from fastraml.parser.syntax import fragment_site, keys, keys_at
+    from fastraml.yamlnode import compose
+    from tests.tck.conftest import tck_root
+
+    root = tck_root()
+    if root is None:
+        pytest.skip('no TCK corpus; set FASTRAML_TCK_DIR')
+    checked, missed = 0, []
+    for path in sorted(root.rglob('*.raml')):
+        text = path.read_text(encoding='utf-8-sig', errors='replace')
+        header = text.partition('\n')[0].removeprefix('#%RAML 1.0').strip()
+        try:
+            node = compose(text, uri=path.as_uri())
+        except RamlError:
+            continue
+        site = fragment_site(header or 'API')
+        for key in keys(node, site):
+            found = keys_at(node, site, key.node.line, key.node.column)
+            checked += 1
+            if not found or (found[-1].node, found[-1].site, found[-1].table) != (key.node, key.site, key.table):
+                missed.append(f'{path.relative_to(root).as_posix()}:{key.node.line}:{key.node.column}')
+    assert checked > 10_000
+    assert not missed, missed[:20]

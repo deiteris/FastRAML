@@ -2,12 +2,14 @@
 
 These are mapping positions, not annotation targets or a second resolver.
 `child_site` is the extension merge's existing grammar (docs/19 § 3.1).
-`keys` projects a composed source tree into those positions for an editor
-(docs/21 § 4.2); data and application arguments stay opaque.
+`keys` projects a composed source tree into those positions for an editor,
+and `keys_at` the path to one cursor (docs/21 § 4.2); data and application
+arguments stay opaque.
 """
 
 from __future__ import annotations
 
+from bisect import bisect_right
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import TYPE_CHECKING, Final
@@ -32,6 +34,7 @@ __all__ = [
     'fragment_site',
     'is_media_type_map',
     'keys',
+    'keys_at',
 ]
 
 #: Resource methods; optional `?` spellings belong to resource-type templates.
@@ -197,6 +200,51 @@ class Key:
         return self.site not in NAME_MAPS and is_annotation_key(self.node.value)
 
 
+_OPAQUE: Final = frozenset({Site.DATA, Site.APPLICATION, Site.GENERIC})
+
+
+def keys_at(root: Node, site: Site, line: int, column: int, *, table: str = '') -> list[Key]:
+    """The keys `keys` yields whose entry encloses `line:column`, outermost first.
+
+    Each level follows the last entry written at or before the position, so
+    one lookup reads one path rather than the file. The last key holds the
+    position, or the value it lies in, or neither when it lies past the end.
+    """
+    position = (line, column)
+    found: list[Key] = []
+    node = root
+    while site not in _OPAQUE:
+        if node.kind is NodeKind.SEQUENCE:
+            # Linear: an alias item keeps its anchor's earlier position.
+            start = (node.line, node.column)
+            items = [item for item in node.content if start <= (item.line, item.column) <= position]
+            if not items:
+                break
+            node = items[-1]
+            continue
+        if node.kind is not NodeKind.MAPPING:
+            break
+        if site is Site.BODY and not is_media_type_map(node):
+            if any('/' in key.value for key, _ in pairs(node)):
+                break
+            site = Site.TYPE
+        content = node.content
+        # A mapping's own entries are in document order.
+        index = bisect_right(
+            range(len(content) // 2), position, key=lambda i: (content[2 * i].line, content[2 * i].column)
+        )
+        if not index:
+            break
+        key, value = content[2 * index - 2], content[2 * index - 1]
+        found.append(Key(key, value, node, site, table))
+        if key.position.holds(line, column) or (value.line, value.column) < (key.line, key.column):
+            break
+        child = child_site(site, key.value)
+        table = key.value if child in NAME_MAPS else table
+        node, site = value, child
+    return found
+
+
 def keys(root: Node, site: Site, *, table: str = '') -> Iterator[Key]:
     """Source keys, without decoding data or expanding templates.
 
@@ -206,7 +254,7 @@ def keys(root: Node, site: Site, *, table: str = '') -> Iterator[Key]:
     stack = [(root, site, table)]
     while stack:
         node, context, table = stack.pop()
-        if context in (Site.DATA, Site.APPLICATION, Site.GENERIC):
+        if context in _OPAQUE:
             continue
         if node.kind is NodeKind.SEQUENCE:
             stack.extend(

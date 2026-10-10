@@ -55,6 +55,10 @@ the TCK's 1011 files.
 `parser:` limits. It keeps the YAML trees too, `retain_source=True`, only when
 an enabled lint rule reads them; no rule in the default set does. Decoders
 record the small syntax facts that `deprecated-schemas` reads (docs/18 § 6).
+The first query that needs a file's tree composes it from the retained text,
+once per snapshot for hover and inlays (§ 4.2, § 4.4) and once per current
+text for folding and selection (§ 4); a composition is about a third of a
+parse of the file, and it is the price of not retaining the trees (docs/15 § 2).
 It records the set of files it read: every retained text, every
 fragment, and every include it tried, found or not. It is built when a query
 first asks for it and kept until one of those files changes. A file that

@@ -62,12 +62,15 @@ the media-type fixes and the type-walk work landed together:
 - `hover`/`unwrap` and `inlays`/`unwrap` (measured against `2b6502e` when the
   service's snapshots stopped retaining parse trees): time +27.1% (noise
   3.3%) and +21.9% (noise 4.8%), peak +16.6% and +12.9%, kept +4.0% and
-  +3.3%. The cost is one composition of the queried file per snapshot, paid
-  by the first hover or inlay that needs its tree (docs/21 § 2); repeated
-  queries are cached, and the edit loop is within noise on time, peak
-  -20.5%, kept -24.4% (docs/21 § 4). Revisit: a clean file is composed
-  twice per snapshot, once for the hover index and once for the workspace's
-  source cache; sharing one tree between them removes the second.
+  +3.3%. Accepted for the memory the retention costs: the edit loop
+  (`large/service`) is within noise on time, peak -20.5%, kept -24.4%, and
+  `effective-types` keeps -27.5%. The cost is one composition of the queried
+  file per snapshot, about a third of a parse of it, paid by the first hover
+  or inlay that needs the tree (docs/21 § 2); repeated queries are cached.
+  The alternative is retaining the trees at parse time, the per-snapshot
+  memory cost. Revisit: a clean file is composed twice per snapshot, once
+  for the hover index and once for the workspace's source cache (docs/21 § 4);
+  sharing one tree between them removes the second.
 
 ## 3. Potential future work
 
@@ -78,7 +81,9 @@ parser rules without an owning design document and tests.
 The language service and its LSP are built ([21](21-language-service.md)).
 The ordered plan for the rest, completion, editing features and MCP, is
 [research/language-service-plan.md](research/language-service-plan.md): M1 to
-M4 are done, and completion (M5) comes next. Its design records are
+M4 are done, and completion (M5) comes next, with its prerequisites in: the
+resolver's visible-names enumeration (docs/04 § 2) and the workspace's
+composed source cache (docs/21 § 4). Its design records are
 [archive/language-server.md](archive/language-server.md) and
 [archive/language-service-architecture.md](archive/language-service-architecture.md);
 its parser prerequisite, a trustworthy `parse_lenient` model, is analysed in

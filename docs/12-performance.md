@@ -86,7 +86,7 @@ must receive a parser diagnostic rather than `RecursionError`.
 
 ## 4. Benchmark suite
 
-`bench/` generates deterministic corpora and measures thirty-three workloads:
+`bench/` generates deterministic corpora and measures thirty-four workloads:
 
 | Bench | Primary coverage |
 |---|---|
@@ -122,11 +122,12 @@ must receive a parser diagnostic rather than `RecursionError`.
 | `inlays` | a cold snapshot, inferred declaration types, expected types at supplied custom-facet/annotation roots and nested data keys, and compact inherited constraints anchored to type references ([21](21-language-service.md) § 4.4) |
 | `source-structure` | three folding requests and twelve selection requests at scattered keys, served from the workspace's composed source tree, composed once per current text ([21](21-language-service.md) § 4) |
 | `service-session`, `service-source-first` | representative mixed editor requests over three root-buffer versions: parser diagnostics, occurrences, outline, links, lens enumeration, 120-line viewport inlays, folding, three sparse hovers and warm queries; source-first additionally requests folding before each snapshot |
+| `service-navigation` | three root-buffer versions, each with diagnostics/occurrences, six fixed sparse hierarchy preparations and parent/child queries, three typed-data definitions before hover, two outlines and two workspace-symbol searches |
 
 The six general workloads are `small`, `large`, `endpoints`, `extensions`,
-`validate` and `jsonschema`. The other twenty-seven are feature workloads:
+`validate` and `jsonschema`. The other twenty-eight are feature workloads:
 each exists because no general workload runs the code it covers. Their reach
-tests (`tests/bench/test_corpus.py`) count calls or check bound results, and fail
+tests under `tests/bench/` count calls or check bound results, and fail
 if a corpus stops reaching that code at every size it covers.
 
 A feature added to the language has no baseline on `master`, where the corpus
@@ -163,6 +164,10 @@ probe selection and corpus generation are outside the measured region.
 For `service-session` and `service-source-first`, `unwrap` runs the three-version
 mixed request sequences of § 4.2; their other configurations keep their ordinary
 parse/view meanings. Input texts and sparse probes are prepared outside measurement.
+For `service-navigation`, `unwrap` runs the sparse three-version navigation
+sequence. Requests are fixed as file width grows; only the latest workspace/model
+and caches remain live, not request answers. Generation and probe selection are
+outside measurement; there is no lint, source-only request or protocol conversion.
 
 ```bash
 python -m bench run

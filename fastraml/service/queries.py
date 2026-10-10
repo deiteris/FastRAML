@@ -17,8 +17,8 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Final
 
 from fastraml.errors import RamlError
-from fastraml.parser.fragments import LibraryLink, every_declaration
 from fastraml.positions import Position
+from fastraml.service.index import parents_of
 from fastraml.types.base import BaseShape
 from fastraml.views.occurrences import DECLARATION_KINDS as _OCCURRENCE_KINDS
 from fastraml.views.occurrences import Kind, Link, Role
@@ -29,8 +29,6 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Mapping, Sequence
 
     from fastraml.errors import Trace
-    from fastraml.parser.fragments import Declaration
-    from fastraml.registry import Raml
     from fastraml.service.workspace import Snapshot
     from fastraml.views.authored import Placed
     from fastraml.views.lint import Finding
@@ -258,8 +256,8 @@ def definition(snapshot: Snapshot, uri: str, line: int, column: int) -> list[Sit
             found.append(Site(occurrence.resolved, _START))
         elif occurrence.target is not None:
             found += [_site(other) for other in occurrences.of(occurrence.target) if other.role is Role.DEFINITION]
-    if not found and snapshot.hover is not None:
-        for target in snapshot.hover.data_at(uri, line, column):
+    if not found and snapshot.data is not None:
+        for target in snapshot.data.at(uri, line, column):
             base = target.base
             if base.key_pos.is_known:
                 found.append(Site(base.location, base.key_pos.within(base.name or target.name)))
@@ -313,18 +311,6 @@ def hover(snapshot: Snapshot, uri: str, line: int, column: int) -> tuple[str, Po
     return None if context is None else context.at(uri, line, column)
 
 
-def _entity(raml: Raml, target: int) -> Declaration | LibraryLink | None:
-    """The declaration, `uses:` entry or shape with the id `target`."""
-    for fragment in raml.fragments.values():
-        for link in fragment.uses.values():
-            if link.id == target:
-                return link
-    for _key, _name, entity in every_declaration(raml):
-        if entity.id == target:
-            return entity
-    return next((base for base in raml.shapes if base.id == target), None)
-
-
 # -- symbols ------------------------------------------------------------------------
 
 #: The symbol kind of each declaration table, by the key it is written under.
@@ -363,10 +349,10 @@ def workspace_symbols(snapshots: Iterable[Snapshot], query: str) -> list[Symbol]
     seen: set[tuple[str, int, int]] = set()
     found: list[Symbol] = []
     for snapshot in snapshots:
-        raml = snapshot.raml
-        if raml is None:
+        semantic = snapshot.semantic
+        if semantic is None:
             continue
-        for table, name, entity in every_declaration(raml):
+        for table, name, entity in semantic.declarations:
             each = symbol(name, DECLARATION_KINDS[table], entity) if wanted in name.casefold() else None
             if each is None:
                 continue
@@ -497,12 +483,12 @@ def _pairs(root: Node) -> Iterator[tuple[Node, Node]]:
 
 def type_at(snapshot: Snapshot, uri: str, line: int, column: int) -> Symbol | None:
     """The declared type the name under the cursor stands for."""
-    raml = snapshot.raml
-    if raml is None:
+    semantic = snapshot.semantic
+    if semantic is None:
         return None
     for occurrence in _at(snapshot, uri, line, column):
         if occurrence.kind in {Kind.TYPE, Kind.ANNOTATION_TYPE} and occurrence.target is not None:
-            entity = _entity(raml, occurrence.target)
+            entity = semantic.by_id.get(occurrence.target)
             if isinstance(entity, BaseShape):
                 return _type_symbol(entity)
     return None
@@ -513,41 +499,28 @@ def supertypes(snapshot: Snapshot, item: Symbol) -> list[Symbol]:
     base = _declared(snapshot, item)
     if base is None:
         return []
-    return [each for parent in _parents(base) if (each := _type_symbol(parent)) is not None]
+    return [each for parent in parents_of(base) if (each := _type_symbol(parent)) is not None]
 
 
 def subtypes(snapshot: Snapshot, item: Symbol) -> list[Symbol]:
     """The declared types that name `item` in their `type:`."""
     base = _declared(snapshot, item)
-    raml = snapshot.raml
-    if base is None or raml is None:
+    semantic = snapshot.semantic
+    if base is None or semantic is None:
         return []
-    return [
-        each
-        for _key, _name, child in every_declaration(raml)
-        if isinstance(child, BaseShape)
-        and any(parent.id == base.id for parent in _parents(child))
-        and (each := _type_symbol(child)) is not None
-    ]
-
-
-def _parents(base: BaseShape) -> Iterator[BaseShape]:
-    """The named types `base` names in its `type:`, an alias's referent among them."""
-    yield from base.inherits
-    if base.alias is not None:
-        yield base.alias
+    return [each for child in semantic.children.get(base.id, ()) if (each := _type_symbol(child)) is not None]
 
 
 def _declared(snapshot: Snapshot, item: Symbol) -> BaseShape | None:
     """The type `item` names, found again by where its name is written: an
     item may come from an earlier snapshot (docs/21 § 4).
     """
-    raml = snapshot.raml
-    if raml is None:
+    semantic = snapshot.semantic
+    if semantic is None:
         return None
     for occurrence in _at(snapshot, item.uri, item.selection.line, item.selection.column):
         if occurrence.role is Role.DEFINITION and occurrence.target is not None:
-            entity = _entity(raml, occurrence.target)
+            entity = semantic.by_id.get(occurrence.target)
             if isinstance(entity, BaseShape):
                 return entity
     return None

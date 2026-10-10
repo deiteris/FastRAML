@@ -133,7 +133,7 @@ argued for in Phase 2 and may have been overtaken.
 3. **`uniqueItems` switches strategy at 20 items** (`docs/10` § 5.2). Measured
    against go-raml, not guessed.
 4. **The union-facet gap stays open.** It is After-v1 item 2 in `docs/15`, and
-   the fix has to land in go-raml too — the user's call, already made.
+   the fix has to land in go-raml too.
 
 ---
 

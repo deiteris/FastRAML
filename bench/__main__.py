@@ -127,6 +127,7 @@ BENCHES: tuple[Bench, ...] = (
     Bench('source-structure', lambda root, scale: corpus.write_hover(root, family_count=_at(400, scale))),
     Bench('service-session', lambda root, scale: corpus.write_hover(root, family_count=_at(400, scale))),
     Bench('service-source-first', lambda root, scale: corpus.write_hover(root, family_count=_at(400, scale))),
+    Bench('service-navigation', lambda root, scale: corpus.write_hover(root, family_count=_at(400, scale))),
 )
 
 _BY_NAME = {bench.name: bench for bench in BENCHES}
@@ -165,6 +166,7 @@ def run_one(bench: str, config: str, entry: Path, repeat: int) -> Measurement:
         'source-structure',
         'service-session',
         'service-source-first',
+        'service-navigation',
     }:
         return _measure_view(bench, entry, repeat)
     if config == 'service':
@@ -211,6 +213,7 @@ def _measure_view(bench: str, entry: Path, repeat: int) -> Measurement:
         'source-structure': _measure_source_structure,
         'service-session': _measure_service_session,
         'service-source-first': lambda entry, repeat: _measure_service_session(entry, repeat, source_first=True),
+        'service-navigation': _measure_service_navigation,
     }.get(bench)
     if service_workload is not None:
         return service_workload(entry, repeat)
@@ -414,6 +417,15 @@ def _measure_service_session(entry: Path, repeat: int, *, source_first: bool = F
         return measure(name, 'unwrap', lambda: exercise(prepared, source_first=source_first), repeat=repeat)
 
 
+def _measure_service_navigation(entry: Path, repeat: int) -> Measurement:
+    from bench.service_navigation import exercise, prepare  # noqa: PLC0415 - feature workload only
+    from fastraml.gctuning import tuned_gc  # noqa: PLC0415 - feature workload only
+
+    prepared = prepare(entry)
+    with tuned_gc():
+        return measure('service-navigation', 'unwrap', lambda: exercise(prepared), repeat=repeat)
+
+
 def _measure_edit(bench: str, entry: Path, repeat: int) -> Measurement:
     """One edit to the root's buffer, and what the editor then asks for first."""
     from itertools import count  # noqa: PLC0415 - as above
@@ -585,6 +597,7 @@ LINEARITY_CONFIGS: dict[str, str] = {
     'source-structure': 'unwrap',
     'service-session': 'unwrap',
     'service-source-first': 'unwrap',
+    'service-navigation': 'unwrap',
 }
 
 

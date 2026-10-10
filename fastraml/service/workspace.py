@@ -30,7 +30,9 @@ from fastraml.errors import ErrorKind, RamlError
 from fastraml.loaders import SafeFileLoader
 from fastraml.parser.entry import ParseOptions, parse_lenient
 from fastraml.parser.fragments import FragmentKind, identify_fragment
+from fastraml.service.datahover import DataHover, data_roots
 from fastraml.service.hover import Hover
+from fastraml.service.index import SemanticIndex
 from fastraml.service.lenses import EffectiveViews
 from fastraml.service.source import Sources, original_tree
 from fastraml.service.text import Lines
@@ -45,6 +47,7 @@ if TYPE_CHECKING:
 
     from fastraml.config import FastRamlConfig
     from fastraml.registry import Raml
+    from fastraml.service.queries import Symbol
     from fastraml.views.lint import Finding, Linter
     from fastraml.views.occurrences import Occurrences
     from fastraml.yamlnode import Node
@@ -106,9 +109,24 @@ class Snapshot:
     _findings: list[Finding] | None = field(default=None, repr=False)
     _hover: Hover | None = field(default=None, repr=False)
     _effective_views: EffectiveViews | None = field(default=None, repr=False)
+    _semantic: SemanticIndex | None = field(default=None, repr=False)
+    _data: DataHover | None = field(default=None, repr=False)
+    outlines: dict[str, list[Symbol]] = field(default_factory=dict, repr=False)
     sources: ReferenceType[Sources] | None = field(default=None, repr=False)
     source_generation: int = field(default=0, repr=False)
     source_backend: str = field(default='', repr=False)
+
+    @property
+    def semantic(self) -> SemanticIndex | None:
+        if self._semantic is None and self.raml is not None:
+            self._semantic = SemanticIndex(self.raml)
+        return self._semantic
+
+    @property
+    def data(self) -> DataHover | None:
+        if self._data is None and self.raml is not None:
+            self._data = DataHover(data_roots(self.raml))
+        return self._data
 
     @property
     def effective_views(self) -> EffectiveViews | None:
@@ -125,6 +143,8 @@ class Snapshot:
                 self.raml,
                 self.root,
                 occurrences,
+                semantic=self.semantic,
+                data=self.data,
                 sources=self.sources,
                 source_generation=self.source_generation,
                 source_backend=self.source_backend,

@@ -26,9 +26,14 @@ all CI checks passed and the baseline is merged. The first isolated recovery
 experiment implements model-backed declaration inlays against that accepted
 control. Its correctness, scaling and A/B results are recorded in the
 [inlay recovery report](reports/2026-10-10/service-model-inlays.md), including its
-accepted snapshot-first mixed allocation-peak trade-off. Remaining recovery
-candidates are shared semantic/hierarchy indices and outline caching, cursor-local
-source lookup, and accurate authored section ranges, each measured independently.
+accepted snapshot-first mixed allocation-peak trade-off.
+The shared-index/outline bundle is the next isolated recovery against merged
+`3912118`. Correctness, reach and scaling pass; sparse navigation is 17.0% faster,
+but mixed retained allocation rises 7.5%, chiefly the cached outline. An explicit
+acceptance of that new retention trade-off is recorded; the scope, measurements and
+ownership evidence are in the [shared-index report](reports/2026-10-10/service-shared-indices.md).
+Remaining candidates are cursor-local source lookup and accurate authored section
+ranges, each measured independently.
 The record-backed representation replacement remains parked; its recurring
 rebuild and first-use costs are recorded in the
 [service cost review](reports/2026-10-10/service-authoring-cost-review.md).

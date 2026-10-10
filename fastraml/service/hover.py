@@ -16,13 +16,14 @@ from http import HTTPStatus
 from typing import TYPE_CHECKING, Final
 
 from fastraml.errors import RamlError
-from fastraml.parser.fragments import APIFragment, LibraryLink, every_declaration
+from fastraml.parser.fragments import APIFragment, LibraryLink
 from fastraml.parser.includes import is_json_ref
 from fastraml.parser.security import SecuritySchemeDefinition
 from fastraml.parser.syntax import METHODS, NAME_MAPS, Key, Site, child_site, fragment_site, keys
 from fastraml.parser.templates import TemplateDefinition
-from fastraml.service.datahover import DataHover, DataRoot, DataTarget
+from fastraml.service.datahover import DataHover, DataTarget, data_roots
 from fastraml.service.hoverdocs import BUILTINS, METHOD_DOCS, field_doc
+from fastraml.service.index import SemanticIndex
 from fastraml.service.inlays import (
     LABEL_LIMIT,
     Hint,
@@ -36,7 +37,6 @@ from fastraml.service.source import original_tree
 from fastraml.service.text import Lines
 from fastraml.types.base import BaseShape, Parameter, facets_of
 from fastraml.types.complex_ import ArrayShape, ObjectShape, UnionShape, UnknownShape
-from fastraml.types.examples import examples_of
 from fastraml.types.expressions import Array, Optional_, Primitive, Union, parse_expression
 from fastraml.types.jsonschema_ import JsonShape
 from fastraml.types.scalars import DATETIME_FORMATS, INTEGER_FORMATS, NUMBER_FORMATS
@@ -127,6 +127,7 @@ class Hover:
         '_resources',
         '_responses',
         '_root',
+        '_semantic',
         '_sites',
         '_source_backend',
         '_source_builtins',
@@ -141,11 +142,14 @@ class Hover:
         root: str,
         occurrences: Occurrences,
         *,
+        semantic: SemanticIndex | None = None,
+        data: DataHover | None = None,
         sources: ReferenceType[Sources] | None = None,
         source_generation: int = 0,
         source_backend: str = '',
     ) -> None:
         self._raml = raml
+        self._semantic = semantic if semantic is not None else SemanticIndex(raml)
         self._root = root.rpartition('/')[0] + '/'
         self._occurrences = occurrences
         self._sources = sources
@@ -179,7 +183,7 @@ class Hover:
         self._data_descriptions: dict[DataTarget, str] = {}
         self._inlay_declarations: dict[str, tuple[list[Hint], list[tuple[int, int]]]] = {}
         self._index()
-        self._data = DataHover(self._data_roots())
+        self._data = data if data is not None else DataHover(data_roots(raml))
 
     def _put(self, subject: _Subject) -> None:
         entity = subject.entity
@@ -201,7 +205,7 @@ class Hover:
     def _index(self) -> None:
         raml = self._raml
         borrowed: list[BaseShape] = []
-        for key, name, entity in every_declaration(raml):
+        for key, name, entity in self._semantic.declarations:
             kind = DECLARATION_KINDS[key]
             self._put(_Subject(name, _role(kind), entity))
         for fragment in raml.fragments.values():
@@ -588,35 +592,6 @@ class Hover:
         subjects = [self._subjects.get(prop.base.id) for prop in declarations]
         texts = [self._describe(subject) for subject in subjects if subject is not None]
         return '\n\n---\n\n'.join(texts) if texts else None
-
-    def _data_roots(self) -> Iterator[DataRoot]:
-        for extension in self._raml.domain_extensions:
-            if extension.defined_by is not None:
-                yield DataRoot(
-                    extension.value,
-                    extension.defined_by,
-                    extension.name,
-                    'annotation value',
-                )
-        for value, declarations in self._raml.custom_facet_refs.items():
-            for prop in declarations:
-                yield DataRoot(value, prop.base, prop.name, 'custom facet value')
-        for base in self._raml.shapes:
-            name = base.name or '<anonymous>'
-            if base.alias is not None:
-                continue  # an alias shares its referent's data; the referent indexes it
-            if base.default is not None:
-                yield DataRoot(base.default, base, name, 'default value')
-            for value in base.enum or ():
-                yield DataRoot(value, base, name, 'enum value')
-            for example in examples_of(base):
-                if example.data is not None:
-                    yield DataRoot(
-                        example.data,
-                        base,
-                        name,
-                        'example value',
-                    )
 
     def _data_doc(self, target: DataTarget) -> str:
         cached = self._data_descriptions.get(target)

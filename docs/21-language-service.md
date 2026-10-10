@@ -27,6 +27,7 @@ and several views, and only `cli/` imports it (`docs/02` § 2;
 | `service/outline.py` | the outline, over the authorship view (`docs/16` § 10) |
 | `service/hover.py`, `service/hoverdocs.py` | author-facing hover, source-key indices and explanatory prose (§ 4.2) |
 | `service/datahover.py` | typed `DataNode` key and value spans, shared across value-bearing sites (§ 4.2) |
+| `service/index.py` | lazy declaration, ID and reverse-hierarchy lookups shared by snapshot queries (§ 4) |
 | `service/lenses.py` | code-lens sites and on-demand effective RAML type rendering (§ 4.3) |
 | `service/inlays.py` | inline type/facet labels over the shared authoring indices (§ 4.4) |
 | `service/lsp.py` | the LSP adapter, over pygls (§ 5) |
@@ -162,6 +163,17 @@ stages it completed. A declaration is an occurrence after decoding; a type
 name used in an expression is one only once P7 bound it. No query raises on a
 snapshot that stopped at any stage (`test_service_queries.py`).
 
+**Shared semantic indices.** A snapshot owns lazy declaration enumeration and
+file grouping, shared by outline, workspace symbols and hover subjects. ID lookup
+populates separately on first hierarchy preparation/rebinding; the reverse map
+populates separately on first subtype request. It records direct `inherits` and
+`alias` edges, deduplicates repeated parents, and preserves child declaration order.
+Multiple-inheritance scalar wrappers follow their bound alias to the named
+declaration, so hierarchy locations select the declaration rather than the parent
+list token. A declared alias itself remains a named hierarchy item.
+Diagnostics and occurrences do not populate these caches. Each root snapshot owns
+its semantic context; an edit replaces the caches even for unchanged dependencies.
+
 **Outline.** Every entry is read from the model, and grouped as the file
 groups it, the way a code outline reads: `title`, `version` and `baseUri` with
 their values, then one section per declaration table (`uses`, `types`,
@@ -180,6 +192,12 @@ model; `JSON schema` for a `JsonShape`; or where nothing was written,
 `type_name`, as hover names it; its icon
 is its kind: object, array, union, enum or a scalar's. A resource's, method's
 or response's detail is its `displayName`, a response's else its description.
+
+The first outline request for a URI caches its complete result on the snapshot,
+including an empty outline. Later requests borrow the same list and symbols;
+callers must treat them as read-only. Root/dependency edits create a new snapshot
+and outline cache. A held older snapshot continues to answer from its older model.
+Caching does not add authored section positions or populate source grammar.
 
 The model keeps no position for a section's key (`types:`, a method's
 `headers:`), so a section spans its entries and selects the first.
@@ -316,9 +334,11 @@ parser diagnostics.
 Hover indices and formatted subjects are lazy per snapshot. Source keys are indexed once per queried
 file from retained nodes, or a composition of its retained text when source
 trees were not retained. These nodes and indices die with the snapshot.
-The typed-data token index is also lazy and built once per snapshot; formatted
-data targets are cached. The same typed-data targets supply go-to-definition
-for nested field keys and scalar values.
+The typed-data token index is owned by the snapshot, lazy and built once; formatted
+data targets are cached by hover. The same typed-data targets supply go-to-definition
+for nested field keys and scalar values. A definition request may populate that
+index without creating hover subjects, formatting hover or composing source. A
+later hover/inlay request uses the same token index, not a second traversal.
 
 ### 4.3 Effective-type code lenses
 

@@ -1,0 +1,690 @@
+{
+  "corpus": "hover",
+  "scale": 1,
+  "inputs": {
+    "files": 1,
+    "bytes": 311308,
+    "entry_bytes": 311308,
+    "focus_bytes": 311308
+  },
+  "detail_timers": false,
+  "mixed": false,
+  "source_first": false,
+  "platform": "Windows-10-10.0.19045-SP0",
+  "trees": [
+    [
+      "baseline",
+      "../service-source-simple"
+    ],
+    [
+      "model-inlays",
+      "."
+    ]
+  ],
+  "results": {
+    "baseline": [
+      {
+        "phases": [
+          {
+            "change": 0.00035399990156292915,
+            "collect": 0.013006799854338169,
+            "snapshot": 0.17130300030112267,
+            "diagnostics": 1.600012183189392e-06,
+            "occurrences": 0.01887140003964305,
+            "total": 0.20353680010885
+          },
+          {
+            "change": 0.00041579967364668846,
+            "collect": 0.013568300288170576,
+            "snapshot": 0.16224819980561733,
+            "diagnostics": 1.4998950064182281e-06,
+            "occurrences": 0.019019300118088722,
+            "total": 0.19525309978052974
+          },
+          {
+            "change": 0.0004069996066391468,
+            "collect": 0.012496300041675568,
+            "snapshot": 0.16499580023810267,
+            "diagnostics": 9.997747838497162e-07,
+            "occurrences": 0.019017400220036507,
+            "total": 0.19691749988123775
+          }
+        ],
+        "queries": [
+          {
+            "outline.first": 0.03003360005095601,
+            "lenses.first": 0.0013667996972799301,
+            "inlays.first": 0.1542587000876665,
+            "folding.first": 0.015804599970579147,
+            "hover.first_after_auto": 1.6300007700920105e-05,
+            "outline.warm": 0.030866699758917093,
+            "inlays.warm": 9.470013901591301e-05,
+            "folding.warm": 0.011901100166141987,
+            "hover.warm": 1.3499986380338669e-05
+          },
+          {
+            "outline.first": 0.030701899901032448,
+            "lenses.first": 0.0013407999649643898,
+            "inlays.first": 0.15674180025234818,
+            "folding.first": 0.01629119971767068,
+            "hover.first_after_auto": 2.0499806851148605e-05,
+            "outline.warm": 0.033507800195366144,
+            "inlays.warm": 0.0001088995486497879,
+            "folding.warm": 0.012932800222188234,
+            "hover.warm": 1.9000377506017685e-05
+          },
+          {
+            "outline.first": 0.03134239977225661,
+            "lenses.first": 0.0014504999853670597,
+            "inlays.first": 0.15326920012012124,
+            "folding.first": 0.01534479996189475,
+            "hover.first_after_auto": 1.5600118786096573e-05,
+            "outline.warm": 0.0352956997230649,
+            "inlays.warm": 0.00010270019993185997,
+            "folding.warm": 0.011890999972820282,
+            "hover.warm": 1.4299992471933365e-05
+          }
+        ],
+        "memory": {
+          "snapshot": {
+            "kept": 9627176,
+            "peak": 16383910
+          },
+          "diagnostics_occurrences": {
+            "kept": 11984222,
+            "peak": 16383910
+          },
+          "automatic_queries": {
+            "kept": 25839653,
+            "peak": 30600909
+          },
+          "sparse_hovers": {
+            "kept": 25840085,
+            "peak": 30600909
+          }
+        },
+        "dimensions": {
+          "read_files": 1,
+          "shapes": 7200,
+          "endpoints": 400,
+          "captured_files": 0,
+          "retained_source_records": 0
+        },
+        "counts": {
+          "v1.snapshot.yaml_composes": 1,
+          "input.b0de2b90a79d": 2,
+          "v1.snapshot.converted_nodes": 32007,
+          "v1.automatic.yaml_composes": 1,
+          "v1.automatic.converted_nodes": 32007,
+          "v2.snapshot.yaml_composes": 1,
+          "input.7cd2b060b6fd": 2,
+          "v2.snapshot.converted_nodes": 32007,
+          "v2.automatic.yaml_composes": 1,
+          "v2.automatic.converted_nodes": 32007,
+          "v3.snapshot.yaml_composes": 1,
+          "input.b2c9a97bfc7a": 2,
+          "v3.snapshot.converted_nodes": 32007,
+          "v3.automatic.yaml_composes": 1,
+          "v3.automatic.converted_nodes": 32007,
+          "broken.snapshot_composes": 1,
+          "broken.three_source_request_composes": 1
+        },
+        "python": "3.12.13 (main, May 10 2026, 19:35:37) [MSC v.1944 64 bit (AMD64)]",
+        "backend": "libyaml",
+        "import": "fastraml/__init__.py"
+      },
+      {
+        "phases": [
+          {
+            "change": 0.00035159988328814507,
+            "collect": 0.012389299925416708,
+            "snapshot": 0.15698739979416132,
+            "diagnostics": 2.100132405757904e-06,
+            "occurrences": 0.021853200159966946,
+            "total": 0.19158359989523888
+          },
+          {
+            "change": 0.0004306999035179615,
+            "collect": 0.013914200011640787,
+            "snapshot": 0.16586640011519194,
+            "diagnostics": 1.7997808754444122e-06,
+            "occurrences": 0.01705110026523471,
+            "total": 0.19726420007646084
+          },
+          {
+            "change": 0.00042559998109936714,
+            "collect": 0.014231100212782621,
+            "snapshot": 0.15821809973567724,
+            "diagnostics": 1.1003576219081879e-06,
+            "occurrences": 0.017208999954164028,
+            "total": 0.19008490024134517
+          }
+        ],
+        "queries": [
+          {
+            "outline.first": 0.03164030006155372,
+            "lenses.first": 0.001641799695789814,
+            "inlays.first": 0.1517718997783959,
+            "folding.first": 0.016369699966162443,
+            "hover.first_after_auto": 1.7399899661540985e-05,
+            "outline.warm": 0.03163710003718734,
+            "inlays.warm": 0.00010229973122477531,
+            "folding.warm": 0.011863300111144781,
+            "hover.warm": 1.2100208550691605e-05
+          },
+          {
+            "outline.first": 0.029142200015485287,
+            "lenses.first": 0.0013697999529540539,
+            "inlays.first": 0.14390150038525462,
+            "folding.first": 0.015065299812704325,
+            "hover.first_after_auto": 1.4099758118391037e-05,
+            "outline.warm": 0.02941670035943389,
+            "inlays.warm": 9.289989247918129e-05,
+            "folding.warm": 0.011653599794954062,
+            "hover.warm": 1.2400094419717789e-05
+          },
+          {
+            "outline.first": 0.02961320010945201,
+            "lenses.first": 0.001409000251442194,
+            "inlays.first": 0.14207250019535422,
+            "folding.first": 0.015125500038266182,
+            "hover.first_after_auto": 1.3899989426136017e-05,
+            "outline.warm": 0.02918960014358163,
+            "inlays.warm": 9.300000965595245e-05,
+            "folding.warm": 0.011605000123381615,
+            "hover.warm": 1.0200310498476028e-05
+          }
+        ],
+        "memory": {
+          "snapshot": {
+            "kept": 9625038,
+            "peak": 16383969
+          },
+          "diagnostics_occurrences": {
+            "kept": 11982319,
+            "peak": 16383969
+          },
+          "automatic_queries": {
+            "kept": 25837891,
+            "peak": 30599065
+          },
+          "sparse_hovers": {
+            "kept": 25838323,
+            "peak": 30599065
+          }
+        },
+        "dimensions": {
+          "read_files": 1,
+          "shapes": 7200,
+          "endpoints": 400,
+          "captured_files": 0,
+          "retained_source_records": 0
+        },
+        "counts": {
+          "v1.snapshot.yaml_composes": 1,
+          "input.b0de2b90a79d": 2,
+          "v1.snapshot.converted_nodes": 32007,
+          "v1.automatic.yaml_composes": 1,
+          "v1.automatic.converted_nodes": 32007,
+          "v2.snapshot.yaml_composes": 1,
+          "input.7cd2b060b6fd": 2,
+          "v2.snapshot.converted_nodes": 32007,
+          "v2.automatic.yaml_composes": 1,
+          "v2.automatic.converted_nodes": 32007,
+          "v3.snapshot.yaml_composes": 1,
+          "input.b2c9a97bfc7a": 2,
+          "v3.snapshot.converted_nodes": 32007,
+          "v3.automatic.yaml_composes": 1,
+          "v3.automatic.converted_nodes": 32007,
+          "broken.snapshot_composes": 1,
+          "broken.three_source_request_composes": 1
+        },
+        "python": "3.12.13 (main, May 10 2026, 19:35:37) [MSC v.1944 64 bit (AMD64)]",
+        "backend": "libyaml",
+        "import": "fastraml/__init__.py"
+      },
+      {
+        "phases": [
+          {
+            "change": 0.0003551999107003212,
+            "collect": 0.012495799921452999,
+            "snapshot": 0.15563159994781017,
+            "diagnostics": 1.200009137392044e-06,
+            "occurrences": 0.01638000039383769,
+            "total": 0.18486380018293858
+          },
+          {
+            "change": 0.000412600114941597,
+            "collect": 0.011598299723118544,
+            "snapshot": 0.159115900285542,
+            "diagnostics": 1.8998980522155762e-06,
+            "occurrences": 0.016906000208109617,
+            "total": 0.18803470022976398
+          },
+          {
+            "change": 0.00042290007695555687,
+            "collect": 0.013815500307828188,
+            "snapshot": 0.1590086999349296,
+            "diagnostics": 1.3997778296470642e-06,
+            "occurrences": 0.01655249996110797,
+            "total": 0.18980100005865097
+          }
+        ],
+        "queries": [
+          {
+            "outline.first": 0.029083999805152416,
+            "lenses.first": 0.001335000153630972,
+            "inlays.first": 0.1422079000622034,
+            "folding.first": 0.01504219975322485,
+            "hover.first_after_auto": 1.4200340956449509e-05,
+            "outline.warm": 0.029282900039106607,
+            "inlays.warm": 9.769992902874947e-05,
+            "folding.warm": 0.011528399772942066,
+            "hover.warm": 1.2100208550691605e-05
+          },
+          {
+            "outline.first": 0.030026200227439404,
+            "lenses.first": 0.0013417000882327557,
+            "inlays.first": 0.14204619964584708,
+            "folding.first": 0.014940300025045872,
+            "hover.first_after_auto": 1.3400334864854813e-05,
+            "outline.warm": 0.02870139991864562,
+            "inlays.warm": 9.180000051856041e-05,
+            "folding.warm": 0.01149709988385439,
+            "hover.warm": 1.00000761449337e-05
+          },
+          {
+            "outline.first": 0.02922269981354475,
+            "lenses.first": 0.001395100262016058,
+            "inlays.first": 0.1458729999139905,
+            "folding.first": 0.014974900055676699,
+            "hover.first_after_auto": 2.550007775425911e-05,
+            "outline.warm": 0.02982780011370778,
+            "inlays.warm": 9.180000051856041e-05,
+            "folding.warm": 0.011525500100106001,
+            "hover.warm": 1.0999850928783417e-05
+          }
+        ],
+        "memory": {
+          "snapshot": {
+            "kept": 9618740,
+            "peak": 16383969
+          },
+          "diagnostics_occurrences": {
+            "kept": 11976068,
+            "peak": 16383969
+          },
+          "automatic_queries": {
+            "kept": 25832204,
+            "peak": 30593284
+          },
+          "sparse_hovers": {
+            "kept": 25832636,
+            "peak": 30593284
+          }
+        },
+        "dimensions": {
+          "read_files": 1,
+          "shapes": 7200,
+          "endpoints": 400,
+          "captured_files": 0,
+          "retained_source_records": 0
+        },
+        "counts": {
+          "v1.snapshot.yaml_composes": 1,
+          "input.b0de2b90a79d": 2,
+          "v1.snapshot.converted_nodes": 32007,
+          "v1.automatic.yaml_composes": 1,
+          "v1.automatic.converted_nodes": 32007,
+          "v2.snapshot.yaml_composes": 1,
+          "input.7cd2b060b6fd": 2,
+          "v2.snapshot.converted_nodes": 32007,
+          "v2.automatic.yaml_composes": 1,
+          "v2.automatic.converted_nodes": 32007,
+          "v3.snapshot.yaml_composes": 1,
+          "input.b2c9a97bfc7a": 2,
+          "v3.snapshot.converted_nodes": 32007,
+          "v3.automatic.yaml_composes": 1,
+          "v3.automatic.converted_nodes": 32007,
+          "broken.snapshot_composes": 1,
+          "broken.three_source_request_composes": 1
+        },
+        "python": "3.12.13 (main, May 10 2026, 19:35:37) [MSC v.1944 64 bit (AMD64)]",
+        "backend": "libyaml",
+        "import": "fastraml/__init__.py"
+      }
+    ],
+    "model-inlays": [
+      {
+        "phases": [
+          {
+            "change": 0.0003483002074062824,
+            "collect": 0.012836799956858158,
+            "snapshot": 0.15877159964293242,
+            "diagnostics": 1.400243490934372e-06,
+            "occurrences": 0.01784879993647337,
+            "total": 0.18980689998716116
+          },
+          {
+            "change": 0.0004428001120686531,
+            "collect": 0.01281779957935214,
+            "snapshot": 0.16061530029401183,
+            "diagnostics": 1.7997808754444122e-06,
+            "occurrences": 0.018542600329965353,
+            "total": 0.19242030009627342
+          },
+          {
+            "change": 0.00040400028228759766,
+            "collect": 0.013918299693614244,
+            "snapshot": 0.16185700008645654,
+            "diagnostics": 1.200009137392044e-06,
+            "occurrences": 0.01756170019507408,
+            "total": 0.19374220026656985
+          }
+        ],
+        "queries": [
+          {
+            "outline.first": 0.03015019977465272,
+            "lenses.first": 0.0013476000167429447,
+            "inlays.first": 0.05040870001539588,
+            "folding.first": 0.07552629988640547,
+            "hover.first_after_auto": 0.03375460021197796,
+            "outline.warm": 0.030985400080680847,
+            "inlays.warm": 9.689992293715477e-05,
+            "folding.warm": 0.01166009996086359,
+            "hover.warm": 1.0999850928783417e-05
+          },
+          {
+            "outline.first": 0.02942320005968213,
+            "lenses.first": 0.0013283002190291882,
+            "inlays.first": 0.05154359992593527,
+            "folding.first": 0.0771862999536097,
+            "hover.first_after_auto": 0.03445399971678853,
+            "outline.warm": 0.03309000004082918,
+            "inlays.warm": 0.00010379962623119354,
+            "folding.warm": 0.013205799739807844,
+            "hover.warm": 1.4800112694501877e-05
+          },
+          {
+            "outline.first": 0.03033600002527237,
+            "lenses.first": 0.0014142002910375595,
+            "inlays.first": 0.05079880030825734,
+            "folding.first": 0.07602539984509349,
+            "hover.first_after_auto": 0.03289539972320199,
+            "outline.warm": 0.030575500335544348,
+            "inlays.warm": 9.809993207454681e-05,
+            "folding.warm": 0.012516699731349945,
+            "hover.warm": 1.3300217688083649e-05
+          }
+        ],
+        "memory": {
+          "snapshot": {
+            "kept": 9689719,
+            "peak": 16383918
+          },
+          "diagnostics_occurrences": {
+            "kept": 12047000,
+            "peak": 16383918
+          },
+          "automatic_queries": {
+            "kept": 23240843,
+            "peak": 33678909
+          },
+          "sparse_hovers": {
+            "kept": 25867423,
+            "peak": 33678909
+          }
+        },
+        "dimensions": {
+          "read_files": 1,
+          "shapes": 7200,
+          "endpoints": 400,
+          "captured_files": 0,
+          "retained_source_records": 0
+        },
+        "counts": {
+          "v1.snapshot.yaml_composes": 1,
+          "input.b0de2b90a79d": 2,
+          "v1.snapshot.converted_nodes": 32007,
+          "v1.automatic.yaml_composes": 1,
+          "v1.automatic.converted_nodes": 32007,
+          "v2.snapshot.yaml_composes": 1,
+          "input.7cd2b060b6fd": 2,
+          "v2.snapshot.converted_nodes": 32007,
+          "v2.automatic.yaml_composes": 1,
+          "v2.automatic.converted_nodes": 32007,
+          "v3.snapshot.yaml_composes": 1,
+          "input.b2c9a97bfc7a": 2,
+          "v3.snapshot.converted_nodes": 32007,
+          "v3.automatic.yaml_composes": 1,
+          "v3.automatic.converted_nodes": 32007,
+          "broken.snapshot_composes": 1,
+          "broken.three_source_request_composes": 1
+        },
+        "python": "3.12.13 (main, May 10 2026, 19:35:37) [MSC v.1944 64 bit (AMD64)]",
+        "backend": "libyaml",
+        "import": "fastraml/__init__.py"
+      },
+      {
+        "phases": [
+          {
+            "change": 0.0004841000773012638,
+            "collect": 0.01583729963749647,
+            "snapshot": 0.16017170017585158,
+            "diagnostics": 1.4998950064182281e-06,
+            "occurrences": 0.016534500289708376,
+            "total": 0.1930291000753641
+          },
+          {
+            "change": 0.0004133000038564205,
+            "collect": 0.01269460003823042,
+            "snapshot": 0.16011400008574128,
+            "diagnostics": 1.600012183189392e-06,
+            "occurrences": 0.01739259995520115,
+            "total": 0.19061610009521246
+          },
+          {
+            "change": 0.000892499927431345,
+            "collect": 0.013632100075483322,
+            "snapshot": 0.15939819999039173,
+            "diagnostics": 9.0012326836586e-07,
+            "occurrences": 0.016515399795025587,
+            "total": 0.19043909991160035
+          }
+        ],
+        "queries": [
+          {
+            "outline.first": 0.03128980007022619,
+            "lenses.first": 0.0016167000867426395,
+            "inlays.first": 0.05480969976633787,
+            "folding.first": 0.08616989990696311,
+            "hover.first_after_auto": 0.03448030026629567,
+            "outline.warm": 0.0315635995939374,
+            "inlays.warm": 0.0001105000264942646,
+            "folding.warm": 0.012500799726694822,
+            "hover.warm": 1.800013706088066e-05
+          },
+          {
+            "outline.first": 0.03088079998269677,
+            "lenses.first": 0.0014346004463732243,
+            "inlays.first": 0.050342199858278036,
+            "folding.first": 0.07512659998610616,
+            "hover.first_after_auto": 0.033044100273400545,
+            "outline.warm": 0.030587899964302778,
+            "inlays.warm": 0.00010180007666349411,
+            "folding.warm": 0.013231299817562103,
+            "hover.warm": 1.930026337504387e-05
+          },
+          {
+            "outline.first": 0.030108400154858828,
+            "lenses.first": 0.0014154999516904354,
+            "inlays.first": 0.05031870026141405,
+            "folding.first": 0.07451419997960329,
+            "hover.first_after_auto": 0.03290400002151728,
+            "outline.warm": 0.03089809976518154,
+            "inlays.warm": 0.00010700011625885963,
+            "folding.warm": 0.011692400090396404,
+            "hover.warm": 1.1899974197149277e-05
+          }
+        ],
+        "memory": {
+          "snapshot": {
+            "kept": 9685677,
+            "peak": 16383918
+          },
+          "diagnostics_occurrences": {
+            "kept": 12042770,
+            "peak": 16383918
+          },
+          "automatic_queries": {
+            "kept": 23237365,
+            "peak": 33675431
+          },
+          "sparse_hovers": {
+            "kept": 25863898,
+            "peak": 33675431
+          }
+        },
+        "dimensions": {
+          "read_files": 1,
+          "shapes": 7200,
+          "endpoints": 400,
+          "captured_files": 0,
+          "retained_source_records": 0
+        },
+        "counts": {
+          "v1.snapshot.yaml_composes": 1,
+          "input.b0de2b90a79d": 2,
+          "v1.snapshot.converted_nodes": 32007,
+          "v1.automatic.yaml_composes": 1,
+          "v1.automatic.converted_nodes": 32007,
+          "v2.snapshot.yaml_composes": 1,
+          "input.7cd2b060b6fd": 2,
+          "v2.snapshot.converted_nodes": 32007,
+          "v2.automatic.yaml_composes": 1,
+          "v2.automatic.converted_nodes": 32007,
+          "v3.snapshot.yaml_composes": 1,
+          "input.b2c9a97bfc7a": 2,
+          "v3.snapshot.converted_nodes": 32007,
+          "v3.automatic.yaml_composes": 1,
+          "v3.automatic.converted_nodes": 32007,
+          "broken.snapshot_composes": 1,
+          "broken.three_source_request_composes": 1
+        },
+        "python": "3.12.13 (main, May 10 2026, 19:35:37) [MSC v.1944 64 bit (AMD64)]",
+        "backend": "libyaml",
+        "import": "fastraml/__init__.py"
+      },
+      {
+        "phases": [
+          {
+            "change": 0.00035850005224347115,
+            "collect": 0.012868999969214201,
+            "snapshot": 0.1652979999780655,
+            "diagnostics": 1.4998950064182281e-06,
+            "occurrences": 0.017011700198054314,
+            "total": 0.1955387000925839
+          },
+          {
+            "change": 0.0004213000647723675,
+            "collect": 0.013499299995601177,
+            "snapshot": 0.1775956000201404,
+            "diagnostics": 1.80024653673172e-06,
+            "occurrences": 0.0177110000513494,
+            "total": 0.2092290003784001
+          },
+          {
+            "change": 0.00041510025039315224,
+            "collect": 0.014422900043427944,
+            "snapshot": 0.17142869997769594,
+            "diagnostics": 9.997747838497162e-07,
+            "occurrences": 0.01806890033185482,
+            "total": 0.2043366003781557
+          }
+        ],
+        "queries": [
+          {
+            "outline.first": 0.030308700166642666,
+            "lenses.first": 0.001349099911749363,
+            "inlays.first": 0.052336900029331446,
+            "folding.first": 0.07405529962852597,
+            "hover.first_after_auto": 0.032701299991458654,
+            "outline.warm": 0.0300671998411417,
+            "inlays.warm": 9.669968858361244e-05,
+            "folding.warm": 0.011727000121027231,
+            "hover.warm": 1.1499971151351929e-05
+          },
+          {
+            "outline.first": 0.03219290031120181,
+            "lenses.first": 0.0015094000846147537,
+            "inlays.first": 0.052826700266450644,
+            "folding.first": 0.07425360009074211,
+            "hover.first_after_auto": 0.03282469976693392,
+            "outline.warm": 0.029800199903547764,
+            "inlays.warm": 9.509967640042305e-05,
+            "folding.warm": 0.011711400002241135,
+            "hover.warm": 9.799841791391373e-06
+          },
+          {
+            "outline.first": 0.031831400003284216,
+            "lenses.first": 0.0015290002338588238,
+            "inlays.first": 0.05159540008753538,
+            "folding.first": 0.07504560006782413,
+            "hover.first_after_auto": 0.033148800022900105,
+            "outline.warm": 0.030403800308704376,
+            "inlays.warm": 9.569991379976273e-05,
+            "folding.warm": 0.011812100186944008,
+            "hover.warm": 1.3799872249364853e-05
+          }
+        ],
+        "memory": {
+          "snapshot": {
+            "kept": 9694466,
+            "peak": 16383918
+          },
+          "diagnostics_occurrences": {
+            "kept": 12051653,
+            "peak": 16383918
+          },
+          "automatic_queries": {
+            "kept": 23245296,
+            "peak": 33683362
+          },
+          "sparse_hovers": {
+            "kept": 25871782,
+            "peak": 33683362
+          }
+        },
+        "dimensions": {
+          "read_files": 1,
+          "shapes": 7200,
+          "endpoints": 400,
+          "captured_files": 0,
+          "retained_source_records": 0
+        },
+        "counts": {
+          "v1.snapshot.yaml_composes": 1,
+          "input.b0de2b90a79d": 2,
+          "v1.snapshot.converted_nodes": 32007,
+          "v1.automatic.yaml_composes": 1,
+          "v1.automatic.converted_nodes": 32007,
+          "v2.snapshot.yaml_composes": 1,
+          "input.7cd2b060b6fd": 2,
+          "v2.snapshot.converted_nodes": 32007,
+          "v2.automatic.yaml_composes": 1,
+          "v2.automatic.converted_nodes": 32007,
+          "v3.snapshot.yaml_composes": 1,
+          "input.b2c9a97bfc7a": 2,
+          "v3.snapshot.converted_nodes": 32007,
+          "v3.automatic.yaml_composes": 1,
+          "v3.automatic.converted_nodes": 32007,
+          "broken.snapshot_composes": 1,
+          "broken.three_source_request_composes": 1
+        },
+        "python": "3.12.13 (main, May 10 2026, 19:35:37) [MSC v.1944 64 bit (AMD64)]",
+        "backend": "libyaml",
+        "import": "fastraml/__init__.py"
+      }
+    ]
+  }
+}

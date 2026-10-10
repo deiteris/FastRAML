@@ -56,13 +56,14 @@ the TCK's 1011 files.
 `parser:` limits. It keeps the YAML trees too, `retain_source=True`, only when
 an enabled lint rule reads them; no rule in the default set does. Decoders
 record the small syntax facts that `deprecated-schemas` reads (docs/18 § 6).
-The first query that needs a file's tree composes it on demand. Hover, inlays,
+The first query that needs a file's tree composes it on demand. Hover,
 folding and selection share the workspace's source owner when their input and
 composition policy agree (§ 4). Parsing does not populate that query cache or
 retain all producer trees. Snapshot-local hover indices keep requested trees;
 snapshots borrow the workspace's cache weakly rather than keep its other files
 alive. Without a live owner, a held snapshot can compose its own retained text.
-It records the set of files it read: every retained text, every
+Inlays read model facts and typed data without requesting a tree (§ 4.4).
+A snapshot records the set of files it read: every retained text, every
 fragment, and every include it tried, found or not. It is built when a query
 first asks for it and kept until one of those files changes. A file that
 appears, a buffer opened or a file created, also drops every snapshot that
@@ -349,6 +350,18 @@ clickable code lenses above declarations. `inlay_hints(snapshot, uri, span)`
 returns hints only within the requested source range. It reuses hover's
 authored source sites and typed `DataNode` token index, and never resolves a
 name or repeats type matching in the adapter.
+
+The decoder's `type_written` flag distinguishes explicit type syntax from
+inference. Declaration hints read per-file authored model subjects and expression
+spans, without composing source or populating source grammar/built-in indices.
+Inferred hints need a real single-line key span; a fragment-root body span is not
+an authored declaration key. Reference hints still use the authored expression
+span in that fragment.
+
+Expanded YAML aliases keep their anchor's child spans. Declaration hints omit
+those borrowed children, including nested object and array members, while keeping
+any declaration hints authored at the anchor itself. This check reads model
+placement and owned declaration edges; it does not build the source grammar.
 
 A declaration without an authored type can show its inferred type, such as
 `[object]`. Explicit built-in types and multiple-inheritance lists are not

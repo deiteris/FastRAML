@@ -127,10 +127,16 @@ Current execution:
   (5,810 passed, 67 skipped, 1 xfailed) and both mixed-workload linearity checks.
   All GitHub checks passed, including Ubuntu, TCK and benchmarks; PR #1 merged
   into master as `e81d361`.
-- Stage B: duplicate hover/workspace ownership is fixed and locally verified.
+- Stage B: all CI checks passed and PR #2 merged into master at `15aed45`.
   The remaining first-use and +5.4% post-query allocation trade-off is recorded
-  in the integration report; GitHub verification and integration are next.
-- Stage C: pending an accepted baseline.
+  in the integration report; the parked representation has not been merged.
+- Stage C: `perf/service-model-inlays` starts from `15aed45`, with the first
+   model-backed inlay/explicit-type experiment documented before implementation.
+  The bounded port now has correctness, reach, A/B and scaling evidence in the
+  [inlay report](../../reports/2026-10-10/service-model-inlays.md). Its snapshot-first
+  mixed allocation peak adds 10.0%, an accepted construction-order trade-off.
+  The normal CI/platform gate applies before merge. Remaining recovery candidates
+  stay separate experiments against the integrated baseline.
 
 Update these entries as each stage completes. Keep measurements in the dated
 report, current pending work in docs/15, and execution history here.

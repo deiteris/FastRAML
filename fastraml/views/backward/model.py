@@ -9,10 +9,10 @@ and `records` read them, and none of the three needs the others to understand on
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from typing import Final, Literal, Protocol, get_args
 
 from fastraml.config import Impact
+from fastraml.records import record
 from fastraml.views.backward.rules import RULES
 from fastraml.views.severity import Ranking
 
@@ -159,51 +159,51 @@ _OPERATION_ADDED: Final[Impact] = impact_of('entity-added')
 _OPERATION_REMOVED: Final[Impact] = impact_of('entity-removed')
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class OperationId:
     path: str
     method: str
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class OperationContract:
     pass
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class RequestBody:
     media_type: str
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class ResponseBody:
     status: str
     media_type: str
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class ResponseStatus:
     status: str
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class ParameterLocation:
     binding: Literal['path', 'query', 'header', 'baseUri']
     name: str
     response_status: str | None = None
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class SecurityLocation:
     pass
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class TransportLocation:
     pass
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class TypeDeclaration:
     """A named type in `types:`, compared as a declaration rather than a use.
 
@@ -240,22 +240,22 @@ type Location = (
 type SchemaLocation = RequestBody | ResponseBody | ParameterLocation | TypeDeclaration
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class PropertySegment:
     name: str
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class ItemsSegment:
     pass
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class PatternPropertySegment:
     pattern: str
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class UnionMemberSegment:
     name: str | None
     type: str
@@ -279,7 +279,7 @@ class BackwardChange(Protocol):
     rule: str
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class Changed:
     """One change, at one coordinate.
 
@@ -318,7 +318,7 @@ class Changed:
     rule: str
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class OperationAdded:
     operation: OperationId
     display_name: str | None = None
@@ -327,7 +327,7 @@ class OperationAdded:
     rule: str = 'entity-added'
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class OperationRemoved:
     operation: OperationId
     display_name: str | None = None

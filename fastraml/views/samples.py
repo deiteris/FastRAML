@@ -23,12 +23,12 @@ from __future__ import annotations
 import base64
 import random
 import re
-from dataclasses import dataclass
 from decimal import Decimal
 from fractions import Fraction
 from math import isfinite
 from typing import TYPE_CHECKING, cast
 
+from fastraml.records import record
 from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
 from fastraml.types.examples import examples_of
 from fastraml.types.jsonschema_ import projected
@@ -77,7 +77,7 @@ class SampleError(ValueError):
     """No value the shape accepts could be produced under the options given."""
 
 
-@dataclass(slots=True, frozen=True)
+@record
 class SampleOptions:
     """How `sample` chooses among valid values.
 

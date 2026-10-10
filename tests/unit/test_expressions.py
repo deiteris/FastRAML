@@ -248,7 +248,10 @@ class TestAstShape:
         assert [f.name for f in dataclasses.fields(Optional_)] == ['inner']
         assert [f.name for f in dataclasses.fields(Union)] == ['members']
 
-    def test_ast_nodes_are_frozen(self):
+    def test_ast_nodes_are_slotted_values_that_hash_by_value(self):
+        # Immutability is a static contract (`records.record`): mypy rejects a
+        # field write, so the runtime pins what the checker cannot.
         node = Primitive('string', 0)
-        with pytest.raises(dataclasses.FrozenInstanceError):
-            node.name = 'integer'
+        assert node == Primitive('string', 0)
+        assert len({node, Primitive('string', 0)}) == 1
+        assert not hasattr(node, '__dict__')

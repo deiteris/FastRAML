@@ -16,6 +16,7 @@ from math import ceil, floor, gcd, isfinite, lcm
 from typing import TYPE_CHECKING, Any, Final
 
 from fastraml.errors import RamlError
+from fastraml.records import record
 from fastraml.types.base import TYPE_ANY, TYPE_NIL, TYPE_RECURSIVE, TYPE_UNION, BaseShape, Property, ScalarFacet
 from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
 from fastraml.types.scalars import AnyShape, BooleanShape, IntegerShape, NilShape, NumberShape, StringShape
@@ -84,7 +85,7 @@ _UNSUPPORTED: Final = frozenset(
 )
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class _Drafts:
     """The keywords each draft acts on, and its validator class."""
 

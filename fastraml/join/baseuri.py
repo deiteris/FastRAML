@@ -11,6 +11,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Final
 
+from fastraml.records import record
+
 __all__ = ['BaseUri', 'CreatedEndpoint', 'plan_created', 'split_base_uri', 'uri_variables']
 
 #: One RFC 6570 expression; the operator and the variable list.
@@ -19,7 +21,7 @@ _EXPRESSION: Final = re.compile(r'\{([+#./;?&]?)([^{}]*)\}')
 _MODIFIER: Final = re.compile(r'(?::\d+|\*)$')
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class BaseUri:
     """A base URI split into what must match exactly and what may be shared."""
 
@@ -70,7 +72,7 @@ class _Trie:
     inputs: list[int] = field(default_factory=list)
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class CreatedEndpoint:
     """One created endpoint on an input's path, outermost first."""
 

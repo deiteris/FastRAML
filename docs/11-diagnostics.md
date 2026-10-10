@@ -9,7 +9,7 @@ and each failure can contain a chain of contextual frames.
 `fastraml.positions.Position` stores a source span:
 
 ```python
-@dataclass(slots=True, frozen=True)
+@record  # a slotted dataclass whose fields are never assigned (docs/12 § 2)
 class Position:
     line: int
     column: int

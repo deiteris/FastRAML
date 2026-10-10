@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from fastraml.records import identity_record
 from fastraml.types.base import BaseShape
 from fastraml.views.render import render
 
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from fastraml.service.workspace import Snapshot
 
 
-@dataclass(frozen=True, slots=True, eq=False)
+@identity_record
 class Lens:
     name: str
     span: Position

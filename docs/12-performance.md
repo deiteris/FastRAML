@@ -24,6 +24,11 @@ can duplicate declarations; copying a node can lose its provenance.
 
 - Every model class is slotted. Dataclasses use `slots=True, eq=False` where
   applicable; identity-based nodes must not acquire generated equality.
+  Immutable records use `records.record` (`identity_record` without equality):
+  a slotted dataclass that mypy treats as frozen. A frozen dataclass assigns
+  each field through `object.__setattr__` and builds about 2.5× slower for the
+  same size. Nothing guards a write at run time. `parser/substitutions.py`, a leaf
+  module that imports nothing of the package, keeps `dataclass(frozen=True)`.
 - YAML mapping content is stored as a flat alternating list. Hot decoders should
   index it directly instead of allocating tuples or temporary dictionaries.
 - Allocate per distinct value, not per use. A childless `Node` shares one

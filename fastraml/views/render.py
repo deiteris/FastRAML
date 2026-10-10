@@ -22,7 +22,7 @@ merged, and this shows the declaration rather than the type.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from fractions import Fraction
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any
@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, Any
 import yaml
 
 from fastraml.parser.fragments import every_declaration
+from fastraml.records import record
 from fastraml.types.base import facets_of
 from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
 from fastraml.types.jsonschema_ import JsonShape, projected, subschema_document
@@ -53,7 +54,7 @@ __all__ = ['Sources', 'render', 'render_endpoint', 'render_operation', 'type_nam
 _UNWRAPPED = 1 << 30
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class _Line:
     """One rendered line and its trailing note, kept apart until the end.
 
@@ -67,7 +68,7 @@ class _Line:
     note: str = ''
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class _Level:
     """Where the walk is: how much further to expand, and how far to indent.
 
@@ -106,7 +107,7 @@ class _Level:
         )
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class Sources:
     """Where each trait and resource type was declared, so a merged-in item can
     name the thing that contributed it.

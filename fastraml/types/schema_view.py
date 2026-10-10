@@ -9,12 +9,13 @@ instance type.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Final
 
 from fastraml.datanode import DataNode, value_node_of
 from fastraml.errors import ErrorKind, RamlError
 from fastraml.parser.facets import regex_engine
+from fastraml.records import record
 from fastraml.types.base import (
     TYPE_ARRAY,
     TYPE_NUMBER,
@@ -33,7 +34,7 @@ if TYPE_CHECKING:
     from fastraml.types.base import Shape
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class Projection:
     """What every level of the walk shares: where to hang the view shapes."""
 

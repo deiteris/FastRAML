@@ -6,11 +6,11 @@ Matching uses the same property and discriminator operations as validation
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from fastraml.errors import RamlError
 from fastraml.positions import UNKNOWN, Position
+from fastraml.records import identity_record
 from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
 
 if TYPE_CHECKING:
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from fastraml.types.base import BaseShape, PatternProperty, Property
 
 
-@dataclass(frozen=True, slots=True, eq=False)
+@identity_record
 class TypedChild:
     name: str | int
     value: ValueNode

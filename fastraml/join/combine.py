@@ -36,6 +36,7 @@ from fastraml.parser.entry import ParseOptions, parse_from_path, parse_from_stri
 from fastraml.parser.fragments import APIFragment, FragmentKind
 from fastraml.parser.includes import resolve_ref_uri, strip_uri_suffix
 from fastraml.parser.source_ir import METHODS
+from fastraml.records import record
 from fastraml.uris import file_uri_to_path, is_file_uri, path_to_file_uri
 from fastraml.yamlnode import (
     TAG_INCLUDE,
@@ -72,7 +73,7 @@ _DEFAULTS: Final = (fn.FACET_PROTOCOLS, fn.FACET_MEDIA_TYPE, fn.FACET_SECURED_BY
 _SINGLE: Final = (fn.FACET_TITLE, fn.FACET_DESCRIPTION, fn.FACET_VERSION)
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class BaseUriOverride:
     """An input's base URI, replacing its own (docs/20 § 6.1)."""
 
@@ -81,7 +82,7 @@ class BaseUriOverride:
     parameters: Node | None = None
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class JoinOptions:
     """What `join` needs besides its inputs."""
 

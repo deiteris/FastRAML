@@ -12,9 +12,9 @@ only running them needs a store.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Final
 
+from fastraml.records import record
 from fastraml.views.graph import RAML_NS
 
 __all__ = ['QUERIES', 'Query', 'render']
@@ -33,7 +33,7 @@ REACHES: Final = (
 CARRIES: Final = '(raml:request|raml:returns)/(raml:payload|raml:parameter)/raml:range'
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class Query:
     """One named question, its SPARQL, and what a row means."""
 

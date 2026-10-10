@@ -10,7 +10,6 @@ See docs/02-architecture.md § 1 and docs/13-public-api.md.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Literal
 
@@ -22,6 +21,7 @@ from fastraml.parser.endpoint_build import build_endpoints
 from fastraml.parser.extensions import EXTENSION_KINDS, decode_extension_chain
 from fastraml.parser.fragments import decode_fragment, identify_fragment
 from fastraml.parser.security import apply_security_schemes
+from fastraml.records import record
 from fastraml.registry import DEFAULT_MAX_INCLUDE_SIZE, Raml, Stage
 from fastraml.types.resolve import resolve_shapes
 from fastraml.types.unwrap import unwrap_shapes
@@ -40,7 +40,7 @@ __all__ = [
 ]
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class ParseOptions:
     """How one parse should behave.
 

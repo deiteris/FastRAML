@@ -26,7 +26,6 @@ however many entities share it, and each name is looked up once per scope.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Final
 
@@ -35,6 +34,7 @@ from fastraml.parser.endpoints import EndPoint, Operation, Response
 from fastraml.parser.fragments import APIFragment, Library
 from fastraml.parser.security import SecuritySchemeDefinition
 from fastraml.parser.source_ir import METHODS
+from fastraml.records import record
 from fastraml.types.base import BaseShape
 from fastraml.types.examples import Example, examples_of
 
@@ -80,7 +80,7 @@ type Entity = EndPoint | Operation | BaseShape | SecuritySchemeDefinition | Docu
 type Owner = Entity | Response | APIFragment | Example
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class Target:
     kind: Kind
     entity: Entity
@@ -88,7 +88,7 @@ class Target:
     address: str
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class DocLink:
     """One label of one text, and what it names."""
 

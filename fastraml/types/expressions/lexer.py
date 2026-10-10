@@ -7,11 +7,11 @@ See docs/06-type-expressions.md § 2. One compiled alternation drives a single
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 from enum import Enum, auto
 
 from fastraml.errors import ErrorKind, RamlError
 from fastraml.positions import Position
+from fastraml.records import record
 
 __all__ = [
     'Token',
@@ -31,7 +31,7 @@ class TokenKind(Enum):
     EOF = auto()
 
 
-@dataclass(slots=True, frozen=True)
+@record
 class Token:
     """One lexical token. `col` is 0-based within the expression string."""
 

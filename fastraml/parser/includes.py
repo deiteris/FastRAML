@@ -18,10 +18,10 @@ from __future__ import annotations
 
 import posixpath
 import re
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
 from fastraml.errors import ErrorKind, RamlError
+from fastraml.records import record
 from fastraml.uris import path_to_file_uri, resolve_uri_ref
 from fastraml.yamlnode import (
     TAG_INCLUDE,
@@ -74,7 +74,7 @@ _JSON_STRINGS_OR_TABS: Final = re.compile(r'"(?:[^"\\]|\\[\s\S])*"|\t+')
 _YAML_EXTENSIONS: Final = frozenset({'.raml', '.yaml', '.yml', '.json'})
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class IncludeInfo:
     """The `!include` directive that provided one value."""
 
@@ -84,7 +84,7 @@ class IncludeInfo:
     abs_uri: str
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class IncludeRef:
     """One resolved `!include`, recorded in `Raml.include_refs` for tooling.
 

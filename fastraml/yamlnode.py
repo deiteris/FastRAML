@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import re
 from contextvars import ContextVar
-from dataclasses import dataclass
 from enum import IntEnum
 from typing import TYPE_CHECKING, Any, Final, Protocol
 
@@ -23,6 +22,7 @@ from yaml.nodes import ScalarNode
 
 from fastraml.errors import ErrorKind, RamlError
 from fastraml.positions import Position
+from fastraml.records import record
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
@@ -379,7 +379,7 @@ class _Grafted(Node):
         return Position(self.line, self.column, *end)
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class WrittenScalar:
     """A scalar's text and the span of its token, kept without the node.
 

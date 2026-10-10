@@ -14,11 +14,11 @@ reporting the position of the enclosing `uri:` node. See docs/11-diagnostics.md.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
 from fastraml.errors import ErrorKind, RamlError
 from fastraml.positions import UNKNOWN
+from fastraml.records import record
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Iterator, Mapping
@@ -64,7 +64,7 @@ _SCHEME_PREFIX: Final = re.compile(r'[^:/?#{]*:')
 _SCHEME: Final = re.compile(r'[A-Za-z][A-Za-z0-9+.-]*')
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class UriTemplateExpression:
     """One `{...}` expression found in a URI template.
 

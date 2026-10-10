@@ -5,7 +5,6 @@ See docs/05-type-model.md § 1.
 
 from __future__ import annotations
 
-import dataclasses
 import re
 from typing import ClassVar
 
@@ -141,12 +140,10 @@ class TestTypeExprRef:
         second = TypeExprRef(line=1, column=1, builtin='string')
         assert first != second
 
-    def test_a_ref_is_frozen_and_has_no_instance_dict(self):
+    def test_a_ref_has_no_instance_dict(self):
         ref = TypeExprRef(line=1, column=1)
         with pytest.raises(AttributeError):
             ref.__dict__  # noqa: B018 - the access is the assertion
-        with pytest.raises(dataclasses.FrozenInstanceError):
-            ref.column = 2
 
 
 class TestDeclarationFacets:

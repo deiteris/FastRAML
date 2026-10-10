@@ -8,9 +8,9 @@ an entire value to guess which union alternative the author meant.
 from __future__ import annotations
 
 from bisect import bisect_left, bisect_right
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from fastraml.records import identity_record
 from fastraml.types.base import Property
 from fastraml.types.examples import examples_of
 from fastraml.types.navigation import children
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from fastraml.types.navigation import TypedChild
 
 
-@dataclass(frozen=True, slots=True, eq=False)
+@identity_record
 class DataRoot:
     data: DataNode
     base: BaseShape
@@ -33,7 +33,7 @@ class DataRoot:
     role: str
 
 
-@dataclass(frozen=True, slots=True, eq=False)
+@identity_record
 class DataTarget:
     uri: str
     span: Position

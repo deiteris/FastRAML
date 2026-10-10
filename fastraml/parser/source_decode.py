@@ -45,6 +45,7 @@ from fastraml.parser.endpoints import Body, EndPoint, Operation, Request, Respon
 from fastraml.parser.facets import MEDIA_RANGE, make_string_facet
 from fastraml.parser.includes import inline_include
 from fastraml.parser.syntax import is_media_type_map as _is_media_type_map
+from fastraml.registry import written_inside
 from fastraml.types.shape import make_body_shape, make_parameter_map, make_shape
 from fastraml.yamlnode import NodeKind, is_null, node_error, pairs
 
@@ -57,7 +58,13 @@ if TYPE_CHECKING:
     from fastraml.types.base import BaseShape, Parameter
     from fastraml.yamlnode import Node
 
-__all__ = ['decode_request_facet', 'decode_responses', 'decode_source_endpoint', 'query_exclusion_error']
+__all__ = [
+    'REQUEST_SECTIONS',
+    'decode_request_facet',
+    'decode_responses',
+    'decode_source_endpoint',
+    'query_exclusion_error',
+]
 
 
 @contextmanager
@@ -181,12 +188,16 @@ def _is_status_code(value: str) -> bool:
     return _STATUS_CODE.match(value) is not None
 
 
-def _decode_response(raml: Raml, key: Node, value: Node, location: str, attach: Callable[[Response], None]) -> None:
+def _decode_response(  # noqa: PLR0913 - the response's pair, where it goes, and its holder
+    raml: Raml, key: Node, value: Node, location: str, attach: Callable[[Response], None], *, holder: object | None
+) -> None:
     """One response, attached before its content is decoded.
 
     A response whose content fails stays attached, marked in `Raml.broken`
-    (docs/13 § 1).
+    (docs/13 § 1). Its section keys are recorded only where `holder` wrote
+    it, not a template.
     """
+    written = holder is not None and written_inside(holder, key)
     location = raml.location_of(value, location)
     response = Response(
         id=raml.next_id(),
@@ -208,6 +219,8 @@ def _decode_response(raml: Raml, key: Node, value: Node, location: str, attach: 
         with raml.target_scope(DomainLocation.RESPONSE):
             for child_key, child_value in pairs(value):
                 name = child_key.value
+                if written and name in (FACET_HEADERS, FACET_BODY):
+                    raml.record_section(response, child_key, child_value, location)
                 try:
                     if name == FACET_DISPLAY_NAME:
                         response.display_name = make_string_facet(raml, child_key, child_value, location)
@@ -228,9 +241,12 @@ def _decode_response(raml: Raml, key: Node, value: Node, location: str, attach: 
         accumulator.raise_if_any()
 
 
-def decode_responses(raml: Raml, node: Node, location: str, responses: dict[str, Response]) -> None:
+def decode_responses(
+    raml: Raml, node: Node, location: str, responses: dict[str, Response], *, holder: object | None
+) -> None:
     """A `responses:` map, into the holder's own. Public because `describedBy:`
-    reuses it verbatim.
+    reuses it verbatim. `holder` is the entity that wrote it, or `None` for
+    one a template wrote, whose section keys are not recorded.
     """
     node, location = inline_include(raml, node, location)
     if is_null(node):
@@ -243,7 +259,7 @@ def decode_responses(raml: Raml, node: Node, location: str, responses: dict[str,
         try:
             if not _is_status_code(key.value):
                 raise node_error('status code must be a 3-digit number', location, key, info={'code': key.value})
-            _decode_response(raml, key, value, location, partial(setitem, responses, key.value))
+            _decode_response(raml, key, value, location, partial(setitem, responses, key.value), holder=holder)
         except RamlError as err:
             accumulator.add(err)
     accumulator.raise_if_any()
@@ -258,6 +274,10 @@ class RequestFacets(Protocol):
     headers: dict[str, Parameter]
     query_parameters: dict[str, Parameter]
     query_string: BaseShape | None
+
+
+#: The keys of a method that open a section (docs/21 § 4).
+REQUEST_SECTIONS: Final = frozenset({FACET_HEADERS, FACET_QUERY_PARAMETERS, FACET_BODY})
 
 
 def decode_request_facet(raml: Raml, into: RequestFacets, key: Node, value: Node, location: str) -> bool:
@@ -290,8 +310,10 @@ def query_exclusion_error(raml: Raml, facets: RequestFacets, location: str, node
 
 
 def _decode_operation_field(  # noqa: PLR0913, PLR0917 - one pass over the method's key vocabulary
-    raml: Raml, operation: Operation, request: Request, key: Node, value: Node, location: str
+    raml: Raml, operation: Operation, request: Request, key: Node, value: Node, location: str, *, written: bool
 ) -> None:
+    if written and key.value in REQUEST_SECTIONS:
+        raml.record_section(operation, key, value, location)
     if decode_request_facet(raml, request, key, value, location):
         return
     name = key.value
@@ -304,18 +326,22 @@ def _decode_operation_field(  # noqa: PLR0913, PLR0917 - one pass over the metho
     elif name == FACET_BODY:
         _decode_bodies(raml, key, value, location, DomainLocation.REQUEST_BODY, request.bodies)
     elif name == FACET_RESPONSES:
-        decode_responses(raml, value, location, operation.responses)
+        decode_responses(raml, value, location, operation.responses, holder=operation if written else None)
     elif is_annotation_key(name):
         add_domain_extension(raml, operation.annotations, location, key, value)
     else:
         raml.recover(node_error('unknown field', location, key, info={'field': name}))
 
 
-def decode_source_operation(raml: Raml, source: SourceOperation, attach: Callable[[Operation], None]) -> None:
+def decode_source_operation(
+    raml: Raml, source: SourceOperation, attach: Callable[[Operation], None], *, holder: EndPoint
+) -> None:
     """One method's retained tree into an `Operation`, attached before its
     content is decoded. One whose content fails stays attached,
-    marked in `Raml.broken` (docs/13 § 1).
+    marked in `Raml.broken` (docs/13 § 1). Its section keys are recorded only
+    where `holder` wrote it, not a resource type.
     """
+    written = written_inside(holder, source.key_pos)
     operation = Operation(
         id=raml.next_id(),
         method=source.method,
@@ -349,7 +375,9 @@ def decode_source_operation(raml: Raml, source: SourceOperation, attach: Callabl
                     # survive the containers the merge synthesised. A pair a
                     # template grafted is located where the template was written.
                     with raml.provenance_scope(value):
-                        _decode_operation_field(raml, operation, request, key, value, raml.location_of(key, location))
+                        _decode_operation_field(
+                            raml, operation, request, key, value, raml.location_of(key, location), written=written
+                        )
                 except RamlError as err:
                     accumulator.add(err)
             accumulator.add(query_exclusion_error(raml, request, location, source.body))
@@ -368,6 +396,7 @@ def _decode_endpoint_field(raml: Raml, endpoint: EndPoint, key: Node, value: Nod
     elif name == FACET_DESCRIPTION:
         endpoint.description = make_string_facet(raml, key, value, location)
     elif name == FACET_URI_PARAMETERS:
+        raml.record_section(endpoint, key, value, location)
         make_parameter_map(raml, value, location, 'uri', endpoint.uri_parameters)
     elif is_annotation_key(name):
         add_domain_extension(raml, endpoint.annotations, location, key, value)
@@ -420,7 +449,9 @@ def decode_source_endpoint(raml: Raml, source: SourceEndPoint, attach: Callable[
 
         for method, operation_source in source.operations.items():
             try:
-                decode_source_operation(raml, operation_source, partial(setitem, endpoint.operations, method))
+                decode_source_operation(
+                    raml, operation_source, partial(setitem, endpoint.operations, method), holder=endpoint
+                )
             except RamlError as err:
                 accumulator.add(err)
 

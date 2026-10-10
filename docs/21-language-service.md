@@ -197,10 +197,18 @@ The first outline request for a URI caches its complete result on the snapshot,
 including an empty outline. Later requests borrow the same list and symbols;
 callers must treat them as read-only. Root/dependency edits create a new snapshot
 and outline cache. A held older snapshot continues to answer from its older model.
-Caching does not add authored section positions or populate source grammar.
+Caching does not populate source grammar.
 
-The model keeps no position for a section's key (`types:`, a method's
-`headers:`), so a section spans its entries and selects the first.
+A section is placed at the key its owner wrote (`types:`, a method's
+`headers:`), spanning the key and its value, and is listed even when empty.
+The decoders record these keys in `Raml.written_sections` (docs/13 § 2): the
+root's, a type's `facets:`, a resource's `uriParameters:`, a method's or a
+`describedBy:`'s `headers:`, `queryParameters:` and `body:`, a response's
+`headers:` and `body:`, and a scheme's `describedBy:`. A key is recorded only
+inside its owner's span in its file, and not under a method or response a
+template wrote, which no outline lists. A table written `schemas:` is named
+so. A section the parser recorded no key for spans its entries and selects
+the first.
 
 What each entry lists is the authorship view's (`docs/16` § 10): a type's own
 members, not those it inherits, so an inherited property is outlined under the
@@ -216,8 +224,10 @@ inside a resource or method (`docs/16` § 10).
 A file outlines what it wrote, selected by `location` over the model its
 snapshot parsed. An Extension or Overlay lists the types and other
 declarations it added to the master's tables, and, under a master resource's
-path, the methods and resources it added there: a section spanning them, since
-the resource's key it wrote is not in the model. The master lists its own.
+path, the methods and resources it added there. The merge keeps the master's
+key where both wrote one, so each document's root section keys and resource
+paths are recorded from its own tree before the merge: the Extension's
+`types:` and restated `/a:` are placed at its keys. The master lists its own.
 
 A trait or resource type is listed by name alone. Its body is decoded only
 where it is applied (`docs/08` § 5), and the model keeps it undecoded, so there
@@ -516,8 +526,9 @@ written. It is the preview's source in `contrib/fastraml-vscode`
   lifetime, retained original trees and distinct JSON-include normalization.
 - `test_service_queries.py`: each query on one document with a library, a
   DataType include, a trait and a resource type; every query on a parse
-  stopped at each stage; an Extension's outline; and, over the TCK, that every
-  outline entry holds its selection and lies in its parent.
+  stopped at each stage; an Extension's outline and its own section keys;
+  empty, `schemas:` and template-supplied sections; and, over the TCK, that
+  every outline entry holds its selection and lies in its parent.
 - `test_service_hover.py`: contextual field meanings, full Markdown prose,
   authored and inherited summaries, aliases, optional versus nullable values,
   source-only template help, token boundaries, opaque data, educational examples,

@@ -387,6 +387,7 @@ def _decode(  # noqa: PLR0912 - one pass over the common-facet vocabulary (docs/
             case fn.FACET_REQUIRED:
                 base.required = make_bool_facet(raml, key, value, location)
             case fn.FACET_FACETS:
+                raml.record_section(base, key, value, location)
                 _decode_custom_facet_defs(raml, base, value)
             case fn.FACET_EXAMPLE:
                 _decode_example(raml, base, key, value)

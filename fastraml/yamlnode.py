@@ -50,6 +50,7 @@ __all__ = [
     'with_content',
     'with_grafts',
     'with_value',
+    'written_end',
 ]
 
 try:  # pragma: no cover - depends on how PyYAML was built
@@ -488,6 +489,15 @@ def _end(node: Node) -> tuple[int, int]:
         if container.end_line == end[0] and container.end_column > end[1]:
             return container.end_line, container.end_column
     return end
+
+
+def written_end(node: Node) -> tuple[int, int]:
+    """Where `full_position` ends, without building the `Position`."""
+    if not node.content:
+        return node.end_line, node.end_column
+    if isinstance(node, _Grafted):
+        return node.written_end
+    return _end(node)
 
 
 def end_line(node: Node) -> int:

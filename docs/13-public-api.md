@@ -136,6 +136,11 @@ Default lint no longer needs whole trees merely to detect `schema:` and
 retention. A consumer needing only that compact fact should read it rather
 than retaining the whole source tree.
 
+`Raml.written_sections` holds, per file, each section key an entity wrote
+there (`types:`, a method's `headers:`, a type's `facets:`), with its owner's
+ID and where its value ends, also independent of source retention. A section
+a template contributed is not recorded (docs/21 § 4).
+
 A configuration file's `parser:` section is `ParserConfig`. `limits(options)`
 applies its `max_include_size`, `max_depth` and `regex_engine`; its
 `workspace_root` and `remote` are left to the host, which weighs them against

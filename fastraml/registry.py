@@ -23,8 +23,9 @@ from typing import TYPE_CHECKING, Any, Final, Literal, Protocol, cast
 from fastraml.domains import DomainLocation
 from fastraml.errors import Accumulator, RamlError
 from fastraml.loaders import SchemeLoader
-from fastraml.sourceinfo import KeywordUse
-from fastraml.yamlnode import AUTHORED_NODES, DEFAULT_MAX_DEPTH, mark_subtree
+from fastraml.positions import UNKNOWN, Position
+from fastraml.sourceinfo import KeywordUse, WrittenSection
+from fastraml.yamlnode import AUTHORED_NODES, DEFAULT_MAX_DEPTH, mark_subtree, written_end
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping, Sequence
@@ -36,7 +37,6 @@ if TYPE_CHECKING:
     from fastraml.parser.includes import IncludeRef
     from fastraml.parser.structural_merge import ProvenanceOverlay
     from fastraml.parser.substitutions import Substitutions
-    from fastraml.positions import Position
     from fastraml.types.base import Property
     from fastraml.types.expressions import ExprCache
     from fastraml.types.schema_compile import SchemaRegistry
@@ -77,6 +77,24 @@ class Stage(Enum):
     ANNOTATIONS = 'annotations'  # P8
     UNWRAPPED = 'unwrapped'  # P9, when requested
     VALIDATED = 'validated'  # P10, when requested
+
+
+def written_inside(owner: object, node: Node | Position) -> bool:
+    """Whether `node` starts inside `owner`'s span, from its key through its
+    value; true for an owner placed nowhere. Compared as numbers: a parse
+    asks once per section key.
+    """
+    key: Position = getattr(owner, 'key_pos', UNKNOWN)
+    value: Position = getattr(owner, 'value_pos', UNKNOWN)
+    if not key.is_known:
+        key = value
+    if not value.is_known:
+        value = key
+    if not key.is_known:
+        return True
+    start = min((key.line, key.column), (value.line, value.column))
+    end = max((key.end_line, key.end_column), (value.end_line, value.end_column))
+    return start <= (node.line, node.column) <= end
 
 
 class Identified(Protocol):
@@ -213,6 +231,7 @@ class Raml:
         'shapes',
         'substitutions',
         'syntax_aliases',
+        'written_sections',
         # --- work queues -----------------------------------------------------
         '_discriminator_shapes',
         'unresolved_shapes',
@@ -302,6 +321,9 @@ class Raml:
         #: Accepted compatibility spellings by entity ID; only used spellings
         #: allocate a record. The parser records syntax, a view judges it.
         self.syntax_aliases: dict[int, list[KeywordUse]] = {}
+        #: The section keys entities wrote, by the file they wrote them in, in
+        #: the order decoded (docs/21 § 4).
+        self.written_sections: dict[str, list[WrittenSection]] = {}
 
         # A worklist, drained from the left in P7 while resolution appends to
         # the right; a deque keeps both ends O(1).
@@ -643,6 +665,21 @@ class Raml:
         """Where a decoder accepted a compatibility keyword spelling."""
         use = KeywordUse(self.location_of(key, location), key.position, key.value)
         self.syntax_aliases.setdefault(entity.id, []).append(use)
+
+    def record_section(self, owner: Identified, key: Node, value: Node, location: str, *, name: str = '') -> None:
+        """Where `owner` wrote a section key (docs/21 § 4).
+
+        Only in `owner`'s file and, where it is placed, inside its span: a
+        section a template grafted was written in the template. `name`, when
+        given, replaces the key's: a resource's full path.
+        """
+        if not written_inside(owner, key):
+            return
+        where = self.location_of(key, location)
+        if where != getattr(owner, 'location', where):
+            return
+        section = WrittenSection(owner.id, name or key.value, key.position, *written_end(value))
+        self.written_sections.setdefault(where, []).append(section)
 
     def put_source_info(self, entity_id: int, key: Node | None, value: Node) -> None:
         """Index an entity's authored nodes when source retention is on."""

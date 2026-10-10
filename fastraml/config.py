@@ -8,13 +8,14 @@ section is passed through as a mapping; `fastraml.views.lint.config` decodes it.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field, replace
+from dataclasses import field, replace
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
 
 import yaml
 
+from fastraml.records import record
 from fastraml.registry import DEFAULT_MAX_DEPTH, DEFAULT_MAX_INCLUDE_SIZE
 
 if TYPE_CHECKING:
@@ -44,7 +45,7 @@ SCHEMA = Path(__file__).with_name('config.raml')
 ROOT = 'FastRamlConfig'
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class ParserConfig:
     workspace_root: str | None = None
     max_include_size: int = DEFAULT_MAX_INCLUDE_SIZE
@@ -67,7 +68,7 @@ class ParserConfig:
         )
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class CompatibilityMatch:
     operation: re.Pattern[str] | None = None
     location: str | None = None
@@ -80,7 +81,7 @@ class CompatibilityMatch:
     after: object = None
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class CompatibilityRuleSetting:
     id: str
     impact: Impact | None = None
@@ -88,12 +89,12 @@ class CompatibilityRuleSetting:
     match: CompatibilityMatch | None = None
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class CompatibilityConfig:
     rules: tuple[CompatibilityRuleSetting, ...] = ()
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class JoinInputConfig:
     #: Absolute, resolved against the configuration file's directory.
     path: str
@@ -102,7 +103,7 @@ class JoinInputConfig:
     base_uri_parameters: Mapping[str, object] | None = None
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class JoinConfig:
     title: str | None = None
     version: str | None = None
@@ -110,7 +111,7 @@ class JoinConfig:
     inputs: tuple[JoinInputConfig, ...] = ()
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class FastRamlConfig:
     parser: ParserConfig = ParserConfig()
     lint: Mapping[str, object] = field(default_factory=dict)

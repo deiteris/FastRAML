@@ -10,9 +10,10 @@ from __future__ import annotations
 import ast
 import enum
 import pathlib
-from dataclasses import dataclass
 from functools import cache
 from typing import TYPE_CHECKING, Final, Literal
+
+from fastraml.records import record
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -59,7 +60,7 @@ _NOT_EMITTED: Final = frozenset(
 )
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class Vocabulary:
     """One closed wire vocabulary, independent of a target language."""
 
@@ -67,7 +68,7 @@ class Vocabulary:
     values: tuple[str, ...]
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class ShapeKind:
     """One emitted shape discriminator and the model class implementing it."""
 
@@ -75,7 +76,7 @@ class ShapeKind:
     model: str
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class Emitted:
     """What one ``_Projector`` method puts in its result."""
 
@@ -85,7 +86,7 @@ class Emitted:
     dynamic: bool
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class ShapeLayout:
     """Which `ShapeBase` keys each shape record declares, and how.
 
@@ -104,7 +105,7 @@ class ShapeLayout:
     extras: dict[str, tuple[str, ...]]
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class Recursion:
     """The recursion marker: a `ShapeBase` with its own `type` and keys.
 
@@ -126,7 +127,7 @@ class Recursion:
     keys: tuple[str, ...]
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class Facet:
     """One kind-specific field and how the wire encodes its value."""
 
@@ -162,7 +163,7 @@ class Container(enum.StrEnum):
     MAP_OF_MAP = 'map_of_map'
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class Structural:
     """What one structural key holds, in no particular language.
 
@@ -189,7 +190,7 @@ class Structural:
     constant: str | int | None = None
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class ContractSchema:
     """All source-derived facts shared by language backends."""
 
@@ -219,14 +220,14 @@ class ContractSchema:
         Required keys first, then optional ones, producer by producer: the order
         every backend declares them in.
         """
-        for method, record in PRODUCES.items():
+        for method, name in PRODUCES.items():
             found = self.projector.get(method)
             if found is None:
                 raise LookupError(f'PRODUCES names `{method}`, which is not a _Projector method')
             for key in found.required:
-                yield record, key, False
+                yield name, key, False
             for key in found.optional:
-                yield record, key, True
+                yield name, key, True
 
     def _shape_projection(self) -> tuple[Emitted, tuple[str, ...]]:
         """`_Projector.shape` and the keys its delegates merge in, checked.

@@ -25,9 +25,8 @@ keeps its whole text. The resolver splits it on the last dot.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from fastraml.errors import RamlError
+from fastraml.records import record
 
 from .lexer import Token, TokenKind, expression_error, tokenize
 
@@ -43,29 +42,29 @@ __all__ = [
 ]
 
 
-@dataclass(slots=True, frozen=True)
+@record
 class Primitive:
     name: str
     col: int
 
 
-@dataclass(slots=True, frozen=True)
+@record
 class Reference:
     name: str
     col: int  # possibly dotted
 
 
-@dataclass(slots=True, frozen=True)
+@record
 class Array:
     item: RdtNode
 
 
-@dataclass(slots=True, frozen=True)
+@record
 class Optional_:  # noqa: N801 - trailing underscore avoids shadowing `typing.Optional`
     inner: RdtNode  # sugar for `inner | nil`
 
 
-@dataclass(slots=True, frozen=True)
+@record
 class Union:
     members: tuple[RdtNode, ...]
 

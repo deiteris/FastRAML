@@ -31,6 +31,7 @@ from fastraml.parser.facets import make_string_facet
 from fastraml.parser.includes import content_anchor, content_include, note_include_ref
 from fastraml.parser.substitutions import Substitution
 from fastraml.positions import UNKNOWN, Position
+from fastraml.records import record
 from fastraml.yamlnode import (
     TAG_BOOL,
     TAG_FLOAT,
@@ -316,7 +317,7 @@ def _first_use(index: VariableIndex, name: str) -> Position:
     return UNKNOWN
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class VariableInfo:
     """One `<<name | !action>>` occurrence, as found in a scalar's literal text.
 

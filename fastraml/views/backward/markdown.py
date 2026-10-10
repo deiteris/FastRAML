@@ -9,9 +9,9 @@ row in its table leaves blank.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
+from fastraml.records import record
 from fastraml.views.backward.model import (
     IMPACTS,
     Change,
@@ -118,7 +118,7 @@ def render_markdown(changes: Sequence[Change]) -> str:
     return '\n'.join(lines) + '\n'
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class _Entry:
     """A row: one change, plus what else it says the same thing about.
 

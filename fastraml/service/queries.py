@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 from fastraml.errors import RamlError
 from fastraml.positions import Position
+from fastraml.records import record
 from fastraml.service.index import parents_of
 from fastraml.types.base import BaseShape
 from fastraml.views.occurrences import DECLARATION_KINDS as _OCCURRENCE_KINDS
@@ -67,7 +68,7 @@ SOURCE: Final = 'fastraml'
 LINT_SOURCE: Final = 'fastraml-lint'
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class Site:
     """A span in a file."""
 
@@ -75,7 +76,7 @@ class Site:
     span: Position
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class Related:
     """An outer frame of a diagnostic's chain, where it has a position."""
 
@@ -83,7 +84,7 @@ class Related:
     message: str
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class Diagnostic:
     """One problem at one span: a parser chain or a lint finding.
 

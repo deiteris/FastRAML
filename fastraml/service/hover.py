@@ -12,7 +12,6 @@ from __future__ import annotations
 import re
 from bisect import bisect_left, bisect_right
 from contextlib import suppress
-from dataclasses import dataclass
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Final
 
@@ -22,6 +21,7 @@ from fastraml.parser.includes import is_json_ref
 from fastraml.parser.security import SecuritySchemeDefinition
 from fastraml.parser.syntax import METHODS, NAME_MAPS, Key, Site, child_site, fragment_site, keys, keys_at
 from fastraml.parser.templates import TemplateDefinition
+from fastraml.records import identity_record
 from fastraml.service.datahover import DataHover, DataTarget, data_roots
 from fastraml.service.hoverdocs import BUILTINS, METHOD_DOCS, field_doc
 from fastraml.service.index import SemanticIndex
@@ -70,7 +70,7 @@ _AMBIGUOUS: Final = '*Several typed declarations describe this token; no single 
 type _Entity = BaseShape | LibraryLink | TemplateDefinition | SecuritySchemeDefinition
 
 
-@dataclass(frozen=True, slots=True, eq=False)
+@identity_record
 class _Subject:
     name: str
     role: str

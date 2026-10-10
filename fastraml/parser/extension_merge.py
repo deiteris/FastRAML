@@ -29,6 +29,7 @@ from fastraml.parser.structural_merge import node_value_equal, union_items
 from fastraml.parser.syntax import NAME_MAPS, Site
 from fastraml.parser.syntax import child_site as _child_site
 from fastraml.parser.syntax import facet_site as _facet_site
+from fastraml.records import record
 from fastraml.yamlnode import TAG_MAP, TAG_SEQ, Node, NodeKind, is_null, node_error, str_scalar, with_grafts
 
 if TYPE_CHECKING:
@@ -105,7 +106,7 @@ _DECLARATION_KINDS: Final = {
 }
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class RemovedProperty:
     """A target property an extension document's key displaced (docs/19 § 3.4).
 

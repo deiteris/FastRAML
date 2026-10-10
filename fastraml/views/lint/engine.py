@@ -43,6 +43,7 @@ from fastraml.nodes import (
     UnresolvedNode,
 )
 from fastraml.positions import UNKNOWN, Position
+from fastraml.records import record
 from fastraml.views.graph import build_graph
 from fastraml.views.lint.source import SuppressionIndex
 from fastraml.views.severity import Ranking
@@ -140,7 +141,7 @@ class Category(StrEnum):
     STYLE = 'style'
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class RuleMeta:
     """One rule's identity and its documentation, in one object.
 
@@ -167,7 +168,7 @@ class RuleMeta:
     files: tuple[tuple[str, str], ...] = ()
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class Finding:
     """One judgement at one place.
 
@@ -233,7 +234,7 @@ class _Tally:
     findings: int = 0
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class RuleMetric:
     """What one rule cost, and what it produced.
 
@@ -268,7 +269,7 @@ class RuleMetric:
         }
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class PluginMetric:
     """One provider's rules, totalled (docs/18 § 5.2).
 
@@ -295,7 +296,7 @@ class PluginMetric:
         }
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class GraphMetric:
     """Building the projection every rule reads.
 
@@ -319,7 +320,7 @@ class GraphMetric:
         }
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class LintMetrics:
     """One measured run (docs/18 § 5.2).
 
@@ -352,7 +353,7 @@ class LintMetrics:
         }
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class LintReport:
     """A possibly bounded finding set, with totals from the complete run."""
 
@@ -426,7 +427,7 @@ def limit_findings(
     )
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class LintRun(LintReport):
     """What `Linter.measure` returns: the report, and what it cost to produce.
 
@@ -462,7 +463,7 @@ _NO_METRICS: Final = LintMetrics(
 )
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class Context:
     """What every rule is handed.
 
@@ -591,7 +592,7 @@ VISITS: Final = tuple(_NODE_ROLES.values())
 # -- configuration -------------------------------------------------------------
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class RuleSetting:
     """One `rules:` entry (docs/18 § 3).
 
@@ -608,7 +609,7 @@ class RuleSetting:
     options: Mapping[str, object] = field(default_factory=dict)
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class Config:
     """A whole lint configuration. Built from YAML by `config.py`."""
 

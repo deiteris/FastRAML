@@ -10,13 +10,13 @@ arguments stay opaque.
 from __future__ import annotations
 
 from bisect import bisect_right
-from dataclasses import dataclass
 from enum import Enum, auto
 from typing import TYPE_CHECKING, Final
 
 from fastraml import facet_names as fn
 from fastraml.parser.annotations import is_annotation_key
 from fastraml.parser.facets import annotated_scalar_value
+from fastraml.records import identity_record
 from fastraml.yamlnode import NodeKind, pairs
 
 if TYPE_CHECKING:
@@ -173,7 +173,7 @@ def fragment_site(kind: str | None) -> Site:
     }.get(kind or '', Site.DATA)
 
 
-@dataclass(frozen=True, slots=True, eq=False)
+@identity_record
 class Key:
     """One source mapping key and its grammar position."""
 

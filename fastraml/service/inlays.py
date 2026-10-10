@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
 from fractions import Fraction
 from typing import TYPE_CHECKING, Final
 
+from fastraml.records import identity_record
 from fastraml.types.complex_ import ArrayShape, RecursiveShape, UnionShape
 from fastraml.types.jsonschema_ import projected
 from fastraml.types.values import decimal_text
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from fastraml.types.base import BaseShape
 
 
-@dataclass(frozen=True, slots=True, eq=False)
+@identity_record
 class Part:
     label: str
     definition_uri: str | None = None
@@ -29,7 +29,7 @@ class Part:
     tooltip: str | None = None
 
 
-@dataclass(frozen=True, slots=True, eq=False)
+@identity_record
 class Hint:
     position: Position
     parts: tuple[Part, ...]

@@ -15,8 +15,9 @@ grades was found.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
+
+from fastraml.records import record
 
 if TYPE_CHECKING:
     from fastraml.views.backward.model import Impact
@@ -24,7 +25,7 @@ if TYPE_CHECKING:
 __all__ = ['RULES', 'Rule']
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class Rule:
     """One named judgement. Named so it can be cited, and suppressed, by name."""
 

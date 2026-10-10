@@ -47,7 +47,7 @@ class TestWithin:
         assert span.within('User') is span
 
 
-def test_positions_are_frozen_and_hashable():
+def test_positions_compare_and_hash_by_value():
     assert Position(1, 2) == Position(1, 2)
     assert len({Position(1, 2), Position(1, 2)}) == 1
 

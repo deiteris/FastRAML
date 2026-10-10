@@ -44,7 +44,7 @@ class TestParseCtxStack:
         raml.pop_ctx()
         assert raml.current_ctx().anchor is None
 
-    def test_parse_ctx_is_frozen(self):
+    def test_parse_ctx_is_hashable(self):
         ctx = ParseCtx(anchor=None)
         assert hash(ctx) is not None
 

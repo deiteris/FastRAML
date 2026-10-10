@@ -16,7 +16,6 @@ from __future__ import annotations
 import itertools
 from collections import deque
 from contextlib import contextmanager
-from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Final, Literal, Protocol, cast
 
@@ -24,6 +23,7 @@ from fastraml.domains import DomainLocation
 from fastraml.errors import Accumulator, RamlError
 from fastraml.loaders import SchemeLoader
 from fastraml.positions import UNKNOWN, Position
+from fastraml.records import record
 from fastraml.sourceinfo import KeywordUse, WrittenSection
 from fastraml.yamlnode import AUTHORED_NODES, DEFAULT_MAX_DEPTH, mark_subtree, written_end
 
@@ -104,7 +104,7 @@ class Identified(Protocol):
     def id(self) -> int: ...
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class ParseCtx:
     """The lexical scope in effect while a fragment is being decoded.
 

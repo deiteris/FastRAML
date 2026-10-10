@@ -10,11 +10,11 @@ it to what that does to a caller.
 from __future__ import annotations
 
 from collections import defaultdict, deque
-from dataclasses import dataclass
 from fractions import Fraction
 from typing import TYPE_CHECKING, Final, Literal, Protocol
 
 from fastraml.parser.fragments import APIFragment
+from fastraml.records import record
 from fastraml.types.base import BaseShape, Parameter, facets_of
 from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
 from fastraml.types.jsonschema_ import JsonShape
@@ -101,7 +101,7 @@ def _declared(raml: Raml) -> dict[str, BaseShape]:
 _NUMBER_WIDTH: Final = {'float': 0, 'double': 1}
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class _At:
     """Where the walk is: an owner, a coordinate, and a path if it is in a shape.
 

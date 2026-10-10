@@ -16,12 +16,12 @@ modules.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from functools import cache
 from typing import TYPE_CHECKING, Any, Final
 from urllib.parse import urldefrag, urljoin
 
 from fastraml.errors import ErrorKind, RamlError
+from fastraml.records import record
 from fastraml.types.values import as_fraction, is_multiple_of
 
 if TYPE_CHECKING:
@@ -48,7 +48,7 @@ SCHEMA_MAPS: Final = frozenset(
 )
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class CompiledSchema:
     """One compiled schema, and the two things the projection needs from it.
 

@@ -8,12 +8,11 @@ diagnostic, and it keeps no YAML node (docs/04 § 5, docs/05 § 3, docs/21 § 4)
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from fastraml.positions import Position
+from fastraml.records import identity_record
 
 
-@dataclass(frozen=True, slots=True, eq=False)
+@identity_record
 class KeywordUse:
     """An accepted compatibility spelling, not a lint finding or retained tree."""
 
@@ -22,7 +21,7 @@ class KeywordUse:
     name: str
 
 
-@dataclass(frozen=True, slots=True, eq=False)
+@identity_record
 class WrittenSection:
     """A section key one entity wrote in its own file, and where the entry
     it opens ends. Held per file, so the record carries its owner's ID.

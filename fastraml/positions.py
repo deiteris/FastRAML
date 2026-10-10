@@ -11,14 +11,15 @@ without an off-by-one.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
+
+from fastraml.records import record
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class Position:
     """A 1-based span within a single source file."""
 

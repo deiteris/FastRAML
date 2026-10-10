@@ -7,10 +7,10 @@ say where the entries part.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from fastraml.parser.includes import load_include, resolve_ref_uri, strip_uri_suffix
+from fastraml.records import record
 from fastraml.yamlnode import TAG_INCLUDE, Node, NodeKind
 
 if TYPE_CHECKING:
@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 __all__ = ['Difference', 'IncludeReader', 'Side', 'first_difference']
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class Difference:
     """The first pair that differs, and the key path from the entry to it."""
 
@@ -60,7 +60,7 @@ def _suffix(uri: str) -> str:
     return uri[len(strip_uri_suffix(uri)) :]
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class Side:
     """One side of a comparison: a node, the file it was read from, and its input's reader."""
 

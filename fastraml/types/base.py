@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal, NoReturn, Protocol
 from fastraml.datanode import at_value, make_data_node
 from fastraml.errors import Accumulator, ErrorKind, RamlError
 from fastraml.positions import UNKNOWN, Position
+from fastraml.records import identity_record, record
 from fastraml.types.values import EnumValues, ValueSet
 
 if TYPE_CHECKING:
@@ -217,7 +218,7 @@ class ScalarFacet[T]:
         return f'ScalarFacet({self.value!r})'
 
 
-@dataclass(frozen=True, slots=True, eq=False)
+@identity_record
 class TypeExprRef:
     """Where one name inside a type expression was written, and what it means.
 
@@ -697,7 +698,7 @@ class Parameter:
         return f'Parameter({self.binding}, {self.declaration.name!r})'
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class DeclarationFacet:
     """A facet whose value is one or more declarations rather than data.
 

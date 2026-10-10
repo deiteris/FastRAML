@@ -7,9 +7,9 @@ The documents walked are the registry's and are never edited.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from fastraml.records import record
 from fastraml.types.schema_compile import DATA_KEYWORDS, SCHEMA_MAPS, escape_json_pointer_segment, ref_target
 from fastraml.uris import uri_stem
 
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 _BUNDLE_KEY = 'definitions'
 
 
-@dataclass(frozen=True, slots=True)
+@record
 class _Bundling:
     """What every level of the walk shares: where to resolve from, and into."""
 

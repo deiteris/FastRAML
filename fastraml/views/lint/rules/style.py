@@ -354,12 +354,14 @@ class MissingDescription:
     def api(self, ctx: Context, iri: str, api: APIFragment) -> Iterable[Finding]:
         if api.description is not None:
             return ()
-        root = ctx.raml.source_node(api.location)
-        position = UNKNOWN if root is None else root.position
+        # The API has no key of its own: it is placed at the `title` in force,
+        # which an Overlay or Extension may have written, and read from the
+        # model, so no rule in the default set needs the trees (docs/18 § 6).
+        title = api.title
+        location = api.location if title is None else title.location
+        position = UNKNOWN if title is None else title.key_pos
         return (
-            ctx.at(
-                self.meta, 'entity has no description', location=api.location, position=position, iri=iri, entity='API'
-            ),
+            ctx.at(self.meta, 'entity has no description', location=location, position=position, iri=iri, entity='API'),
         )
 
     def endpoint(self, ctx: Context, iri: str, endpoint: EndPoint) -> Iterable[Finding]:

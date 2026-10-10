@@ -29,6 +29,8 @@ from fastraml.facet_names import (
     FACET_DESCRIBED_BY,
     FACET_DESCRIPTION,
     FACET_DISPLAY_NAME,
+    FACET_HEADERS,
+    FACET_QUERY_PARAMETERS,
     FACET_REQUEST_TOKEN_URI,
     FACET_RESPONSES,
     FACET_SCOPES,
@@ -223,6 +225,7 @@ def make_security_scheme_definition(  # noqa: PLR0912 - one pass over the declar
                     elif name == FACET_DESCRIPTION:
                         definition.description = make_string_facet(raml, key, value, location)
                     elif name == FACET_DESCRIBED_BY:
+                        raml.record_section(definition, key, value, location)
                         _decode_described_by(raml, value, location, partial(setattr, definition, 'described_by'))
                     elif name == FACET_SETTINGS:
                         settings_node = value
@@ -263,11 +266,13 @@ def _decode_described_by(
         accumulator = Accumulator()
         for key, value in pairs(node):
             name = key.value
+            if name in (FACET_HEADERS, FACET_QUERY_PARAMETERS):
+                raml.record_section(description, key, value, location)
             try:
                 if decode_request_facet(raml, description, key, value, location):
                     continue
                 if name == FACET_RESPONSES:
-                    decode_responses(raml, value, location, description.responses)
+                    decode_responses(raml, value, location, description.responses, holder=description)
                 elif is_annotation_key(name):
                     add_domain_extension(raml, description.annotations, location, key, value)
                 else:

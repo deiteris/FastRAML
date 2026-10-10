@@ -302,25 +302,14 @@ a change to a hot path, or to any code a claim is made about:
    and this tree over one corpus. A time delta counts only if it is larger than
    the reported noise. Record the allocation delta whether or not the time
    moved, because it is nearly deterministic. A field added to every shape
-   shows there and nowhere else.
+   shows there and nowhere else. A workload the base revision cannot run is
+   reported as not comparable; one this tree cannot run fails the command.
 3. Where the question is a leaf function's constant factor, add or run a
    `bench micro` case at sizes that cover the function's range.
 4. For a new feature, the base revision has no comparable number. Run
    `python -m bench linearity --bench NAME` for time and memory instead.
 
 Include the workload, both deltas, and the noise in the commit message.
-
-A service workload's measured region is a cold snapshot: the parse, plus the
-first query of each kind, then reuse of the built indices. Read its delta in
-two parts. The parse side is where the base revision built and retained every
-file's tree and the comparison does not. The first-use side is where a query
-composes on demand the tree the base retained at parse time, one composition
-per file per snapshot, about a third of a parse of the file; repeated
-queries of the same kind are cached and show no delta. The first-use cost is
-avoidable only by retaining the trees, the per-snapshot memory cost
-(docs/15 § 2). When a change moves composition from parse time to first use,
-name which side the delta is on before attributing it to the change's hot
-path (docs/21 § 2, docs/21 § 4).
 
 `bench compare` against the committed baseline is only a coarse check for
 large regressions: the baseline and the comparison run at different times, and

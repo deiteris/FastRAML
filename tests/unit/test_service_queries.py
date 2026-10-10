@@ -277,6 +277,22 @@ class TestSymbols:
             ]),
         ]  # fmt: skip
 
+    def test_an_undeclared_uri_variable_is_not_outlined(self, memory_workspace):
+        # docs/08 § 6.2: P6 synthesizes a `string` for `{part}` and `{x}`, placed
+        # at the resource's key, which the author wrote; the parameter they did not.
+        document = '#%RAML 1.0\ntitle: T\n/items/{id}/{part}:\n  uriParameters:\n    id: string\n  get:\n/a/{x}:\n'
+        workspace, folder = _buffered(memory_workspace, {'api.raml': document})
+        snapshot = workspace.snapshot(f'{folder}/api.raml')
+        section, resource = SymbolKind.SECTION, SymbolKind.RESOURCE
+        assert _tree(outline.document_symbols(snapshot, f'{folder}/api.raml')) == [
+            ('title', SymbolKind.METADATA, 'T'),
+            ('/items/{id}/{part}', resource, '', [
+                ('uriParameters', section, '', [('id', SymbolKind.PARAMETER, 'string')]),
+                ('get', SymbolKind.METHOD, ''),
+            ]),
+            ('/a/{x}', resource, ''),
+        ]  # fmt: skip
+
     def test_a_redeclared_pattern_is_outlined_where_it_was_written(self, memory_workspace):
         """docs/07 § 4 puts a redeclared `/b/` at P's place after unwrap; the
         authored view and the outline follow the author, who wrote `/c/` first.
@@ -322,7 +338,8 @@ class TestSymbols:
             ('401', SymbolKind.RESPONSE, ''),
         ])]  # fmt: skip
         assert outlined('home.raml') == [('documentation', section, '', [('Home', SymbolKind.DOCUMENTATION, '')])]
-        assert [each[0] for each in outlined('api.raml')] == ['title', 'securitySchemes', 'types']
+        # `documentation:` is written here, its one item in its own file.
+        assert [each[0] for each in outlined('api.raml')] == ['title', 'documentation', 'securitySchemes', 'types']
 
     def test_a_documentation_item_file_no_api_reads_outlines_its_title(self, memory_workspace):
         files = {'home.raml': '#%RAML 1.0 DocumentationItem\ntitle: Home\ncontent: hi\n'}
@@ -371,12 +388,101 @@ class TestSymbols:
             ('/a', resource, '', [('get', method, '')]),
         ]
 
-    def test_a_section_spans_its_entries_and_selects_the_first(self, parsed):
+    def test_a_section_spans_its_key_and_entries_and_selects_its_key(self, parsed):
+        # docs/21 § 4: the decoder records the key the owner wrote.
         snapshot, folder = parsed
         types = next(s for s in outline.document_symbols(snapshot, f'{folder}/api.raml') if s.name == 'types')
-        entity, book = types.children
-        assert (types.span.line, types.span.end_line) == (entity.span.line, book.span.end_line)
-        assert types.selection == entity.selection
+        _entity, book = types.children
+        line, column = _where(API, 'types:')
+        assert (types.span.line, types.span.column, types.span.end_line) == (line, column, book.span.end_line)
+        assert (types.selection.line, types.selection.column, types.selection.end_column) == (line, column, column + 5)
+
+    def test_an_empty_or_deprecated_section_is_outlined_at_its_key(self, memory_workspace):
+        document = (
+            '#%RAML 1.0\ntitle: T\nschemas:\n  A: string\ntraits: {}\n'
+            '/r:\n  uriParameters:\n  get:\n    headers:\n    responses:\n      200:\n        body:\n'
+        )
+        workspace, folder = _buffered(memory_workspace, {'api.raml': document})
+        snapshot = workspace.snapshot(f'{folder}/api.raml')
+        found = outline.document_symbols(snapshot, f'{folder}/api.raml')
+        section = SymbolKind.SECTION
+        assert _tree(found) == [
+            ('title', SymbolKind.METADATA, 'T'),
+            ('schemas', section, '', [('A', SymbolKind.TYPE, 'string')]),
+            ('traits', section, ''),
+            ('/r', SymbolKind.RESOURCE, '', [
+                ('uriParameters', section, ''),
+                ('get', SymbolKind.METHOD, '', [
+                    ('headers', section, ''),
+                    ('200', SymbolKind.RESPONSE, '', [('body', section, '')]),
+                ]),
+            ]),
+        ]  # fmt: skip
+        assert found[2].selection.line == _where(document, 'traits')[0]
+
+    def test_a_section_a_template_supplied_is_not_the_methods(self, memory_workspace):
+        # The trait wrote `queryParameters:`; the method wrote `headers:` only.
+        document = (
+            '#%RAML 1.0\ntitle: T\ntraits:\n  paged:\n    queryParameters:\n      page: integer\n'
+            '/r:\n  get:\n    is: [paged]\n    headers:\n      X-Id: string\n'
+        )
+        workspace, folder = _buffered(memory_workspace, {'api.raml': document})
+        snapshot = workspace.snapshot(f'{folder}/api.raml')
+        resource = outline.document_symbols(snapshot, f'{folder}/api.raml')[-1]
+        (method,) = resource.children
+        assert [(child.name, child.selection.line) for child in method.children] == [
+            ('is', _where(document, 'paged]')[0]),
+            ('headers', _where(document, 'headers:')[0]),
+        ]
+
+    def test_the_parser_records_no_section_of_what_a_template_wrote(self, memory_workspace):
+        # The resource type's method and response are written in the template;
+        # recording their sections at each application would grow the model.
+        document = (
+            '#%RAML 1.0\ntitle: T\nresourceTypes:\n  rt:\n    get:\n      queryParameters:\n        q: string\n'
+            '      responses:\n        200:\n          body:\n            application/json:\n'
+            '/a:\n  type: rt\n/b:\n  type: rt\n  uriParameters: {}\n'
+        )
+        workspace, folder = _buffered(memory_workspace, {'api.raml': document})
+        raml = workspace.snapshot(f'{folder}/api.raml').raml
+        assert raml is not None
+        recorded = [(each.name, each.key.line) for each in raml.written_sections[f'{folder}/api.raml']]
+        assert recorded == [('resourceTypes', 3), ('uriParameters', _where(document, 'uriParameters')[0])]
+
+    def test_a_types_facets_and_a_schemes_described_by_are_placed_at_their_keys(self, memory_workspace):
+        document = (
+            '#%RAML 1.0\ntitle: T\ntypes:\n  A:\n    facets:\n      unit: string\n'
+            'securitySchemes:\n  s:\n    type: Basic Authentication\n    describedBy:\n'
+            '      headers:\n        Authorization: string\n'
+        )
+        workspace, folder = _buffered(memory_workspace, {'api.raml': document})
+        snapshot = workspace.snapshot(f'{folder}/api.raml')
+        _title, types, schemes = outline.document_symbols(snapshot, f'{folder}/api.raml')
+        (facets,) = types.children[0].children
+        (described,) = schemes.children[0].children
+        (headers,) = described.children
+        assert [(each.name, each.selection.line) for each in (facets, described, headers)] == [
+            ('facets', _where(document, 'facets:')[0]),
+            ('describedBy', _where(document, 'describedBy:')[0]),
+            ('headers', _where(document, 'headers:')[0]),
+        ]
+
+    def test_an_extension_places_what_it_restated_at_its_own_keys(self, memory_workspace):
+        # The merge keeps the master's `types:` and `/a:` keys; each document's
+        # own are recorded before it (docs/21 § 4).
+        api = '#%RAML 1.0\ntitle: T\ntypes:\n  A: string\n/a:\n  get:\n'
+        extension = '#%RAML 1.0 Extension\nextends: api.raml\ntypes:\n  B: string\n/a:\n  post:\n'
+        workspace, folder = _buffered(memory_workspace, {'api.raml': api, 'ext.raml': extension})
+        found = outline.document_symbols(workspace.snapshot(f'{folder}/ext.raml'), f'{folder}/ext.raml')
+        assert [(each.name, each.selection.line, each.span.end_line) for each in found] == [
+            ('types', _where(extension, 'types:')[0], _where(extension, 'B:')[0]),
+            ('/a', _where(extension, '/a:')[0], _where(extension, 'post:')[0]),
+        ]
+        own = outline.document_symbols(workspace.snapshot(f'{folder}/api.raml'), f'{folder}/api.raml')
+        assert [(each.name, each.selection.line) for each in own[1:]] == [
+            ('types', _where(api, 'types:')[0]),
+            ('/a', _where(api, '/a:')[0]),
+        ]
 
     def test_a_symbol_spans_its_value_and_selects_its_name(self, parsed):
         snapshot, folder = parsed

@@ -125,6 +125,7 @@ __all__ = [
     'parse_fragment',
     'parse_included_fragment',
     'parse_library',
+    'record_root_sections',
     'resolve_uses',
 ]
 
@@ -1276,6 +1277,36 @@ def parse_fragment(raml: Raml, uri: str, kind: FragmentKind) -> Fragment:
     return decode_fragment(raml, uri, authored_kind, text)
 
 
+#: The root keys that open a section of declarations or settings (docs/21 § 4).
+_ROOT_SECTIONS: Final = frozenset(
+    {
+        FACET_USES,
+        FACET_TYPES,
+        FACET_SCHEMAS,
+        FACET_ANNOTATION_TYPES,
+        FACET_TRAITS,
+        FACET_RESOURCE_TYPES,
+        FACET_SECURITY_SCHEMES,
+        FACET_BASE_URI_PARAMETERS,
+        FACET_DOCUMENTATION,
+    }
+)
+_DOCUMENT_KINDS: Final = frozenset(
+    {FragmentKind.API, FragmentKind.LIBRARY, FragmentKind.OVERLAY, FragmentKind.EXTENSION}
+)
+
+
+def record_root_sections(raml: Raml, fragment: Fragment, root: Node) -> None:
+    """The section keys `fragment`'s own document wrote at its root, before
+    any merge: a fragment that is one declaration has `uses:` only.
+    """
+    if root.kind is not NodeKind.MAPPING:
+        return
+    for key, value in pairs(root):
+        if key.value == FACET_USES or (key.value in _ROOT_SECTIONS and fragment.kind in _DOCUMENT_KINDS):
+            raml.record_section(fragment, key, value, fragment.location)
+
+
 def decode_fragment(raml: Raml, uri: str, kind: FragmentKind, text: str) -> Fragment:
     """Register, decode, then resolve `uses:` — in that order. See the module docstring."""
     raml.store_source_text(uri, text)
@@ -1302,6 +1333,7 @@ def decode_fragment(raml: Raml, uri: str, kind: FragmentKind, text: str) -> Frag
     try:
         root = compose(text, uri=uri, max_depth=raml.max_depth, key_pool=raml.mapping_keys)
         raml.store_source_node(uri, root)
+        record_root_sections(raml, fragment, root)
         fragment.decode(root)
     except RamlError as err:
         # The `uses:` that decoded are still resolved, so a mistake in the body

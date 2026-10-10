@@ -1,9 +1,10 @@
 """Author-facing hover: source explanations and compact model summaries.
 
 The service composes the parser's source grammar, occurrences and authorship
-view. It binds no name and runs no pass (docs/21 § 4.2). Indices and source
-keys are built once per snapshot, so successive hovers do not rescan the whole
-model. Formatted subjects and declaration hints are cached.
+view. It binds no name and runs no pass (docs/21 § 4.2). Indices are built
+once per snapshot, so successive hovers do not rescan the whole model; source
+keys are read along the cursor's path only. Formatted subjects and declaration
+hints are cached.
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ from fastraml.errors import RamlError
 from fastraml.parser.fragments import APIFragment, LibraryLink
 from fastraml.parser.includes import is_json_ref
 from fastraml.parser.security import SecuritySchemeDefinition
-from fastraml.parser.syntax import METHODS, NAME_MAPS, Key, Site, child_site, fragment_site, keys
+from fastraml.parser.syntax import METHODS, NAME_MAPS, Key, Site, child_site, fragment_site, keys, keys_at
 from fastraml.parser.templates import TemplateDefinition
 from fastraml.service.datahover import DataHover, DataTarget, data_roots
 from fastraml.service.hoverdocs import BUILTINS, METHOD_DOCS, field_doc
@@ -34,7 +35,6 @@ from fastraml.service.inlays import (
     underlying_type,
 )
 from fastraml.service.source import original_tree
-from fastraml.service.text import Lines
 from fastraml.types.base import BaseShape, Parameter, facets_of
 from fastraml.types.complex_ import ArrayShape, ObjectShape, UnionShape, UnknownShape
 from fastraml.types.expressions import Array, Optional_, Primitive, Union, parse_expression
@@ -117,8 +117,6 @@ class Hover:
         '_descriptions',
         '_includes',
         '_inlay_declarations',
-        '_key_starts',
-        '_keys',
         '_mappings',
         '_nodes',
         '_occurrences',
@@ -130,7 +128,6 @@ class Hover:
         '_semantic',
         '_sites',
         '_source_backend',
-        '_source_builtins',
         '_source_generation',
         '_sources',
         '_subjects',
@@ -159,12 +156,9 @@ class Hover:
         self._by_uri: dict[str, list[_Subject]] = {}
         self._sites: dict[tuple[str, int, int], _Subject] = {}
         self._mappings: dict[tuple[str, int, int], _Subject] = {}
-        self._keys: dict[str, list[Key]] = {}
-        self._key_starts: dict[str, list[tuple[int, int]]] = {}
         self._resources: dict[tuple[str, int, int], EndPoint] = {}
         self._operations: dict[tuple[str, int, int], tuple[str, Operation]] = {}
         self._responses: dict[tuple[str, int, int], Response] = {}
-        self._source_builtins: dict[str, Occurrences] = {}
         self._ambiguous_sites: set[tuple[str, int, int]] = set()
         self._nodes: dict[str, Node | None] = {}
         self._contexts: dict[str, set[tuple[Site, str]]] = {}
@@ -281,7 +275,8 @@ class Hover:
 
     def at(self, uri: str, line: int, column: int) -> tuple[str, Position] | None:
         """Explain the precise token under the cursor, or return no answer."""
-        key = self._key_at(uri, line, column)
+        path = self._keys_at(uri, line, column)
+        key = path[-1] if path and path[-1].node.position.holds(line, column) else None
         if key is not None:
             text = self._key_doc(uri, key)
             if text is not None:
@@ -299,9 +294,9 @@ class Hover:
         data = self._data.at(uri, line, column)
         if data:
             return self._data_docs(data), data[0].span
-        primitive = self._source_builtins[uri].at(uri, line, column)
-        if primitive:
-            return self._builtin(primitive[0].written), primitive[0].span
+        primitive = self._builtin_at(path[-1], line, column) if path and key is None else None
+        if primitive is not None:
+            return self._builtin(primitive[0]), primitive[1]
         if key is not None:
             subject = self._sites.get((uri, key.node.line, key.node.column))
             text = self._describe(subject) if subject is not None else _unbound_doc(key)
@@ -475,59 +470,42 @@ class Hover:
                     contexts.add(context)
                     pending.append((target, child, child_table))
 
-    def _source_keys(self, uri: str) -> None:
+    def _keys_at(self, uri: str, line: int, column: int) -> list[Key]:
+        """The source keys enclosing the cursor, read along its path only."""
         if uri not in self._contexts and not self._contexts_ready:
             self._discover_contexts()
         contexts = self._contexts.get(uri, {(Site.DATA, '')})
         context, table = next(iter(contexts)) if len(contexts) == 1 else (Site.DATA, '')
         if context in (Site.DATA, Site.APPLICATION, Site.GENERIC):
-            self._keys[uri] = []
-            self._key_starts[uri] = []
-            self._source_builtins[uri] = Occurrences((), ())
-            return
+            return []
         node = self._node(uri)
-        found = (
-            []
-            if node is None
-            else sorted(keys(node, context, table=table), key=lambda key: (key.node.line, key.node.column))
-        )
-        self._keys[uri] = found
-        self._key_starts[uri] = [(key.node.line, key.node.column) for key in found]
-        lines = Lines(self._raml.source_texts.get(uri, ''))
-        primitives = []
-        cache: ExprCache = {}
-        for key in found:
-            value = key.type_value()
-            if value is None:
-                continue
-            if value.tag != TAG_STR:
-                continue
-            tokens = []
-            if value.value in BUILTINS:
-                tokens.append((value.value, 0))
-            elif _OPERATORS.search(value.value):
-                with suppress(RamlError):
-                    cached = self._raml.expr_cache.get(value.value)
-                    if cached is not None:
-                        cache[value.value] = cached
-                    tree = parse_expression(value.value, cache)
-                    tokens.extend((token.name, token.col) for token in _primitives(tree))
-            for name, offset in tokens:
-                span = value.position.within(value.value).shifted(offset, len(name))
-                if lines.line(span.line)[span.column - 1 : span.end_column - 1] == name:
-                    primitives.append(
-                        Occurrence(uri, span.line, span.column, span.end_column, Role.BUILTIN, Kind.TYPE, None, name)
-                    )
-        self._source_builtins[uri] = Occurrences(primitives, ())
+        return [] if node is None else keys_at(node, context, line, column, table=table)
 
-    def _key_at(self, uri: str, line: int, column: int) -> Key | None:
-        if uri not in self._keys:
-            self._source_keys(uri)
-        index = bisect_right(self._key_starts[uri], (line, column))
-        if index:
-            found = self._keys[uri][index - 1]
-            if found.node.position.holds(line, column):
-                return found
+    def _builtin_at(self, key: Key, line: int, column: int) -> tuple[str, Position] | None:
+        """A built-in type named by the type expression the cursor is in."""
+        value = key.type_value()
+        if value is None or value.tag != TAG_STR or value.line != line or value.end_line != line:
+            return None
+        text = value.value
+        # Token offsets map onto columns only where the span is the text, or
+        # the text in quotes: an escape or a tag shifts them.
+        if value.end_column - value.column not in (len(text), len(text) + 2):
+            return None
+        tokens: list[tuple[str, int]] = []
+        if text in BUILTINS:
+            tokens.append((text, 0))
+        elif _OPERATORS.search(text):
+            with suppress(RamlError):
+                cache: ExprCache = {}
+                cached = self._raml.expr_cache.get(text)
+                if cached is not None:
+                    cache[text] = cached
+                tokens.extend((token.name, token.col) for token in _primitives(parse_expression(text, cache)))
+        start = value.position.within(text)
+        for name, offset in tokens:
+            span = start.shifted(offset, len(name))
+            if span.column <= column < span.end_column:
+                return name, span
         return None
 
     def _key_doc(self, uri: str, key: Key) -> str | None:

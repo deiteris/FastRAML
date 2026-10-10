@@ -32,8 +32,11 @@ The shared-index/outline bundle is the next isolated recovery against merged
 but mixed retained allocation rises 7.5%, chiefly the cached outline. An explicit
 acceptance of that new retention trade-off is recorded; the scope, measurements and
 ownership evidence are in the [shared-index report](reports/2026-10-10/service-shared-indices.md).
-Remaining candidates are cursor-local source lookup and accurate authored section
-ranges, each measured independently.
+Cursor-local source lookup replaces hover's whole-file key index
+([cursor hover report](reports/2026-10-11/service-cursor-hover.md)), and
+outline sections are placed at the keys the parser records
+([section report](reports/2026-10-11/service-section-ranges.md)); the
+recorded sections retain up to 1.65% more on `endpoints`.
 The record-backed representation replacement remains parked; its recurring
 rebuild and first-use costs are recorded in the
 [service cost review](reports/2026-10-10/service-authoring-cost-review.md).
@@ -88,7 +91,8 @@ the media-type fixes and the type-walk work landed together:
   [integration report](reports/2026-10-10/service-baseline-integration.md).
   Model-backed declaration inlays remove that first-use work from hints alone;
   their accepted request-order peak trade-off is recorded in the inlay recovery
-  report. Cursor-local source lookup remains a separately measured candidate.
+  report. Hover reads source keys along the cursor's path and keeps no index of
+  them.
 
 ## 3. Potential future work
 

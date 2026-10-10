@@ -25,7 +25,7 @@ and several views, and only `cli/` imports it (`docs/02` § 2;
 | `service/text.py` | converting a column between fastRAML and a protocol |
 | `service/queries.py` | the queries, in fastRAML positions |
 | `service/outline.py` | the outline, over the authorship view (`docs/16` § 10) |
-| `service/hover.py`, `service/hoverdocs.py` | author-facing hover, source-key indices and explanatory prose (§ 4.2) |
+| `service/hover.py`, `service/hoverdocs.py` | author-facing hover, source-key lookup and explanatory prose (§ 4.2) |
 | `service/datahover.py` | typed `DataNode` key and value spans, shared across value-bearing sites (§ 4.2) |
 | `service/index.py` | lazy declaration, ID and reverse-hierarchy lookups shared by snapshot queries (§ 4) |
 | `service/lenses.py` | code-lens sites and on-demand effective RAML type rendering (§ 4.3) |
@@ -197,10 +197,18 @@ The first outline request for a URI caches its complete result on the snapshot,
 including an empty outline. Later requests borrow the same list and symbols;
 callers must treat them as read-only. Root/dependency edits create a new snapshot
 and outline cache. A held older snapshot continues to answer from its older model.
-Caching does not add authored section positions or populate source grammar.
+Caching does not populate source grammar.
 
-The model keeps no position for a section's key (`types:`, a method's
-`headers:`), so a section spans its entries and selects the first.
+A section is placed at the key its owner wrote (`types:`, a method's
+`headers:`), spanning the key and its value, and is listed even when empty.
+The decoders record these keys in `Raml.written_sections` (docs/13 § 2): the
+root's, a type's `facets:`, a resource's `uriParameters:`, a method's or a
+`describedBy:`'s `headers:`, `queryParameters:` and `body:`, a response's
+`headers:` and `body:`, and a scheme's `describedBy:`. A key is recorded only
+inside its owner's span in its file, and not under a method or response a
+template wrote, which no outline lists. A table written `schemas:` is named
+so. A section the parser recorded no key for spans its entries and selects
+the first.
 
 What each entry lists is the authorship view's (`docs/16` § 10): a type's own
 members, not those it inherits, so an inherited property is outlined under the
@@ -216,8 +224,10 @@ inside a resource or method (`docs/16` § 10).
 A file outlines what it wrote, selected by `location` over the model its
 snapshot parsed. An Extension or Overlay lists the types and other
 declarations it added to the master's tables, and, under a master resource's
-path, the methods and resources it added there: a section spanning them, since
-the resource's key it wrote is not in the model. The master lists its own.
+path, the methods and resources it added there. The merge keeps the master's
+key where both wrote one, so each document's root section keys and resource
+paths are recorded from its own tree before the merge: the Extension's
+`types:` and restated `/a:` are placed at its keys. The master lists its own.
 
 A trait or resource type is listed by name alone. Its body is decoded only
 where it is applied (`docs/08` § 5), and the model keeps it undecoded, so there
@@ -326,14 +336,18 @@ extent is not a fallback for an unknown child. Inline JSON has only the
 encoded scalar's root span; hover does not invent spans for decoded children.
 
 Source-only primitive tokens, including those
-in an unapplied template, are read through the type-expression parser and
-checked against the source text. No source query binds a reference. Explanatory
+in an unapplied template, are read through the type-expression parser. A
+token's offset is its column only where the scalar's one-line span is its
+text, or its text in quotes; where an escape or a tag shifts the columns, no
+token is found. No source query binds a reference. Explanatory
 prose is a documentation catalogue, not a table that accepts fields or overrides
 parser diagnostics.
 
-Hover indices and formatted subjects are lazy per snapshot. Source keys are indexed once per queried
-file from retained nodes, or a composition of its retained text when source
-trees were not retained. These nodes and indices die with the snapshot.
+Hover indices and formatted subjects are lazy per snapshot. Source keys are not
+indexed: each hover reads the path to its cursor (`syntax.keys_at`), one entry
+per mapping level found by binary search, in the file's retained nodes, or a
+composition of its retained text when source trees were not retained. Those
+nodes die with the snapshot.
 The typed-data token index is owned by the snapshot, lazy and built once; formatted
 data targets are cached by hover. The same typed-data targets supply go-to-definition
 for nested field keys and scalar values. A definition request may populate that
@@ -501,12 +515,6 @@ value, so an integer larger than a double reaches a JavaScript client as
 written. It is the preview's source in `contrib/fastraml-vscode`
 (`docs/17` § 4).
 
-**Latency.** On `large`, an edit costs 475 ms and allocates 48.8 MB before
-its parser diagnostics, against 366 ms for a plain `unwrap+validate` parse
-(`python -m bench run --bench large --config service`). About a quarter of
-the parse composes the unchanged libraries: the most a compose cache (G8)
-could save.
-
 ## 6. Verification
 
 - `test_service_text.py`: conversion in each encoding, both ways.
@@ -518,12 +526,14 @@ could save.
   lifetime, retained original trees and distinct JSON-include normalization.
 - `test_service_queries.py`: each query on one document with a library, a
   DataType include, a trait and a resource type; every query on a parse
-  stopped at each stage; an Extension's outline; and, over the TCK, that every
-  outline entry holds its selection and lies in its parent.
+  stopped at each stage; an Extension's outline and its own section keys;
+  empty, `schemas:` and template-supplied sections; and, over the TCK, that
+  every outline entry holds its selection and lies in its parent.
 - `test_service_hover.py`: contextual field meanings, full Markdown prose,
   authored and inherited summaries, aliases, optional versus nullable values,
   source-only template help, token boundaries, opaque data, educational examples,
-  and user-defined facet descriptions at declarations and supplied keys.
+  and user-defined facet descriptions at declarations and supplied keys; over
+  the TCK, the cursor path reaches every key the grammar walk yields.
 - `test_service_data_hover.py`: shared nested-field and scalar-value help for
   custom facets, annotations, examples, defaults and enums; array items,
   inheritance, patterns, discriminated and ambiguous unions, recursive types,

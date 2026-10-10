@@ -34,6 +34,7 @@ from fastraml.parser.fragments import (
     ReferenceResolver,
     identify_fragment,
     load_fragment_text,
+    record_root_sections,
     resolve_uses,
     unmarshal_uses,
 )
@@ -82,6 +83,8 @@ def decode_extension_chain(raml: Raml, uri: str, kind: FragmentKind, text: str) 
         accumulator.add(RamlError.new('title is required', root_api.uri, API_HEAD_SPAN))
 
     target = root_api.root
+    # Each document's own: the merge keeps the master's key where two wrote one.
+    record_root_sections(raml, api, target)
     declared_by: dict[str, dict[str, int]] = {}
     fragments: list[ExtensionFragment] = []
     for position, document in enumerate(documents, start=1):
@@ -92,6 +95,8 @@ def decode_extension_chain(raml: Raml, uri: str, kind: FragmentKind, text: str) 
         fragment.api = api
         fragments.append(_register(raml, fragment))
         _decode_own_keys(raml, fragment, document, accumulator)
+        record_root_sections(raml, fragment, document.root)
+        _record_resources(raml, fragment, document.root, '')
         result = merge_extension(
             target,
             document.root,
@@ -218,6 +223,19 @@ def _decode_own_keys(raml: Raml, fragment: ExtensionFragment, document: _Documen
                 accumulator.add(err)
     finally:
         raml.pop_ctx()
+
+
+def _record_resources(raml: Raml, fragment: ExtensionFragment, node: Node, path: str) -> None:
+    """The resource keys an Overlay or Extension wrote, named by full path: one
+    it restates is merged into the master's, whose key the model keeps.
+    """
+    if node.kind is not NodeKind.MAPPING:
+        return
+    for key, value in pairs(node):
+        if key.value.startswith('/'):
+            full = path + key.value
+            raml.record_section(fragment, key, value, fragment.location, name=full)
+            _record_resources(raml, fragment, value, full)
 
 
 def _resolve_libraries(

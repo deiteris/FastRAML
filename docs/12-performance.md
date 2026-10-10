@@ -311,18 +311,6 @@ a change to a hot path, or to any code a claim is made about:
 
 Include the workload, both deltas, and the noise in the commit message.
 
-A service workload's measured region is a cold snapshot: the parse, plus the
-first query of each kind, then reuse of the built indices. Read its delta in
-two parts. The parse side is where the base revision built and retained every
-file's tree and the comparison does not. The first-use side is where a query
-composes on demand the tree the base retained at parse time, one composition
-per file per snapshot, about a third of a parse of the file; repeated
-queries of the same kind are cached and show no delta. The first-use cost is
-avoidable only by retaining the trees, the per-snapshot memory cost
-(docs/15 § 2). When a change moves composition from parse time to first use,
-name which side the delta is on before attributing it to the change's hot
-path (docs/21 § 2, docs/21 § 4).
-
 `bench compare` against the committed baseline is only a coarse check for
 large regressions: the baseline and the comparison run at different times, and
 the machine drifts in between. Follow § 5.1 before optimizing and § 5.2 when

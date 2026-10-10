@@ -67,6 +67,9 @@ architecture. The implementation and these documents must agree.
   for explaining past decisions. It is not normative.
 - `research/` contains open investigations. Nothing there defines parser
   behavior or may be required by the implementation.
+- `reports/YYYY-MM-DD/` contains dated benchmark measurements, audits and other
+  point-in-time records. Results stay in those reports; the numbered documents
+  describe current contracts and behavior, not individual runs.
 
 Current parser work is complete. Deferred work is listed in the non-normative
 [status and roadmap](15-implementation-plan.md). Conformance status belongs in

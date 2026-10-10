@@ -501,12 +501,6 @@ value, so an integer larger than a double reaches a JavaScript client as
 written. It is the preview's source in `contrib/fastraml-vscode`
 (`docs/17` § 4).
 
-**Latency.** On `large`, an edit costs 475 ms and allocates 48.8 MB before
-its parser diagnostics, against 366 ms for a plain `unwrap+validate` parse
-(`python -m bench run --bench large --config service`). About a quarter of
-the parse composes the unchanged libraries: the most a compose cache (G8)
-could save.
-
 ## 6. Verification
 
 - `test_service_text.py`: conversion in each encoding, both ways.

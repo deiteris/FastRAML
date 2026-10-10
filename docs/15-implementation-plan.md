@@ -33,8 +33,10 @@ but mixed retained allocation rises 7.5%, chiefly the cached outline. An explici
 acceptance of that new retention trade-off is recorded; the scope, measurements and
 ownership evidence are in the [shared-index report](reports/2026-10-10/service-shared-indices.md).
 Cursor-local source lookup replaces hover's whole-file key index
-([cursor hover report](reports/2026-10-11/service-cursor-hover.md)). Accurate
-authored section ranges remain, measured independently.
+([cursor hover report](reports/2026-10-11/service-cursor-hover.md)), and
+outline sections are placed at the keys the parser records
+([section report](reports/2026-10-11/service-section-ranges.md)); the
+recorded sections retain up to 1.65% more on `endpoints`.
 The record-backed representation replacement remains parked; its recurring
 rebuild and first-use costs are recorded in the
 [service cost review](reports/2026-10-10/service-authoring-cost-review.md).

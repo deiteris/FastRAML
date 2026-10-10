@@ -148,8 +148,11 @@ Current execution:
   from `069b41f`. Hover reads the keys along the cursor's path instead of a
   whole-file index; mixed sessions are 9.3% faster and retain 9.6% less, with
   results in the [cursor hover report](../../reports/2026-10-11/service-cursor-hover.md).
-  Accurate authored section ranges remain, recorded by the parser so the model
-  stays self-contained.
+- Stage C, fourth bundle: accurate authored section ranges on the same branch,
+  recorded by the parser so the outline reads only the model. Rebuild time is
+  within noise; retained allocation rises up to 1.65% on `endpoints`. Results
+  are in the [section report](../../reports/2026-10-11/service-section-ranges.md).
+  No Stage C candidate remains.
 
 Update these entries as each stage completes. Keep measurements in the dated
 report, current pending work in docs/15, and execution history here.

@@ -1,0 +1,2294 @@
+{
+  "runs": [
+    {
+      "corpus": "large",
+      "scale": 1,
+      "inputs": {
+        "files": 152,
+        "bytes": 576354,
+        "entry_bytes": 3930,
+        "focus_bytes": 3850
+      },
+      "detail_timers": false,
+      "mixed": false,
+      "source_first": false,
+      "trees": {
+        "parked": {
+          "best_total_ms": 634.6212001517415,
+          "round_spread_percent": 13.216608583855471,
+          "same_best_run_phases_ms": {
+            "change": 1.3299002312123775,
+            "collect": 47.808799892663956,
+            "snapshot": 529.8775001429021,
+            "diagnostics": 0.0010998919606208801,
+            "occurrences": 55.603899993002415,
+            "total": 634.6212001517415
+          },
+          "phase_minima_ms": {
+            "change": 1.3063997030258179,
+            "collect": 43.995299842208624,
+            "snapshot": 529.8775001429021,
+            "diagnostics": 0.0010998919606208801,
+            "occurrences": 53.35110006853938,
+            "total": 634.6212001517415
+          },
+          "query_minima_ms": {
+            "outline.first": 5.758000072091818,
+            "lenses.first": 4.106900189071894,
+            "inlays.first": 54.97639998793602,
+            "folding.first": 0.21269964054226875,
+            "hover.first_after_auto": 0.04220008850097656,
+            "outline.warm": 0.0005997717380523682,
+            "inlays.warm": 0.03679981455206871,
+            "folding.warm": 0.1647002063691616,
+            "hover.warm": 0.018800143152475357
+          },
+          "memory_MB": {
+            "snapshot": {
+              "kept": 28.708184,
+              "peak": 30.066179
+            },
+            "diagnostics_occurrences": {
+              "kept": 36.852064,
+              "peak": 43.966658
+            },
+            "automatic_queries": {
+              "kept": 46.382107,
+              "peak": 47.53487
+            },
+            "sparse_hovers": {
+              "kept": 46.382443,
+              "peak": 47.53487
+            }
+          },
+          "dimensions": {
+            "read_files": 152,
+            "shapes": 19904,
+            "endpoints": 0,
+            "captured_files": 152,
+            "retained_source_records": 69730
+          },
+          "counts": {
+            "v1.snapshot.yaml_composes": 152,
+            "v2.snapshot.yaml_composes": 152,
+            "v3.snapshot.yaml_composes": 152
+          },
+          "identical_input_composition_histogram": {
+            "1": 3,
+            "3": 151
+          }
+        },
+        "simple": {
+          "best_total_ms": 472.30949997901917,
+          "round_spread_percent": 2.035423800944436,
+          "same_best_run_phases_ms": {
+            "change": 1.2742001563310623,
+            "collect": 26.03259962052107,
+            "snapshot": 393.386899959296,
+            "diagnostics": 0.000800006091594696,
+            "occurrences": 51.61500023677945,
+            "total": 472.30949997901917
+          },
+          "phase_minima_ms": {
+            "change": 1.2314002960920334,
+            "collect": 22.88420032709837,
+            "snapshot": 393.386899959296,
+            "diagnostics": 0.000800006091594696,
+            "occurrences": 51.61500023677945,
+            "total": 472.30949997901917
+          },
+          "query_minima_ms": {
+            "outline.first": 0.9539001621305943,
+            "lenses.first": 4.111399874091148,
+            "inlays.first": 57.2048001922667,
+            "folding.first": 1.0965997353196144,
+            "hover.first_after_auto": 0.01090019941329956,
+            "outline.warm": 0.9314003400504589,
+            "inlays.warm": 0.038699712604284286,
+            "folding.warm": 0.14829961583018303,
+            "hover.warm": 0.006600283086299896
+          },
+          "memory_MB": {
+            "snapshot": {
+              "kept": 20.182052,
+              "peak": 21.111702
+            },
+            "diagnostics_occurrences": {
+              "kept": 28.325932,
+              "peak": 35.440526
+            },
+            "automatic_queries": {
+              "kept": 36.28834,
+              "peak": 37.364272
+            },
+            "sparse_hovers": {
+              "kept": 36.288772,
+              "peak": 37.364272
+            }
+          },
+          "dimensions": {
+            "read_files": 152,
+            "shapes": 19904,
+            "endpoints": 0,
+            "captured_files": 0,
+            "retained_source_records": 0
+          },
+          "counts": {
+            "v1.snapshot.yaml_composes": 152,
+            "v1.automatic.yaml_composes": 2,
+            "v2.snapshot.yaml_composes": 152,
+            "v2.automatic.yaml_composes": 1,
+            "v3.snapshot.yaml_composes": 152,
+            "v3.automatic.yaml_composes": 1
+          },
+          "identical_input_composition_histogram": {
+            "1": 3,
+            "7": 1,
+            "3": 150
+          }
+        },
+        "no-capture": {
+          "best_total_ms": 467.7263000048697,
+          "round_spread_percent": 10.924059672533314,
+          "same_best_run_phases_ms": {
+            "change": 1.2632999569177628,
+            "collect": 24.41939990967512,
+            "snapshot": 390.540299937129,
+            "diagnostics": 0.001200009137392044,
+            "occurrences": 51.5021001920104,
+            "total": 467.7263000048697
+          },
+          "phase_minima_ms": {
+            "change": 1.2632999569177628,
+            "collect": 24.41939990967512,
+            "snapshot": 390.540299937129,
+            "diagnostics": 0.00090012326836586,
+            "occurrences": 51.5021001920104,
+            "total": 467.7263000048697
+          },
+          "query_minima_ms": {
+            "outline.first": 7.072399836033583,
+            "lenses.first": 4.118700046092272,
+            "inlays.first": 54.91819977760315,
+            "folding.first": 0.22660009562969208,
+            "hover.first_after_auto": 0.033999793231487274,
+            "outline.warm": 0.000500120222568512,
+            "inlays.warm": 0.0362996943295002,
+            "folding.warm": 0.16279984265565872,
+            "hover.warm": 0.019399914890527725
+          },
+          "memory_MB": {
+            "snapshot": {
+              "kept": 20.46131,
+              "peak": 21.399014
+            },
+            "diagnostics_occurrences": {
+              "kept": 28.60519,
+              "peak": 35.719784
+            },
+            "automatic_queries": {
+              "kept": 38.268042,
+              "peak": 39.421716
+            },
+            "sparse_hovers": {
+              "kept": 38.268474,
+              "peak": 39.421716
+            }
+          },
+          "dimensions": {
+            "read_files": 152,
+            "shapes": 19904,
+            "endpoints": 0,
+            "captured_files": 0,
+            "retained_source_records": 0
+          },
+          "counts": {
+            "v1.snapshot.yaml_composes": 152,
+            "v1.automatic.yaml_composes": 1,
+            "v2.snapshot.yaml_composes": 152,
+            "v2.automatic.yaml_composes": 1,
+            "v3.snapshot.yaml_composes": 152,
+            "v3.automatic.yaml_composes": 1
+          },
+          "identical_input_composition_histogram": {
+            "1": 3,
+            "6": 1,
+            "3": 150
+          }
+        }
+      }
+    },
+    {
+      "corpus": "large",
+      "scale": 1,
+      "inputs": {
+        "files": 152,
+        "bytes": 576354,
+        "entry_bytes": 3930,
+        "focus_bytes": 3850
+      },
+      "detail_timers": true,
+      "mixed": false,
+      "source_first": false,
+      "trees": {
+        "parked": {
+          "best_total_ms": 627.3258002474904,
+          "round_spread_percent": 3.4982778418972016,
+          "same_best_run_phases_ms": {
+            "yaml.native": 93.38799910619855,
+            "compose.total": 183.8019979186356,
+            "stage.decoded": 314.75860020145774,
+            "stage.endpoints": 0.004100147634744644,
+            "stage.security": 0.0038999132812023163,
+            "stage.resolved": 56.506600230932236,
+            "_detach_type_expressions": 12.489200104027987,
+            "stage.annotations": 0.006200280040502548,
+            "stage.unwrapped": 26.5347003005445,
+            "stage.validated": 46.37870006263256,
+            "finish_projections": 74.59470024332404,
+            "finish_sources": 0.0011003576219081879,
+            "change": 1.283199992030859,
+            "collect": 41.11859994009137,
+            "snapshot": 531.4774001017213,
+            "diagnostics": 0.001200009137392044,
+            "occurrences": 53.4454002045095,
+            "total": 627.3258002474904
+          },
+          "phase_minima_ms": {
+            "yaml.native": 92.09150122478604,
+            "compose.total": 182.719302829355,
+            "stage.decoded": 312.23920034244657,
+            "stage.endpoints": 0.003200024366378784,
+            "stage.security": 0.0038999132812023163,
+            "stage.resolved": 55.92169985175133,
+            "_detach_type_expressions": 11.878999881446362,
+            "stage.annotations": 0.004699919372797012,
+            "stage.unwrapped": 25.937399826943874,
+            "stage.validated": 45.30239989981055,
+            "finish_projections": 74.59470024332404,
+            "finish_sources": 0.0010998919606208801,
+            "change": 1.2257001362740993,
+            "collect": 41.11859994009137,
+            "snapshot": 531.2709999270737,
+            "diagnostics": 0.00090012326836586,
+            "occurrences": 52.289499901235104,
+            "total": 627.3258002474904
+          },
+          "query_minima_ms": {
+            "outline.first": 5.434900056570768,
+            "lenses.first": 4.1000996716320515,
+            "inlays.first": 54.346200078725815,
+            "folding.first": 0.19980035722255707,
+            "hover.first_after_auto": 0.034300144761800766,
+            "outline.warm": 0.000400003045797348,
+            "inlays.warm": 0.036300159990787506,
+            "folding.warm": 0.16169995069503784,
+            "hover.warm": 0.01859990879893303
+          },
+          "memory_MB": {
+            "snapshot": {
+              "kept": 28.708351,
+              "peak": 30.066346
+            },
+            "diagnostics_occurrences": {
+              "kept": 36.852231,
+              "peak": 43.966825
+            },
+            "automatic_queries": {
+              "kept": 46.382168,
+              "peak": 47.534931
+            },
+            "sparse_hovers": {
+              "kept": 46.382504,
+              "peak": 47.534931
+            }
+          },
+          "dimensions": {
+            "read_files": 152,
+            "shapes": 19904,
+            "endpoints": 0,
+            "captured_files": 152,
+            "retained_source_records": 69730
+          },
+          "counts": {
+            "v1.snapshot.yaml_composes": 152,
+            "v1.snapshot.converted_nodes": 69730,
+            "v1.snapshot._RecordNode.kind": 145999,
+            "v1.snapshot.SourceRecord.line": 18759,
+            "v1.automatic.SourceRecord.line": 25,
+            "v1.warm.SourceRecord.line": 1,
+            "v2.snapshot.yaml_composes": 152,
+            "v2.snapshot.converted_nodes": 69730,
+            "v2.snapshot._RecordNode.kind": 145999,
+            "v2.snapshot.SourceRecord.line": 18759,
+            "v2.automatic.SourceRecord.line": 25,
+            "v2.warm.SourceRecord.line": 1,
+            "v3.snapshot.yaml_composes": 152,
+            "v3.snapshot.converted_nodes": 69730,
+            "v3.snapshot._RecordNode.kind": 145999,
+            "v3.snapshot.SourceRecord.line": 18759,
+            "v3.automatic.SourceRecord.line": 25,
+            "v3.warm.SourceRecord.line": 1
+          },
+          "identical_input_composition_histogram": {
+            "1": 3,
+            "3": 151
+          }
+        },
+        "simple": {
+          "best_total_ms": 471.27189999446273,
+          "round_spread_percent": 2.9177212548346043,
+          "same_best_run_phases_ms": {
+            "yaml.native": 75.76669892296195,
+            "compose.total": 118.00889950245619,
+            "stage.decoded": 252.10190005600452,
+            "stage.endpoints": 0.00470038503408432,
+            "stage.security": 0.004299916326999664,
+            "stage.resolved": 57.5292999856174,
+            "_detach_type_expressions": 9.139199741184711,
+            "stage.annotations": 0.00509992241859436,
+            "stage.unwrapped": 25.946199893951416,
+            "stage.validated": 45.316200237721205,
+            "change": 1.4454000629484653,
+            "collect": 24.227200075984,
+            "snapshot": 390.20719984546304,
+            "diagnostics": 0.001300126314163208,
+            "occurrences": 55.39079988375306,
+            "total": 471.27189999446273
+          },
+          "phase_minima_ms": {
+            "yaml.native": 75.76669892296195,
+            "compose.total": 118.00889950245619,
+            "stage.decoded": 252.10190005600452,
+            "stage.endpoints": 0.0038999132812023163,
+            "stage.security": 0.00400003045797348,
+            "stage.resolved": 57.5292999856174,
+            "_detach_type_expressions": 9.063999634236097,
+            "stage.annotations": 0.00509992241859436,
+            "stage.unwrapped": 25.946199893951416,
+            "stage.validated": 45.316200237721205,
+            "change": 1.2210998684167862,
+            "collect": 23.391699884086847,
+            "snapshot": 390.20719984546304,
+            "diagnostics": 0.001000240445137024,
+            "occurrences": 52.20529995858669,
+            "total": 471.27189999446273
+          },
+          "query_minima_ms": {
+            "outline.first": 0.9540002793073654,
+            "lenses.first": 4.1924999095499516,
+            "inlays.first": 57.170200161635876,
+            "folding.first": 1.064700074493885,
+            "hover.first_after_auto": 0.010699965059757233,
+            "outline.warm": 0.9236996993422508,
+            "inlays.warm": 0.0379001721739769,
+            "folding.warm": 0.14590006321668625,
+            "hover.warm": 0.006299931555986404
+          },
+          "memory_MB": {
+            "snapshot": {
+              "kept": 20.181653,
+              "peak": 21.111312
+            },
+            "diagnostics_occurrences": {
+              "kept": 28.325533,
+              "peak": 35.440127
+            },
+            "automatic_queries": {
+              "kept": 36.288059,
+              "peak": 37.363991
+            },
+            "sparse_hovers": {
+              "kept": 36.288444,
+              "peak": 37.363991
+            }
+          },
+          "dimensions": {
+            "read_files": 152,
+            "shapes": 19904,
+            "endpoints": 0,
+            "captured_files": 0,
+            "retained_source_records": 0
+          },
+          "counts": {
+            "v1.snapshot.yaml_composes": 152,
+            "v1.snapshot.converted_nodes": 69730,
+            "v1.automatic.yaml_composes": 2,
+            "v1.automatic.converted_nodes": 934,
+            "v2.snapshot.yaml_composes": 152,
+            "v2.snapshot.converted_nodes": 69730,
+            "v2.automatic.yaml_composes": 1,
+            "v2.automatic.converted_nodes": 467,
+            "v3.snapshot.yaml_composes": 152,
+            "v3.snapshot.converted_nodes": 69730,
+            "v3.automatic.yaml_composes": 1,
+            "v3.automatic.converted_nodes": 467
+          },
+          "identical_input_composition_histogram": {
+            "1": 3,
+            "7": 1,
+            "3": 150
+          }
+        },
+        "no-capture": {
+          "best_total_ms": 476.8725000321865,
+          "round_spread_percent": 0.4324006665224811,
+          "same_best_run_phases_ms": {
+            "yaml.native": 75.62150247395039,
+            "compose.total": 119.75390091538429,
+            "stage.decoded": 260.3138000704348,
+            "stage.endpoints": 0.0037997961044311523,
+            "stage.security": 0.004400033503770828,
+            "stage.resolved": 56.675899773836136,
+            "_detach_type_expressions": 11.248299852013588,
+            "stage.annotations": 0.004400033503770828,
+            "stage.unwrapped": 25.782099924981594,
+            "stage.validated": 45.157100073993206,
+            "finish_sources": 0.0012996606528759003,
+            "change": 1.212799921631813,
+            "collect": 25.09720018133521,
+            "snapshot": 399.3730000220239,
+            "diagnostics": 0.0010998919606208801,
+            "occurrences": 51.18840001523495,
+            "total": 476.8725000321865
+          },
+          "phase_minima_ms": {
+            "yaml.native": 75.30749961733818,
+            "compose.total": 119.44590229541063,
+            "stage.decoded": 255.17160026356578,
+            "stage.endpoints": 0.0034999102354049683,
+            "stage.security": 0.003600027412176132,
+            "stage.resolved": 56.011800188571215,
+            "_detach_type_expressions": 10.89440006762743,
+            "stage.annotations": 0.004400033503770828,
+            "stage.unwrapped": 25.782099924981594,
+            "stage.validated": 44.31790020316839,
+            "finish_sources": 0.0012996606528759003,
+            "change": 1.2074001133441925,
+            "collect": 24.006799794733524,
+            "snapshot": 397.26899983361363,
+            "diagnostics": 0.00090012326836586,
+            "occurrences": 51.18840001523495,
+            "total": 476.8725000321865
+          },
+          "query_minima_ms": {
+            "outline.first": 6.886400282382965,
+            "lenses.first": 3.87750007212162,
+            "inlays.first": 54.940300062298775,
+            "folding.first": 0.22780010476708412,
+            "hover.first_after_auto": 0.03439979627728462,
+            "outline.warm": 0.0004996545612812042,
+            "inlays.warm": 0.036199577152729034,
+            "folding.warm": 0.16359984874725342,
+            "hover.warm": 0.018500257283449173
+          },
+          "memory_MB": {
+            "snapshot": {
+              "kept": 20.460405,
+              "peak": 21.398109
+            },
+            "diagnostics_occurrences": {
+              "kept": 28.604285,
+              "peak": 35.718879
+            },
+            "automatic_queries": {
+              "kept": 38.26709,
+              "peak": 39.420717
+            },
+            "sparse_hovers": {
+              "kept": 38.267522,
+              "peak": 39.420717
+            }
+          },
+          "dimensions": {
+            "read_files": 152,
+            "shapes": 19904,
+            "endpoints": 0,
+            "captured_files": 0,
+            "retained_source_records": 0
+          },
+          "counts": {
+            "v1.snapshot.yaml_composes": 152,
+            "v1.snapshot.converted_nodes": 69730,
+            "v1.automatic.yaml_composes": 1,
+            "v1.automatic.converted_nodes": 467,
+            "v1.automatic.SourceRecord.line": 151,
+            "v1.warm.SourceRecord.line": 1,
+            "v2.snapshot.yaml_composes": 152,
+            "v2.snapshot.converted_nodes": 69730,
+            "v2.automatic.yaml_composes": 1,
+            "v2.automatic.converted_nodes": 467,
+            "v2.automatic.SourceRecord.line": 151,
+            "v3.snapshot.yaml_composes": 152,
+            "v3.snapshot.converted_nodes": 69730,
+            "v3.automatic.yaml_composes": 1,
+            "v3.automatic.converted_nodes": 467,
+            "v3.automatic.SourceRecord.line": 151
+          },
+          "identical_input_composition_histogram": {
+            "1": 3,
+            "6": 1,
+            "3": 150
+          }
+        }
+      }
+    },
+    {
+      "corpus": "hover",
+      "scale": 1,
+      "inputs": {
+        "files": 1,
+        "bytes": 342406,
+        "entry_bytes": 342406,
+        "focus_bytes": 342406
+      },
+      "detail_timers": false,
+      "mixed": false,
+      "source_first": false,
+      "trees": {
+        "parked": {
+          "best_total_ms": 277.91749965399504,
+          "round_spread_percent": 7.30666497486494,
+          "same_best_run_phases_ms": {
+            "change": 0.42819976806640625,
+            "collect": 21.253500133752823,
+            "snapshot": 238.00309980288148,
+            "diagnostics": 0.00090012326836586,
+            "occurrences": 18.231799826025963,
+            "total": 277.91749965399504
+          },
+          "phase_minima_ms": {
+            "change": 0.42010005563497543,
+            "collect": 21.217599976807833,
+            "snapshot": 238.00309980288148,
+            "diagnostics": 0.00090012326836586,
+            "occurrences": 18.149499781429768,
+            "total": 277.91749965399504
+          },
+          "query_minima_ms": {
+            "outline.first": 131.03230018168688,
+            "lenses.first": 1.271899789571762,
+            "inlays.first": 47.89610020816326,
+            "folding.first": 14.87339986488223,
+            "hover.first_after_auto": 0.04369998350739479,
+            "outline.warm": 0.0004996545612812042,
+            "inlays.warm": 0.08850032463669777,
+            "folding.warm": 13.625599909573793,
+            "hover.warm": 0.029399991035461426
+          },
+          "memory_MB": {
+            "snapshot": {
+              "kept": 14.612644,
+              "peak": 22.788319
+            },
+            "diagnostics_occurrences": {
+              "kept": 17.234702,
+              "peak": 22.788319
+            },
+            "automatic_queries": {
+              "kept": 28.873667,
+              "peak": 30.057235
+            },
+            "sparse_hovers": {
+              "kept": 28.87391,
+              "peak": 30.057235
+            }
+          },
+          "dimensions": {
+            "read_files": 1,
+            "shapes": 7200,
+            "endpoints": 400,
+            "captured_files": 1,
+            "retained_source_records": 35209
+          },
+          "counts": {
+            "v1.snapshot.yaml_composes": 1,
+            "v1.snapshot.converted_nodes": 35209,
+            "v1.snapshot._RecordNode.kind": 58810,
+            "v1.snapshot.SourceRecord.line": 14804,
+            "v1.automatic.SourceRecord.line": 2803,
+            "v1.warm.SourceRecord.line": 1,
+            "v2.snapshot.yaml_composes": 1,
+            "v2.snapshot.converted_nodes": 35209,
+            "v2.snapshot._RecordNode.kind": 58810,
+            "v2.snapshot.SourceRecord.line": 14804,
+            "v2.automatic.SourceRecord.line": 2803,
+            "v2.warm.SourceRecord.line": 1,
+            "v3.snapshot.yaml_composes": 1,
+            "v3.snapshot.converted_nodes": 35209,
+            "v3.snapshot._RecordNode.kind": 58810,
+            "v3.snapshot.SourceRecord.line": 14804,
+            "v3.automatic.SourceRecord.line": 2803,
+            "v3.warm.SourceRecord.line": 1
+          },
+          "identical_input_composition_histogram": {
+            "1": 3
+          }
+        },
+        "simple": {
+          "best_total_ms": 193.58960026875138,
+          "round_spread_percent": 10.601085774074592,
+          "same_best_run_phases_ms": {
+            "change": 0.39560021832585335,
+            "collect": 12.459699995815754,
+            "snapshot": 163.28029986470938,
+            "diagnostics": 0.00090012326836586,
+            "occurrences": 17.453100066632032,
+            "total": 193.58960026875138
+          },
+          "phase_minima_ms": {
+            "change": 0.39560021832585335,
+            "collect": 12.054399587213993,
+            "snapshot": 163.28029986470938,
+            "diagnostics": 0.000800006091594696,
+            "occurrences": 17.252400051802397,
+            "total": 193.58960026875138
+          },
+          "query_minima_ms": {
+            "outline.first": 29.77130003273487,
+            "lenses.first": 1.3278997503221035,
+            "inlays.first": 154.34050001204014,
+            "folding.first": 80.79739985987544,
+            "hover.first_after_auto": 0.014400109648704529,
+            "outline.warm": 30.306499917060137,
+            "inlays.warm": 0.0934000127017498,
+            "folding.warm": 13.365899678319693,
+            "hover.warm": 0.011000316590070724
+          },
+          "memory_MB": {
+            "snapshot": {
+              "kept": 10.396426,
+              "peak": 18.069846
+            },
+            "diagnostics_occurrences": {
+              "kept": 13.018531,
+              "peak": 18.069846
+            },
+            "automatic_queries": {
+              "kept": 33.944268,
+              "peak": 45.598476
+            },
+            "sparse_hovers": {
+              "kept": 33.9447,
+              "peak": 45.598476
+            }
+          },
+          "dimensions": {
+            "read_files": 1,
+            "shapes": 7200,
+            "endpoints": 400,
+            "captured_files": 0,
+            "retained_source_records": 0
+          },
+          "counts": {
+            "v1.snapshot.yaml_composes": 1,
+            "v1.snapshot.converted_nodes": 35209,
+            "v1.automatic.yaml_composes": 2,
+            "v1.automatic.converted_nodes": 70418,
+            "v2.snapshot.yaml_composes": 1,
+            "v2.snapshot.converted_nodes": 35209,
+            "v2.automatic.yaml_composes": 2,
+            "v2.automatic.converted_nodes": 70418,
+            "v3.snapshot.yaml_composes": 1,
+            "v3.snapshot.converted_nodes": 35209,
+            "v3.automatic.yaml_composes": 2,
+            "v3.automatic.converted_nodes": 70418
+          },
+          "identical_input_composition_histogram": {
+            "3": 3
+          }
+        },
+        "no-capture": {
+          "best_total_ms": 196.6083999723196,
+          "round_spread_percent": 1.8237775935275868,
+          "same_best_run_phases_ms": {
+            "change": 0.40869973599910736,
+            "collect": 12.647700030356646,
+            "snapshot": 165.75360018759966,
+            "diagnostics": 0.0009997747838497162,
+            "occurrences": 17.79740024358034,
+            "total": 196.6083999723196
+          },
+          "phase_minima_ms": {
+            "change": 0.40269969031214714,
+            "collect": 12.647700030356646,
+            "snapshot": 165.75360018759966,
+            "diagnostics": 0.0005997717380523682,
+            "occurrences": 17.732299864292145,
+            "total": 196.6083999723196
+          },
+          "query_minima_ms": {
+            "outline.first": 265.23760007694364,
+            "lenses.first": 1.5432997606694698,
+            "inlays.first": 47.342800069600344,
+            "folding.first": 15.35779982805252,
+            "hover.first_after_auto": 0.040899962186813354,
+            "outline.warm": 0.000400003045797348,
+            "inlays.warm": 0.08809985592961311,
+            "folding.warm": 13.377899769693613,
+            "hover.warm": 0.031000003218650818
+          },
+          "memory_MB": {
+            "snapshot": {
+              "kept": 10.159452,
+              "peak": 18.070441
+            },
+            "diagnostics_occurrences": {
+              "kept": 12.78151,
+              "peak": 18.070441
+            },
+            "automatic_queries": {
+              "kept": 31.648124,
+              "peak": 32.831692
+            },
+            "sparse_hovers": {
+              "kept": 31.648451,
+              "peak": 32.831692
+            }
+          },
+          "dimensions": {
+            "read_files": 1,
+            "shapes": 7200,
+            "endpoints": 400,
+            "captured_files": 0,
+            "retained_source_records": 0
+          },
+          "counts": {
+            "v1.snapshot.yaml_composes": 1,
+            "v1.snapshot.converted_nodes": 35209,
+            "v1.automatic.yaml_composes": 1,
+            "v1.automatic.converted_nodes": 35209,
+            "v1.automatic.SourceRecord.line": 16007,
+            "v1.warm.SourceRecord.line": 1,
+            "v2.snapshot.yaml_composes": 1,
+            "v2.snapshot.converted_nodes": 35209,
+            "v2.automatic.yaml_composes": 1,
+            "v2.automatic.converted_nodes": 35209,
+            "v2.automatic.SourceRecord.line": 16007,
+            "v2.warm.SourceRecord.line": 1,
+            "v3.snapshot.yaml_composes": 1,
+            "v3.snapshot.converted_nodes": 35209,
+            "v3.automatic.yaml_composes": 1,
+            "v3.automatic.converted_nodes": 35209,
+            "v3.automatic.SourceRecord.line": 16007,
+            "v3.warm.SourceRecord.line": 1
+          },
+          "identical_input_composition_histogram": {
+            "2": 3
+          }
+        }
+      }
+    },
+    {
+      "corpus": "hover",
+      "scale": 1,
+      "inputs": {
+        "files": 1,
+        "bytes": 342406,
+        "entry_bytes": 342406,
+        "focus_bytes": 342406
+      },
+      "detail_timers": true,
+      "mixed": false,
+      "source_first": false,
+      "trees": {
+        "parked": {
+          "best_total_ms": 280.57230031117797,
+          "round_spread_percent": 2.1271877828780594,
+          "same_best_run_phases_ms": {
+            "yaml.native": 35.822799894958735,
+            "compose.total": 88.89540005475283,
+            "stage.decoded": 132.30480020865798,
+            "stage.endpoints": 10.876100044697523,
+            "stage.security": 0.062400009483098984,
+            "stage.resolved": 24.897399824112654,
+            "_detach_type_expressions": 3.323799930512905,
+            "stage.annotations": 0.2616001293063164,
+            "stage.unwrapped": 9.878899902105331,
+            "stage.validated": 14.690199866890907,
+            "finish_projections": 44.02310028672218,
+            "finish_sources": 0.000800006091594696,
+            "change": 0.4696999676525593,
+            "collect": 21.143500227481127,
+            "snapshot": 240.61049986630678,
+            "diagnostics": 0.000800006091594696,
+            "occurrences": 18.347800243645906,
+            "total": 280.57230031117797
+          },
+          "phase_minima_ms": {
+            "yaml.native": 35.575099755078554,
+            "compose.total": 88.89540005475283,
+            "stage.decoded": 132.1292999200523,
+            "stage.endpoints": 10.765699669718742,
+            "stage.security": 0.062000006437301636,
+            "stage.resolved": 24.897399824112654,
+            "_detach_type_expressions": 3.323799930512905,
+            "stage.annotations": 0.2566003240644932,
+            "stage.unwrapped": 9.878899902105331,
+            "stage.validated": 14.423100277781487,
+            "finish_projections": 43.525599874556065,
+            "finish_sources": 0.000800006091594696,
+            "change": 0.4217000678181648,
+            "collect": 20.632700063288212,
+            "snapshot": 240.61049986630678,
+            "diagnostics": 0.000800006091594696,
+            "occurrences": 18.347800243645906,
+            "total": 280.57230031117797
+          },
+          "query_minima_ms": {
+            "outline.first": 132.0977001450956,
+            "outline.source_projection": 0.00400003045797348,
+            "outline.cursor_index": 27.05699997022748,
+            "outline.place_sections": 72.32529995962977,
+            "lenses.first": 1.28660025075078,
+            "inlays.first": 47.421999741345644,
+            "folding.first": 14.879399910569191,
+            "hover.first_after_auto": 0.04239985719323158,
+            "outline.warm": 0.000500120222568512,
+            "inlays.warm": 0.08689984679222107,
+            "folding.warm": 13.79489991813898,
+            "hover.warm": 0.03060000017285347
+          },
+          "memory_MB": {
+            "snapshot": {
+              "kept": 14.613607,
+              "peak": 22.788201
+            },
+            "diagnostics_occurrences": {
+              "kept": 17.235759,
+              "peak": 22.788201
+            },
+            "automatic_queries": {
+              "kept": 28.874618,
+              "peak": 30.058186
+            },
+            "sparse_hovers": {
+              "kept": 28.874814,
+              "peak": 30.058186
+            }
+          },
+          "dimensions": {
+            "read_files": 1,
+            "shapes": 7200,
+            "endpoints": 400,
+            "captured_files": 1,
+            "retained_source_records": 35209
+          },
+          "counts": {
+            "v1.snapshot.yaml_composes": 1,
+            "v1.snapshot.converted_nodes": 35209,
+            "v1.snapshot._RecordNode.kind": 58810,
+            "v1.snapshot.SourceRecord.line": 14804,
+            "v1.automatic.SourceRecord.line": 2803,
+            "v1.warm.SourceRecord.line": 1,
+            "v2.snapshot.yaml_composes": 1,
+            "v2.snapshot.converted_nodes": 35209,
+            "v2.snapshot._RecordNode.kind": 58810,
+            "v2.snapshot.SourceRecord.line": 14804,
+            "v2.automatic.SourceRecord.line": 2803,
+            "v2.warm.SourceRecord.line": 1,
+            "v3.snapshot.yaml_composes": 1,
+            "v3.snapshot.converted_nodes": 35209,
+            "v3.snapshot._RecordNode.kind": 58810,
+            "v3.snapshot.SourceRecord.line": 14804,
+            "v3.automatic.SourceRecord.line": 2803,
+            "v3.warm.SourceRecord.line": 1,
+            "broken.snapshot_composes": 1,
+            "broken.three_source_request_composes": 0
+          },
+          "identical_input_composition_histogram": {
+            "1": 3
+          }
+        },
+        "simple": {
+          "best_total_ms": 194.27810003980994,
+          "round_spread_percent": 1.2685422544880032,
+          "same_best_run_phases_ms": {
+            "yaml.native": 35.296100191771984,
+            "compose.total": 60.60710037127137,
+            "stage.decoded": 101.09549993649125,
+            "stage.endpoints": 9.703100193291903,
+            "stage.security": 0.05979975685477257,
+            "stage.resolved": 25.90239979326725,
+            "_detach_type_expressions": 2.68759997561574,
+            "stage.annotations": 0.2536000683903694,
+            "stage.unwrapped": 9.63230011984706,
+            "stage.validated": 14.64810036122799,
+            "change": 0.4459996707737446,
+            "collect": 12.186700012534857,
+            "snapshot": 164.15770025923848,
+            "diagnostics": 0.0004996545612812042,
+            "occurrences": 17.487200442701578,
+            "total": 194.27810003980994
+          },
+          "phase_minima_ms": {
+            "yaml.native": 35.13310011476278,
+            "compose.total": 60.60710037127137,
+            "stage.decoded": 101.09549993649125,
+            "stage.endpoints": 9.582499973475933,
+            "stage.security": 0.05979975685477257,
+            "stage.resolved": 25.460700038820505,
+            "_detach_type_expressions": 2.6749996468424797,
+            "stage.annotations": 0.2520997077226639,
+            "stage.unwrapped": 9.62470006197691,
+            "stage.validated": 14.57079965621233,
+            "change": 0.40349969640374184,
+            "collect": 11.854900047183037,
+            "snapshot": 164.15770025923848,
+            "diagnostics": 0.0004996545612812042,
+            "occurrences": 17.482499592006207,
+            "total": 194.27810003980994
+          },
+          "query_minima_ms": {
+            "outline.first": 30.28120007365942,
+            "lenses.first": 1.4224001206457615,
+            "inlays.first": 155.90299991890788,
+            "folding.first": 81.63930010050535,
+            "hover.first_after_auto": 0.014699995517730713,
+            "outline.warm": 30.620899982750416,
+            "inlays.warm": 0.0929003581404686,
+            "folding.warm": 13.526899740099907,
+            "hover.warm": 0.011199619621038437
+          },
+          "memory_MB": {
+            "snapshot": {
+              "kept": 10.383889,
+              "peak": 18.069905
+            },
+            "diagnostics_occurrences": {
+              "kept": 13.006041,
+              "peak": 18.069905
+            },
+            "automatic_queries": {
+              "kept": 33.932189,
+              "peak": 45.586397
+            },
+            "sparse_hovers": {
+              "kept": 33.932621,
+              "peak": 45.586397
+            }
+          },
+          "dimensions": {
+            "read_files": 1,
+            "shapes": 7200,
+            "endpoints": 400,
+            "captured_files": 0,
+            "retained_source_records": 0
+          },
+          "counts": {
+            "v1.snapshot.yaml_composes": 1,
+            "v1.snapshot.converted_nodes": 35209,
+            "v1.automatic.yaml_composes": 2,
+            "v1.automatic.converted_nodes": 70418,
+            "v2.snapshot.yaml_composes": 1,
+            "v2.snapshot.converted_nodes": 35209,
+            "v2.automatic.yaml_composes": 2,
+            "v2.automatic.converted_nodes": 70418,
+            "v3.snapshot.yaml_composes": 1,
+            "v3.snapshot.converted_nodes": 35209,
+            "v3.automatic.yaml_composes": 2,
+            "v3.automatic.converted_nodes": 70418,
+            "broken.snapshot_composes": 1,
+            "broken.three_source_request_composes": 3
+          },
+          "identical_input_composition_histogram": {
+            "3": 3
+          }
+        },
+        "no-capture": {
+          "best_total_ms": 194.37629962339997,
+          "round_spread_percent": 1.7514997636971952,
+          "same_best_run_phases_ms": {
+            "yaml.native": 35.13609990477562,
+            "compose.total": 61.41010019928217,
+            "stage.decoded": 101.72259993851185,
+            "stage.endpoints": 9.99179994687438,
+            "stage.security": 0.06230035796761513,
+            "stage.resolved": 24.330600164830685,
+            "_detach_type_expressions": 3.2163001596927643,
+            "stage.annotations": 0.24770013988018036,
+            "stage.unwrapped": 9.607200045138597,
+            "stage.validated": 14.469200279563665,
+            "finish_sources": 0.0009997747838497162,
+            "change": 0.4042000509798527,
+            "collect": 12.310999911278486,
+            "snapshot": 163.88759994879365,
+            "diagnostics": 0.000800006091594696,
+            "occurrences": 17.77269970625639,
+            "total": 194.37629962339997
+          },
+          "phase_minima_ms": {
+            "yaml.native": 35.13609990477562,
+            "compose.total": 61.41010019928217,
+            "stage.decoded": 101.72259993851185,
+            "stage.endpoints": 9.99179994687438,
+            "stage.security": 0.06199954077601433,
+            "stage.resolved": 24.330600164830685,
+            "_detach_type_expressions": 3.1546996906399727,
+            "stage.annotations": 0.24770013988018036,
+            "stage.unwrapped": 9.537499863654375,
+            "stage.validated": 14.450099784880877,
+            "finish_sources": 0.0008996576070785522,
+            "change": 0.39530033245682716,
+            "collect": 12.310999911278486,
+            "snapshot": 163.88759994879365,
+            "diagnostics": 0.000500120222568512,
+            "occurrences": 17.77269970625639,
+            "total": 194.37629962339997
+          },
+          "query_minima_ms": {
+            "outline.first": 266.91440027207136,
+            "outline.source_projection": 123.89730010181665,
+            "outline.cursor_index": 26.394799817353487,
+            "outline.place_sections": 84.12860007956624,
+            "lenses.first": 1.587399747222662,
+            "inlays.first": 47.25470021367073,
+            "folding.first": 15.314800199121237,
+            "hover.first_after_auto": 0.042700208723545074,
+            "outline.warm": 0.000500120222568512,
+            "inlays.warm": 0.08870009332895279,
+            "folding.warm": 13.517600018531084,
+            "hover.warm": 0.030499882996082306
+          },
+          "memory_MB": {
+            "snapshot": {
+              "kept": 10.159675,
+              "peak": 18.070382
+            },
+            "diagnostics_occurrences": {
+              "kept": 12.781686,
+              "peak": 18.070382
+            },
+            "automatic_queries": {
+              "kept": 31.648018,
+              "peak": 32.831586
+            },
+            "sparse_hovers": {
+              "kept": 31.648451,
+              "peak": 32.831586
+            }
+          },
+          "dimensions": {
+            "read_files": 1,
+            "shapes": 7200,
+            "endpoints": 400,
+            "captured_files": 0,
+            "retained_source_records": 0
+          },
+          "counts": {
+            "v1.snapshot.yaml_composes": 1,
+            "v1.snapshot.converted_nodes": 35209,
+            "v1.automatic.yaml_composes": 1,
+            "v1.automatic.converted_nodes": 35209,
+            "v1.automatic.SourceRecord.line": 16007,
+            "v1.warm.SourceRecord.line": 1,
+            "v2.snapshot.yaml_composes": 1,
+            "v2.snapshot.converted_nodes": 35209,
+            "v2.automatic.yaml_composes": 1,
+            "v2.automatic.converted_nodes": 35209,
+            "v2.automatic.SourceRecord.line": 16007,
+            "v2.warm.SourceRecord.line": 1,
+            "v3.snapshot.yaml_composes": 1,
+            "v3.snapshot.converted_nodes": 35209,
+            "v3.automatic.yaml_composes": 1,
+            "v3.automatic.converted_nodes": 35209,
+            "v3.automatic.SourceRecord.line": 16007,
+            "v3.warm.SourceRecord.line": 1,
+            "broken.snapshot_composes": 1,
+            "broken.three_source_request_composes": 1
+          },
+          "identical_input_composition_histogram": {
+            "2": 3
+          }
+        }
+      }
+    },
+    {
+      "corpus": "hover",
+      "scale": 0.5,
+      "inputs": {
+        "files": 1,
+        "bytes": 170406,
+        "entry_bytes": 170406,
+        "focus_bytes": 170406
+      },
+      "detail_timers": false,
+      "mixed": false,
+      "source_first": false,
+      "trees": {
+        "parked": {
+          "best_total_ms": 141.30990020930767,
+          "round_spread_percent": 0.26862918328469654,
+          "same_best_run_phases_ms": {
+            "change": 0.19379984587430954,
+            "collect": 11.892000213265419,
+            "snapshot": 119.53329993411899,
+            "diagnostics": 0.001000240445137024,
+            "occurrences": 9.689799975603819,
+            "total": 141.30990020930767
+          },
+          "phase_minima_ms": {
+            "change": 0.18950039520859718,
+            "collect": 11.142899747937918,
+            "snapshot": 119.28800027817488,
+            "diagnostics": 0.0006002373993396759,
+            "occurrences": 9.689799975603819,
+            "total": 141.30990020930767
+          },
+          "query_minima_ms": {
+            "outline.first": 65.10180002078414,
+            "lenses.first": 0.6070001982152462,
+            "inlays.first": 23.773000109940767,
+            "folding.first": 7.464099675416946,
+            "hover.first_after_auto": 0.03460003063082695,
+            "outline.warm": 0.000500120222568512,
+            "inlays.warm": 0.08569983765482903,
+            "folding.warm": 6.747399922460318,
+            "hover.warm": 0.026699621230363846
+          },
+          "memory_MB": {
+            "snapshot": {
+              "kept": 7.334108,
+              "peak": 11.440569
+            },
+            "diagnostics_occurrences": {
+              "kept": 8.644016,
+              "peak": 11.440569
+            },
+            "automatic_queries": {
+              "kept": 14.475282,
+              "peak": 14.988762
+            },
+            "sparse_hovers": {
+              "kept": 14.475572,
+              "peak": 14.988762
+            }
+          },
+          "dimensions": {
+            "read_files": 1,
+            "shapes": 3600,
+            "endpoints": 200,
+            "captured_files": 1,
+            "retained_source_records": 17609
+          },
+          "counts": {
+            "v1.snapshot.yaml_composes": 1,
+            "v1.snapshot.converted_nodes": 17609,
+            "v1.snapshot._RecordNode.kind": 29410,
+            "v1.snapshot.SourceRecord.line": 7404,
+            "v1.automatic.SourceRecord.line": 1403,
+            "v1.warm.SourceRecord.line": 1,
+            "v2.snapshot.yaml_composes": 1,
+            "v2.snapshot.converted_nodes": 17609,
+            "v2.snapshot._RecordNode.kind": 29410,
+            "v2.snapshot.SourceRecord.line": 7404,
+            "v2.automatic.SourceRecord.line": 1403,
+            "v2.warm.SourceRecord.line": 1,
+            "v3.snapshot.yaml_composes": 1,
+            "v3.snapshot.converted_nodes": 17609,
+            "v3.snapshot._RecordNode.kind": 29410,
+            "v3.snapshot.SourceRecord.line": 7404,
+            "v3.automatic.SourceRecord.line": 1403,
+            "v3.warm.SourceRecord.line": 1,
+            "broken.snapshot_composes": 1,
+            "broken.three_source_request_composes": 0
+          },
+          "identical_input_composition_histogram": {
+            "1": 3
+          }
+        },
+        "simple": {
+          "best_total_ms": 99.32140028104186,
+          "round_spread_percent": 1.756217347351563,
+          "same_best_run_phases_ms": {
+            "change": 0.22860011085867882,
+            "collect": 7.8742001205682755,
+            "snapshot": 82.2006999514997,
+            "diagnostics": 0.0006998889148235321,
+            "occurrences": 9.017200209200382,
+            "total": 99.32140028104186
+          },
+          "phase_minima_ms": {
+            "change": 0.1889001578092575,
+            "collect": 7.300700061023235,
+            "snapshot": 82.2006999514997,
+            "diagnostics": 0.0006998889148235321,
+            "occurrences": 9.017200209200382,
+            "total": 99.32140028104186
+          },
+          "query_minima_ms": {
+            "outline.first": 14.80219978839159,
+            "lenses.first": 0.6479998119175434,
+            "inlays.first": 76.14250015467405,
+            "folding.first": 39.78150011971593,
+            "hover.first_after_auto": 0.012699980288743973,
+            "outline.warm": 15.056999865919352,
+            "inlays.warm": 0.08979998528957367,
+            "folding.warm": 6.587800104171038,
+            "hover.warm": 0.008800067007541656
+          },
+          "memory_MB": {
+            "snapshot": {
+              "kept": 5.2153,
+              "peak": 9.080927
+            },
+            "diagnostics_occurrences": {
+              "kept": 6.525349,
+              "peak": 9.080927
+            },
+            "automatic_queries": {
+              "kept": 17.003386,
+              "peak": 22.92593
+            },
+            "sparse_hovers": {
+              "kept": 17.003818,
+              "peak": 22.92593
+            }
+          },
+          "dimensions": {
+            "read_files": 1,
+            "shapes": 3600,
+            "endpoints": 200,
+            "captured_files": 0,
+            "retained_source_records": 0
+          },
+          "counts": {
+            "v1.snapshot.yaml_composes": 1,
+            "v1.snapshot.converted_nodes": 17609,
+            "v1.automatic.yaml_composes": 2,
+            "v1.automatic.converted_nodes": 35218,
+            "v2.snapshot.yaml_composes": 1,
+            "v2.snapshot.converted_nodes": 17609,
+            "v2.automatic.yaml_composes": 2,
+            "v2.automatic.converted_nodes": 35218,
+            "v3.snapshot.yaml_composes": 1,
+            "v3.snapshot.converted_nodes": 17609,
+            "v3.automatic.yaml_composes": 2,
+            "v3.automatic.converted_nodes": 35218,
+            "broken.snapshot_composes": 1,
+            "broken.three_source_request_composes": 3
+          },
+          "identical_input_composition_histogram": {
+            "3": 3
+          }
+        },
+        "no-capture": {
+          "best_total_ms": 99.79270026087761,
+          "round_spread_percent": 0.16263686823665413,
+          "same_best_run_phases_ms": {
+            "change": 0.18509989604353905,
+            "collect": 7.316400296986103,
+            "snapshot": 83.23979983106256,
+            "diagnostics": 0.00090012326836586,
+            "occurrences": 9.050500113517046,
+            "total": 99.79270026087761
+          },
+          "phase_minima_ms": {
+            "change": 0.18509989604353905,
+            "collect": 7.233799900859594,
+            "snapshot": 83.23979983106256,
+            "diagnostics": 0.000500120222568512,
+            "occurrences": 9.037099778652191,
+            "total": 99.79270026087761
+          },
+          "query_minima_ms": {
+            "outline.first": 131.9022998213768,
+            "lenses.first": 0.6125001236796379,
+            "inlays.first": 23.741299752146006,
+            "folding.first": 7.802099920809269,
+            "hover.first_after_auto": 0.03350013867020607,
+            "outline.warm": 0.000500120222568512,
+            "inlays.warm": 0.08570030331611633,
+            "folding.warm": 6.709499750286341,
+            "hover.warm": 0.025399960577487946
+          },
+          "memory_MB": {
+            "snapshot": {
+              "kept": 5.10588,
+              "peak": 9.080991
+            },
+            "diagnostics_occurrences": {
+              "kept": 6.415835,
+              "peak": 9.080991
+            },
+            "automatic_queries": {
+              "kept": 15.857351,
+              "peak": 16.370831
+            },
+            "sparse_hovers": {
+              "kept": 15.857643,
+              "peak": 16.370831
+            }
+          },
+          "dimensions": {
+            "read_files": 1,
+            "shapes": 3600,
+            "endpoints": 200,
+            "captured_files": 0,
+            "retained_source_records": 0
+          },
+          "counts": {
+            "v1.snapshot.yaml_composes": 1,
+            "v1.snapshot.converted_nodes": 17609,
+            "v1.automatic.yaml_composes": 1,
+            "v1.automatic.converted_nodes": 17609,
+            "v1.automatic.SourceRecord.line": 8007,
+            "v1.warm.SourceRecord.line": 1,
+            "v2.snapshot.yaml_composes": 1,
+            "v2.snapshot.converted_nodes": 17609,
+            "v2.automatic.yaml_composes": 1,
+            "v2.automatic.converted_nodes": 17609,
+            "v2.automatic.SourceRecord.line": 8007,
+            "v2.warm.SourceRecord.line": 1,
+            "v3.snapshot.yaml_composes": 1,
+            "v3.snapshot.converted_nodes": 17609,
+            "v3.automatic.yaml_composes": 1,
+            "v3.automatic.converted_nodes": 17609,
+            "v3.automatic.SourceRecord.line": 8007,
+            "v3.warm.SourceRecord.line": 1,
+            "broken.snapshot_composes": 1,
+            "broken.three_source_request_composes": 1
+          },
+          "identical_input_composition_histogram": {
+            "2": 3
+          }
+        }
+      }
+    },
+    {
+      "corpus": "endpoints",
+      "scale": 1,
+      "inputs": {
+        "files": 1,
+        "bytes": 286801,
+        "entry_bytes": 286801,
+        "focus_bytes": 286801
+      },
+      "detail_timers": false,
+      "mixed": false,
+      "source_first": false,
+      "trees": {
+        "parked": {
+          "best_total_ms": 458.08029966428876,
+          "round_spread_percent": 0.8022611492155107,
+          "same_best_run_phases_ms": {
+            "change": 0.24799956008791924,
+            "collect": 30.983800068497658,
+            "snapshot": 407.37170027568936,
+            "diagnostics": 0.0010998919606208801,
+            "occurrences": 19.475699868053198,
+            "total": 458.08029966428876
+          },
+          "phase_minima_ms": {
+            "change": 0.24030031636357307,
+            "collect": 29.590199701488018,
+            "snapshot": 407.37170027568936,
+            "diagnostics": 0.0009997747838497162,
+            "occurrences": 18.61339993774891,
+            "total": 458.08029966428876
+          },
+          "query_minima_ms": {
+            "outline.first": 174.71429985016584,
+            "lenses.first": 0.005200039595365524,
+            "inlays.first": 56.05820007622242,
+            "folding.first": 17.607899848371744,
+            "hover.first_after_auto": 0.03969995304942131,
+            "outline.warm": 0.000500120222568512,
+            "inlays.warm": 3.651699982583523,
+            "folding.warm": 17.115100286900997,
+            "hover.warm": 0.027999747544527054
+          },
+          "memory_MB": {
+            "snapshot": {
+              "kept": 22.188802,
+              "peak": 31.716558
+            },
+            "diagnostics_occurrences": {
+              "kept": 23.607674,
+              "peak": 31.716558
+            },
+            "automatic_queries": {
+              "kept": 35.948945,
+              "peak": 37.355313
+            },
+            "sparse_hovers": {
+              "kept": 35.949782,
+              "peak": 37.355313
+            }
+          },
+          "dimensions": {
+            "read_files": 1,
+            "shapes": 12003,
+            "endpoints": 500,
+            "captured_files": 1,
+            "retained_source_records": 36057
+          },
+          "counts": {
+            "v1.snapshot.yaml_composes": 1,
+            "v1.snapshot.converted_nodes": 36057,
+            "v1.snapshot._RecordNode.kind": 172589,
+            "v1.snapshot.SourceRecord.line": 44031,
+            "v1.automatic.SourceRecord.line": 2006,
+            "v1.warm.SourceRecord.line": 1,
+            "v2.snapshot.yaml_composes": 1,
+            "v2.snapshot.converted_nodes": 36057,
+            "v2.snapshot._RecordNode.kind": 172589,
+            "v2.snapshot.SourceRecord.line": 44031,
+            "v2.automatic.SourceRecord.line": 2006,
+            "v2.warm.SourceRecord.line": 1,
+            "v3.snapshot.yaml_composes": 1,
+            "v3.snapshot.converted_nodes": 36057,
+            "v3.snapshot._RecordNode.kind": 172589,
+            "v3.snapshot.SourceRecord.line": 44031,
+            "v3.automatic.SourceRecord.line": 2006,
+            "v3.warm.SourceRecord.line": 1
+          },
+          "identical_input_composition_histogram": {
+            "1": 3
+          }
+        },
+        "simple": {
+          "best_total_ms": 336.0377000644803,
+          "round_spread_percent": 0.9158198718575816,
+          "same_best_run_phases_ms": {
+            "change": 0.27820002287626266,
+            "collect": 20.79940028488636,
+            "snapshot": 296.79219983518124,
+            "diagnostics": 0.0006998889148235321,
+            "occurrences": 18.167200032621622,
+            "total": 336.0377000644803
+          },
+          "phase_minima_ms": {
+            "change": 0.22960035130381584,
+            "collect": 19.949499983340502,
+            "snapshot": 296.79219983518124,
+            "diagnostics": 0.0006998889148235321,
+            "occurrences": 18.06390006095171,
+            "total": 336.0377000644803
+          },
+          "query_minima_ms": {
+            "outline.first": 52.72539984434843,
+            "lenses.first": 0.007600057870149612,
+            "inlays.first": 151.92680014297366,
+            "folding.first": 87.68170000985265,
+            "hover.first_after_auto": 0.014699995517730713,
+            "outline.warm": 53.32720000296831,
+            "inlays.warm": 3.6534001119434834,
+            "folding.warm": 20.515600219368935,
+            "hover.warm": 0.011200085282325745
+          },
+          "memory_MB": {
+            "snapshot": {
+              "kept": 17.592078,
+              "peak": 26.749222
+            },
+            "diagnostics_occurrences": {
+              "kept": 19.01095,
+              "peak": 26.749222
+            },
+            "automatic_queries": {
+              "kept": 38.931493,
+              "peak": 50.786768
+            },
+            "sparse_hovers": {
+              "kept": 38.931925,
+              "peak": 50.786768
+            }
+          },
+          "dimensions": {
+            "read_files": 1,
+            "shapes": 12003,
+            "endpoints": 500,
+            "captured_files": 0,
+            "retained_source_records": 0
+          },
+          "counts": {
+            "v1.snapshot.yaml_composes": 1,
+            "v1.snapshot.converted_nodes": 36057,
+            "v1.automatic.yaml_composes": 2,
+            "v1.automatic.converted_nodes": 72114,
+            "v2.snapshot.yaml_composes": 1,
+            "v2.snapshot.converted_nodes": 36057,
+            "v2.automatic.yaml_composes": 2,
+            "v2.automatic.converted_nodes": 72114,
+            "v3.snapshot.yaml_composes": 1,
+            "v3.snapshot.converted_nodes": 36057,
+            "v3.automatic.yaml_composes": 2,
+            "v3.automatic.converted_nodes": 72114
+          },
+          "identical_input_composition_histogram": {
+            "3": 3
+          }
+        },
+        "no-capture": {
+          "best_total_ms": 342.66440011560917,
+          "round_spread_percent": 0.6856563091804269,
+          "same_best_run_phases_ms": {
+            "change": 0.2373000606894493,
+            "collect": 20.324199926108122,
+            "snapshot": 303.53760020807385,
+            "diagnostics": 0.0013997778296470642,
+            "occurrences": 18.563900142908096,
+            "total": 342.66440011560917
+          },
+          "phase_minima_ms": {
+            "change": 0.23090001195669174,
+            "collect": 20.324199926108122,
+            "snapshot": 303.53760020807385,
+            "diagnostics": 0.000800006091594696,
+            "occurrences": 18.412900157272816,
+            "total": 342.66440011560917
+          },
+          "query_minima_ms": {
+            "outline.first": 311.4338000304997,
+            "lenses.first": 0.00490015372633934,
+            "inlays.first": 56.053000036627054,
+            "folding.first": 21.59000001847744,
+            "hover.first_after_auto": 0.03929995000362396,
+            "outline.warm": 0.0004996545612812042,
+            "inlays.warm": 3.6606001667678356,
+            "folding.warm": 18.293200060725212,
+            "hover.warm": 0.03190012648701668
+          },
+          "memory_MB": {
+            "snapshot": {
+              "kept": 17.433548,
+              "peak": 26.846059
+            },
+            "diagnostics_occurrences": {
+              "kept": 18.85242,
+              "peak": 26.846059
+            },
+            "automatic_queries": {
+              "kept": 38.949796,
+              "peak": 40.356276
+            },
+            "sparse_hovers": {
+              "kept": 38.950836,
+              "peak": 40.356276
+            }
+          },
+          "dimensions": {
+            "read_files": 1,
+            "shapes": 12003,
+            "endpoints": 500,
+            "captured_files": 0,
+            "retained_source_records": 0
+          },
+          "counts": {
+            "v1.snapshot.yaml_composes": 1,
+            "v1.snapshot.converted_nodes": 36057,
+            "v1.automatic.yaml_composes": 1,
+            "v1.automatic.converted_nodes": 36057,
+            "v1.automatic.SourceRecord.line": 23031,
+            "v1.warm.SourceRecord.line": 1,
+            "v2.snapshot.yaml_composes": 1,
+            "v2.snapshot.converted_nodes": 36057,
+            "v2.automatic.yaml_composes": 1,
+            "v2.automatic.converted_nodes": 36057,
+            "v2.automatic.SourceRecord.line": 23031,
+            "v2.warm.SourceRecord.line": 1,
+            "v3.snapshot.yaml_composes": 1,
+            "v3.snapshot.converted_nodes": 36057,
+            "v3.automatic.yaml_composes": 1,
+            "v3.automatic.converted_nodes": 36057,
+            "v3.automatic.SourceRecord.line": 23031,
+            "v3.warm.SourceRecord.line": 1
+          },
+          "identical_input_composition_histogram": {
+            "2": 3
+          }
+        }
+      }
+    },
+    {
+      "corpus": "hover",
+      "scale": 1,
+      "inputs": {
+        "files": 1,
+        "bytes": 342406,
+        "entry_bytes": 342406,
+        "focus_bytes": 342406
+      },
+      "detail_timers": false,
+      "mixed": true,
+      "source_first": false,
+      "trees": {
+        "parked": {
+          "mixed_best_ms": 1483.5411002859473,
+          "round_spread_percent": 0.46058043084251654,
+          "peak_MB": 30.066339,
+          "kept_MB": 28.880955
+        },
+        "simple": {
+          "mixed_best_ms": 1558.5537999868393,
+          "round_spread_percent": 2.024626940053942,
+          "peak_MB": 45.601847,
+          "kept_MB": 33.947808
+        },
+        "no-capture": {
+          "mixed_best_ms": 1652.0231999456882,
+          "round_spread_percent": 1.8709361997274687,
+          "peak_MB": 32.840348,
+          "kept_MB": 31.654756
+        }
+      }
+    },
+    {
+      "corpus": "hover",
+      "scale": 1,
+      "inputs": {
+        "files": 1,
+        "bytes": 342406,
+        "entry_bytes": 342406,
+        "focus_bytes": 342406
+      },
+      "detail_timers": false,
+      "mixed": true,
+      "source_first": true,
+      "trees": {
+        "parked": {
+          "mixed_best_ms": 1836.6552996449172,
+          "round_spread_percent": 1.7587078167967674,
+          "peak_MB": 30.184504,
+          "kept_MB": 28.88072
+        },
+        "simple": {
+          "mixed_best_ms": 1603.1725998036563,
+          "round_spread_percent": 0.6073145200725216,
+          "peak_MB": 39.947598,
+          "kept_MB": 33.943601
+        },
+        "no-capture": {
+          "mixed_best_ms": 2010.6466002762318,
+          "round_spread_percent": 3.588203890058228,
+          "peak_MB": 39.928876,
+          "kept_MB": 38.743284
+        }
+      }
+    },
+    {
+      "corpus": "large",
+      "scale": 1,
+      "inputs": {
+        "files": 152,
+        "bytes": 576354,
+        "entry_bytes": 3930,
+        "focus_bytes": 3850
+      },
+      "detail_timers": false,
+      "mixed": false,
+      "source_first": false,
+      "trees": {
+        "parked": [
+          {
+            "baseline_rss_MB": 37.576704,
+            "retention": [
+              {
+                "version": 1,
+                "automatic_queries": false,
+                "rss_MB": 82.771968,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 2,
+                "automatic_queries": false,
+                "rss_MB": 84.078592,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 3,
+                "automatic_queries": false,
+                "rss_MB": 84.353024,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 4,
+                "automatic_queries": false,
+                "rss_MB": 84.832256,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 5,
+                "automatic_queries": false,
+                "rss_MB": 84.803584,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 6,
+                "automatic_queries": true,
+                "rss_MB": 92.176384,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 7,
+                "automatic_queries": true,
+                "rss_MB": 90.738688,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 8,
+                "automatic_queries": true,
+                "rss_MB": 90.865664,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 9,
+                "automatic_queries": true,
+                "rss_MB": 91.230208,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 10,
+                "automatic_queries": true,
+                "rss_MB": 93.589504,
+                "live_Raml": 2,
+                "snapshots": 1
+              }
+            ]
+          }
+        ],
+        "simple": [
+          {
+            "baseline_rss_MB": 36.978688,
+            "retention": [
+              {
+                "version": 1,
+                "automatic_queries": false,
+                "rss_MB": 74.694656,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 2,
+                "automatic_queries": false,
+                "rss_MB": 74.395648,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 3,
+                "automatic_queries": false,
+                "rss_MB": 76.423168,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 4,
+                "automatic_queries": false,
+                "rss_MB": 74.428416,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 5,
+                "automatic_queries": false,
+                "rss_MB": 77.225984,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 6,
+                "automatic_queries": true,
+                "rss_MB": 82.341888,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 7,
+                "automatic_queries": true,
+                "rss_MB": 82.681856,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 8,
+                "automatic_queries": true,
+                "rss_MB": 79.62624,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 9,
+                "automatic_queries": true,
+                "rss_MB": 82.624512,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 10,
+                "automatic_queries": true,
+                "rss_MB": 83.161088,
+                "live_Raml": 2,
+                "snapshots": 1
+              }
+            ]
+          }
+        ],
+        "no-capture": [
+          {
+            "baseline_rss_MB": 37.494784,
+            "retention": [
+              {
+                "version": 1,
+                "automatic_queries": false,
+                "rss_MB": 75.42784,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 2,
+                "automatic_queries": false,
+                "rss_MB": 77.4144,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 3,
+                "automatic_queries": false,
+                "rss_MB": 75.534336,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 4,
+                "automatic_queries": false,
+                "rss_MB": 76.214272,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 5,
+                "automatic_queries": false,
+                "rss_MB": 74.907648,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 6,
+                "automatic_queries": true,
+                "rss_MB": 84.123648,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 7,
+                "automatic_queries": true,
+                "rss_MB": 83.423232,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 8,
+                "automatic_queries": true,
+                "rss_MB": 83.8656,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 9,
+                "automatic_queries": true,
+                "rss_MB": 84.185088,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 10,
+                "automatic_queries": true,
+                "rss_MB": 83.8656,
+                "live_Raml": 2,
+                "snapshots": 1
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "corpus": "hover",
+      "scale": 1,
+      "inputs": {
+        "files": 1,
+        "bytes": 342406,
+        "entry_bytes": 342406,
+        "focus_bytes": 342406
+      },
+      "detail_timers": false,
+      "mixed": false,
+      "source_first": false,
+      "trees": {
+        "parked": [
+          {
+            "baseline_rss_MB": 40.36608,
+            "baseline_live_Raml": 1,
+            "retention": [
+              {
+                "version": 1,
+                "automatic_queries": false,
+                "rss_MB": 69.799936,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 2,
+                "automatic_queries": false,
+                "rss_MB": 69.574656,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 3,
+                "automatic_queries": false,
+                "rss_MB": 68.898816,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 4,
+                "automatic_queries": false,
+                "rss_MB": 70.385664,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 5,
+                "automatic_queries": false,
+                "rss_MB": 69.419008,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 6,
+                "automatic_queries": true,
+                "rss_MB": 77.68064,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 7,
+                "automatic_queries": true,
+                "rss_MB": 79.6672,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 8,
+                "automatic_queries": true,
+                "rss_MB": 80.105472,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 9,
+                "automatic_queries": true,
+                "rss_MB": 80.162816,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 10,
+                "automatic_queries": true,
+                "rss_MB": 78.938112,
+                "live_Raml": 2,
+                "snapshots": 1
+              }
+            ]
+          }
+        ],
+        "simple": [
+          {
+            "baseline_rss_MB": 39.968768,
+            "baseline_live_Raml": 1,
+            "retention": [
+              {
+                "version": 1,
+                "automatic_queries": false,
+                "rss_MB": 60.862464,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 2,
+                "automatic_queries": false,
+                "rss_MB": 62.005248,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 3,
+                "automatic_queries": false,
+                "rss_MB": 63.20128,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 4,
+                "automatic_queries": false,
+                "rss_MB": 62.169088,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 5,
+                "automatic_queries": false,
+                "rss_MB": 60.08832,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 6,
+                "automatic_queries": true,
+                "rss_MB": 90.791936,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 7,
+                "automatic_queries": true,
+                "rss_MB": 87.67488,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 8,
+                "automatic_queries": true,
+                "rss_MB": 88.690688,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 9,
+                "automatic_queries": true,
+                "rss_MB": 89.68192,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 10,
+                "automatic_queries": true,
+                "rss_MB": 88.686592,
+                "live_Raml": 2,
+                "snapshots": 1
+              }
+            ]
+          }
+        ],
+        "no-capture": [
+          {
+            "baseline_rss_MB": 40.435712,
+            "baseline_live_Raml": 1,
+            "retention": [
+              {
+                "version": 1,
+                "automatic_queries": false,
+                "rss_MB": 61.054976,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 2,
+                "automatic_queries": false,
+                "rss_MB": 61.902848,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 3,
+                "automatic_queries": false,
+                "rss_MB": 61.120512,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 4,
+                "automatic_queries": false,
+                "rss_MB": 61.927424,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 5,
+                "automatic_queries": false,
+                "rss_MB": 60.125184,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 6,
+                "automatic_queries": true,
+                "rss_MB": 82.853888,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 7,
+                "automatic_queries": true,
+                "rss_MB": 82.731008,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 8,
+                "automatic_queries": true,
+                "rss_MB": 82.522112,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 9,
+                "automatic_queries": true,
+                "rss_MB": 82.341888,
+                "live_Raml": 2,
+                "snapshots": 1
+              },
+              {
+                "version": 10,
+                "automatic_queries": true,
+                "rss_MB": 84.021248,
+                "live_Raml": 2,
+                "snapshots": 1
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "corpus": "large",
+      "scale": 1,
+      "inputs": {
+        "files": 152,
+        "bytes": 576354,
+        "entry_bytes": 3930,
+        "focus_bytes": 3850
+      },
+      "detail_timers": false,
+      "mixed": false,
+      "source_first": false,
+      "trees": {
+        "parked": [
+          {
+            "ownership_MB": {
+              "views/occurrences.py": 8.14352,
+              "types/shape.py": 7.412952,
+              "sourceprojection.py": 6.618072,
+              "sourcecapture.py": 6.1164,
+              "types/resolve.py": 2.0268,
+              "yamlnode.py": 1.787413,
+              "datanode.py": 1.54664,
+              "registry.py": 1.171312,
+              "parser/facets.py": 0.41832,
+              "types/base.py": 0.3864,
+              "types/inherit.py": 0.2496,
+              "types/unwrap.py": 0.211256,
+              "types/examples.py": 0.1848,
+              "parser/fragments.py": 0.117896,
+              "facet_names.py": 0.1025,
+              "uris.py": 0.074187,
+              "types/values.py": 0.0736,
+              "types/complex_.py": 0.0672,
+              "parser/references.py": 0.04935,
+              "parser/projections.py": 0.044608,
+              "views/lint/rules/__init__.py": 0.027128,
+              "views/lint/engine.py": 0.01412,
+              "views/lint/plugins.py": 0.010593,
+              "service/workspace.py": 0.009618,
+              "types/expressions/parser.py": 0.003776,
+              "types/expressions/lexer.py": 0.002439,
+              "other": 0.001448,
+              "loaders.py": 0.000554,
+              "parser/entry.py": 0.000432,
+              "views/lint/config.py": 0.000264,
+              "types/custom_facets.py": 4.8e-05,
+              "parser/uritemplates.py": 4.7e-05,
+              "parser/endpoints.py": 4.6e-05
+            },
+            "traced_kept_MB": 36.873339
+          }
+        ],
+        "simple": [
+          {
+            "ownership_MB": {
+              "views/occurrences.py": 8.14352,
+              "types/shape.py": 7.28252,
+              "yamlnode.py": 5.370904,
+              "types/resolve.py": 1.8708,
+              "datanode.py": 1.54664,
+              "registry.py": 1.167936,
+              "parser/entry.py": 0.955808,
+              "parser/facets.py": 0.41832,
+              "types/base.py": 0.3864,
+              "types/inherit.py": 0.2496,
+              "types/unwrap.py": 0.211256,
+              "types/examples.py": 0.1848,
+              "parser/fragments.py": 0.117896,
+              "facet_names.py": 0.1025,
+              "uris.py": 0.074187,
+              "types/values.py": 0.0736,
+              "types/complex_.py": 0.0672,
+              "parser/references.py": 0.04935,
+              "views/lint/rules/__init__.py": 0.027128,
+              "views/lint/engine.py": 0.01412,
+              "views/lint/plugins.py": 0.010467,
+              "service/workspace.py": 0.009434,
+              "types/expressions/parser.py": 0.003776,
+              "types/expressions/lexer.py": 0.001687,
+              "other": 0.001448,
+              "loaders.py": 0.000554,
+              "views/lint/config.py": 0.000264,
+              "types/custom_facets.py": 4.8e-05,
+              "parser/endpoints.py": 4.6e-05
+            },
+            "traced_kept_MB": 28.342209
+          }
+        ],
+        "no-capture": [
+          {
+            "ownership_MB": {
+              "views/occurrences.py": 8.14352,
+              "types/shape.py": 7.412952,
+              "yamlnode.py": 5.366933,
+              "types/resolve.py": 2.0268,
+              "datanode.py": 1.54664,
+              "registry.py": 1.168048,
+              "parser/entry.py": 0.955824,
+              "parser/facets.py": 0.41832,
+              "types/base.py": 0.3864,
+              "types/inherit.py": 0.2496,
+              "types/unwrap.py": 0.211256,
+              "types/examples.py": 0.1848,
+              "parser/fragments.py": 0.117896,
+              "facet_names.py": 0.1025,
+              "uris.py": 0.074187,
+              "types/values.py": 0.0736,
+              "types/complex_.py": 0.0672,
+              "parser/references.py": 0.04935,
+              "views/lint/rules/__init__.py": 0.027128,
+              "views/lint/engine.py": 0.01412,
+              "views/lint/plugins.py": 0.010534,
+              "service/workspace.py": 0.009586,
+              "types/expressions/parser.py": 0.003776,
+              "types/expressions/lexer.py": 0.002486,
+              "other": 0.001448,
+              "loaders.py": 0.000554,
+              "views/lint/config.py": 0.000264,
+              "types/custom_facets.py": 4.8e-05,
+              "parser/uritemplates.py": 4.7e-05,
+              "parser/endpoints.py": 4.6e-05
+            },
+            "traced_kept_MB": 28.625863
+          }
+        ]
+      }
+    }
+  ]
+}

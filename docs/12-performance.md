@@ -302,7 +302,8 @@ a change to a hot path, or to any code a claim is made about:
    and this tree over one corpus. A time delta counts only if it is larger than
    the reported noise. Record the allocation delta whether or not the time
    moved, because it is nearly deterministic. A field added to every shape
-   shows there and nowhere else.
+   shows there and nowhere else. A workload the base revision cannot run is
+   reported as not comparable; one this tree cannot run fails the command.
 3. Where the question is a leaf function's constant factor, add or run a
    `bench micro` case at sizes that cover the function's range.
 4. For a new feature, the base revision has no comparable number. Run

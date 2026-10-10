@@ -104,15 +104,24 @@ def run_ab(  # noqa: PLR0913 - the suite's own selectors, plus the revision and 
                 entry = write(name, corpus_root, scale)
                 for config in configs:
                     sides: dict[str, list[Measurement]] = {'A': [], 'B': []}
-                    try:
-                        for _ in range(rounds):
-                            sides['A'].append(spawn(name, config, entry, repeat, cwd=tree))
+                    unavailable: str | None = None
+                    for _ in range(rounds):
+                        if unavailable is None:
+                            try:
+                                sides['A'].append(spawn(name, config, entry, repeat, cwd=tree))
+                            except RuntimeError as err:
+                                # A corpus for a feature the revision lacks can
+                                # fail there; that side has no number.
+                                unavailable = str(err)
+                        # B still runs: a broken current worker is a failure,
+                        # not missing evidence.
+                        try:
                             sides['B'].append(spawn(name, config, entry, repeat, cwd=_ROOT))
-                    except RuntimeError:
-                        # A corpus for a feature the revision lacks can fail
-                        # there; that side has no number, which is the result.
-                        failed = 'A' if len(sides['A']) == len(sides['B']) else 'B'
-                        print(f'{name}/{config:<20} fails in {failed}; not comparable')
+                        except RuntimeError as err:
+                            print(f'{name}/{config} FAIL in B (this tree):\n{err}')
+                            return 1
+                    if unavailable is not None:
+                        print(f'{name}/{config} fails in A; not comparable (B succeeded):\n{unavailable}')
                         continue
                     print(_row(f'{name}/{config}', sides['A'], sides['B']))
             finally:

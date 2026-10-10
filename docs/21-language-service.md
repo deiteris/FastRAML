@@ -124,6 +124,7 @@ composed YAML and the parser's structural grammar.
 | `workspace_symbols` | the declarations of every snapshot, matched case-insensitively, once each |
 | `links` | each `Link` occurrence in the file, with the file it resolved to |
 | `folding_ranges`, `selection_ranges` | the buffer's composed `Node` tree alone |
+| `visible_names` | the fragment resolver's local and directly imported declaration candidates (docs/04 § 2) |
 | `type_at`, `supertypes`, `subtypes` | a type's `inherits` and `alias`, and the declarations naming it |
 | `diagnostics` | `RamlError.chains()` and the lint findings |
 | `tree` | `build_tree` (`docs/16` § 6) as JSON text, only on an unwrapped model |

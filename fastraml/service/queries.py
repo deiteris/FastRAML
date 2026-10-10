@@ -58,6 +58,7 @@ __all__ = [
     'symbol',
     'tree',
     'type_at',
+    'visible_names',
     'workspace_symbols',
 ]
 
@@ -372,6 +373,19 @@ def workspace_symbols(snapshots: Iterable[Snapshot], query: str) -> list[Symbol]
                 seen.add(key)
                 found.append(each)
     return found
+
+
+def visible_names(snapshot: Snapshot, uri: str, kind: str) -> list[Symbol]:
+    """Completion candidates from a fragment's own resolver, never all declarations."""
+    raml = snapshot.raml
+    anchor = None if raml is None else raml.resolver_at(uri)
+    if anchor is None:
+        return []
+    return [
+        each
+        for name, entity in anchor.visible_names(kind)
+        if (each := symbol(name, DECLARATION_KINDS[kind], entity)) is not None
+    ]
 
 
 # -- links, folding and selection -------------------------------------------------------

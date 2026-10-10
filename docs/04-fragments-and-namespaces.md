@@ -45,6 +45,7 @@ class ReferenceResolver(Fragment, Protocol):
     def trait_definition(self, name: str) -> TraitDefinition: ...
     def security_scheme_definition(self, name: str) -> SecuritySchemeDefinition: ...
     def library_link(self, prefix: str) -> LibraryLink | None: ...
+    def visible_names(self, kind: str) -> Iterator[tuple[str, Declaration]]: ...
 ```
 
 `ReferenceResolver` includes the `SecuritySchemeResolver` capability. Every
@@ -54,6 +55,17 @@ declarations, as does an Overlay or Extension in its target tree's declarations
 ([19](19-overlays-and-extensions.md) § 5.1). These declaring resolvers share one
 implementation over two hooks: the local table and the `uses:` map. Resolver
 capabilities are checked structurally.
+
+`visible_names(kind)` enumerates names for one declaration table (`types`,
+`annotationTypes`, `traits`, `resourceTypes`, or `securitySchemes`). It yields
+local declarations first, then each directly imported library's declarations
+with that import's prefix. Local dotted names take precedence. Every qualified
+candidate must round-trip through ordinary resolution to the same entity;
+unresolved imports and inaccessible dotted suffixes contribute no names.
+It never follows a library's own imports. Annotation-type enumeration includes
+the ordinary-type fallback, with annotation types taking precedence.
+Extension resolvers enumerate only the declarations and imports visible at
+their chain position. Literal included content delegates to its host resolver.
 
 ## 3. Name resolution
 

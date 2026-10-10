@@ -34,7 +34,9 @@ from fastraml.yamlnode import (
 )
 
 if TYPE_CHECKING:
-    from fastraml.parser.fragments import LibraryLink, ReferenceResolver
+    from collections.abc import Iterator
+
+    from fastraml.parser.fragments import Declaration, LibraryLink, ReferenceResolver
     from fastraml.parser.resourcetypes import ResourceTypeDefinition
     from fastraml.parser.security import SecuritySchemeDefinition
     from fastraml.parser.traits import TraitDefinition
@@ -388,6 +390,9 @@ class IncludedContent:
 
     def library_link(self, prefix: str) -> LibraryLink | None:
         return self.host.library_link(prefix)
+
+    def visible_names(self, kind: str) -> Iterator[tuple[str, Declaration]]:
+        return self.host.visible_names(kind)
 
 
 def content_anchor(anchor: ReferenceResolver | None, location: str) -> ReferenceResolver | None:

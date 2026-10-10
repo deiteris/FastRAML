@@ -164,7 +164,8 @@ name used in an expression is one only once P7 bound it. No query raises on a
 snapshot that stopped at any stage (`test_service_queries.py`).
 
 **Shared semantic indices.** A snapshot owns lazy declaration enumeration and
-file grouping, shared by outline, workspace symbols and hover subjects. ID lookup
+file grouping, shared by outline, workspace symbols, hover subjects and
+effective-type code lenses. ID lookup
 populates separately on first hierarchy preparation/rebinding; the reverse map
 populates separately on first subtype request. It records direct `inherits` and
 `alias` edges, deduplicates repeated parents, and preserves child declaration order.

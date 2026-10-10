@@ -4,7 +4,7 @@ import pytest
 
 from fastraml.positions import Position
 from fastraml.service import index as index_module
-from fastraml.service import inlays, outline, queries
+from fastraml.service import inlays, lenses, outline, queries
 from fastraml.service.datahover import DataHover
 from fastraml.service.hover import Hover
 from tests.unit.test_service_data_hover import DOCUMENT
@@ -36,11 +36,22 @@ def test_diagnostics_do_not_populate_query_indices_and_declaration_queries_share
     assert first
     assert outline.document_symbols(snapshot, uri) is first
     queries.workspace_symbols([snapshot], 'Book')
+    assert lenses.code_lenses(snapshot, uri)
     assert snapshot.hover is not None
     assert enumerations == 1
     assert snapshot.semantic is not None
     assert snapshot.semantic._by_id is None
     assert snapshot.semantic._children is None
+
+
+def test_code_lenses_read_the_snapshots_shared_declaration_enumeration(memory_workspace):
+    workspace, folder = _buffered(memory_workspace, {'api.raml': API, 'lib.raml': LIBRARY, 'cover.raml': COVER})
+    uri = f'{folder}/api.raml'
+    snapshot = workspace.snapshot(uri)
+    assert snapshot._semantic is None
+    assert [lens.name for lens in lenses.code_lenses(snapshot, uri)] == ['Entity', 'Book']
+    assert snapshot._semantic is not None
+    assert snapshot._semantic._declarations is not None
 
 
 def test_typed_definition_before_hover_shares_one_data_population_without_presentation(memory_workspace, monkeypatch):

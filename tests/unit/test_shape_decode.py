@@ -84,6 +84,32 @@ class TestInvariantI4:
             assert (base in unresolved) is isinstance(base.shape, UnknownShape)
 
 
+@pytest.mark.parametrize(
+    ('declaration', 'written'),
+    [
+        ('', False),
+        ('null', False),
+        ('~', False),
+        ("''", False),
+        ('{}', False),
+        ('{properties: {name: string}}', False),
+        ('string', True),
+        ('Other', True),
+        ('[A, B]', True),
+        ('{type: [A, B]}', True),
+        ('{type: null}', True),
+        ('{type: ""}', True),
+        ('{schema: null}', True),
+        ('{type: {value: string}}', True),
+    ],
+)
+def test_authored_type_syntax_survives_both_clone_operations(declaration, written):
+    base = shape(f'T: {declaration}\n')
+    assert base.type_written is written
+    assert base.clone({}).type_written is written
+    assert base.clone_detached().type_written is written
+
+
 class TestCommonFacets:
     def test_the_common_facets_land_on_the_base(self):
         base = shape('T:\n  type: string\n  displayName: D\n  description: Text.\n  (ann): 1\n')

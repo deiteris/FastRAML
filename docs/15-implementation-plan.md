@@ -22,7 +22,13 @@ XML Schema external types are unsupported ([01](01-scope-and-coverage.md) § 3).
 **Service baseline acceptance and recovery.** The simpler source-cache branch
 passes the master-controlled rebuild and mixed-request checks after sharing its
 query source owner. Its documented first-use trade-off is accepted;
-CI verification and integration are pending.
+all CI checks passed and the baseline is merged. The first isolated recovery
+experiment implements model-backed declaration inlays against that accepted
+control. Its correctness, scaling and A/B results are recorded in the
+[inlay recovery report](reports/2026-10-10/service-model-inlays.md), including its
+accepted snapshot-first mixed allocation-peak trade-off. Remaining recovery
+candidates are shared semantic/hierarchy indices and outline caching, cursor-local
+source lookup, and accurate authored section ranges, each measured independently.
 The record-backed representation replacement remains parked; its recurring
 rebuild and first-use costs are recorded in the
 [service cost review](reports/2026-10-10/service-authoring-cost-review.md).
@@ -75,8 +81,9 @@ the media-type fixes and the type-walk work landed together:
   owner removes the old duplicate hover/structural tree. The accepted baseline's
   remaining first-use cost and post-query allocation trade-off are recorded in the
   [integration report](reports/2026-10-10/service-baseline-integration.md).
-  Model-backed declaration inlays and cursor-local source lookup are the next
-  separately measured recovery candidates.
+  Model-backed declaration inlays remove that first-use work from hints alone;
+  their accepted request-order peak trade-off is recorded in the inlay recovery
+  report. Cursor-local source lookup remains a separately measured candidate.
 
 ## 3. Potential future work
 

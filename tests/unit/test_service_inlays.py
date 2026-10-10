@@ -269,3 +269,114 @@ def test_long_union_labels_remain_short_without_losing_alternative_documentation
     ellipsis = next(part for part in hint.parts if '…' in part.label)
     assert ellipsis.tooltip is not None
     assert 'Uses `Zeta`' in ellipsis.tooltip
+
+
+def test_empty_declarations_are_inferred_but_explicit_null_types_and_parent_lists_are_not(memory_workspace):
+    document = (
+        '#%RAML 1.0\ntitle: T\ntypes:\n  Empty:\n  Null: null\n  Quoted: ""\n'
+        '  Map: {}\n  Explicit: {type: null}\n  Schema: {schema: null}\n'
+        '  A: object\n  B: object\n  Both: [A, B]\n  Mapping: {type: [A, B]}\n'
+    )
+    workspace, folder = _buffered(memory_workspace, {'api.raml': document})
+    uri = f'{folder}/api.raml'
+    snapshot = workspace.snapshot(uri)
+    assert snapshot.error is None
+    hints = inlays.inlay_hints(snapshot, uri, Position(1, 1, 100, 1))
+    assert [(hint.position.line, hint.label) for hint in hints] == [
+        (_where(document, f'{name}:')[0], '[string]') for name in ('Empty', 'Null', 'Quoted', 'Map')
+    ]
+
+
+@pytest.mark.parametrize('header', ['', '#%RAML 1.0 DataType\n'])
+def test_included_fragment_reference_hints_use_the_expression_not_a_synthetic_key(memory_workspace, header):
+    included = header + 'type: lib.Code\nuses:\n  lib: lib.raml\n' if header else 'type: string\n'
+    files = {
+        'api.raml': '#%RAML 1.0\ntitle: T\ntypes:\n  Included: !include included.raml\n',
+        'included.raml': included,
+        'lib.raml': '#%RAML 1.0 Library\ntypes:\n  Code: {type: string, minLength: 2}\n',
+    }
+    workspace, folder = _buffered(memory_workspace, files)
+    uri = f'{folder}/included.raml'
+    snapshot = workspace.snapshot(f'{folder}/api.raml')
+    assert snapshot.error is None
+    hints = inlays.inlay_hints(snapshot, uri, Position(1, 1, 100, 1))
+    if header:
+        assert [(hint.position, hint.label) for hint in hints] == [
+            (Position(2, len('type: lib.Code') + 1, 2, len('type: lib.Code') + 1), '[string; length: ≥2]')
+        ]
+    else:
+        assert not hints
+
+
+def test_keyless_fragment_and_inline_body_spans_are_not_inferred_declaration_keys(memory_workspace):
+    files = {
+        'api.raml': (
+            '#%RAML 1.0\ntitle: T\nmediaType: application/json\ntypes:\n'
+            '  Included: !include included.raml\n/test:\n  post:\n    body: {properties: {value: string}}\n'
+        ),
+        'included.raml': '#%RAML 1.0 DataType\nproperties: {field: string}\n',
+    }
+    workspace, folder = _buffered(memory_workspace, files)
+    snapshot = workspace.snapshot(f'{folder}/api.raml')
+    assert snapshot.error is None
+    assert not inlays.inlay_hints(snapshot, f'{folder}/included.raml', Position(1, 1, 100, 1))
+    assert not inlays.inlay_hints(snapshot, f'{folder}/api.raml', Position(8, 1, 8, 100))
+
+
+def test_template_materializations_supply_one_hint_per_authored_site(memory_workspace):
+    document = (
+        '#%RAML 1.0\ntitle: T\ntraits:\n  filtering:\n    queryParameters:\n'
+        '      filter: {minLength: 2}\n/a:\n  get:\n    is: [filtering]\n'
+        '/b:\n  get:\n    is: [filtering]\n'
+    )
+    workspace, folder = _buffered(memory_workspace, {'api.raml': document})
+    uri = f'{folder}/api.raml'
+    snapshot = workspace.snapshot(uri)
+    assert snapshot.error is None
+    hints = inlays.inlay_hints(snapshot, uri, Position(1, 1, 100, 1))
+    line, column = _where(document, 'filter:')
+    assert [(hint.position, hint.label) for hint in hints] == [
+        (Position(line, column + len('filter'), line, column + len('filter')), '[string]')
+    ]
+
+
+@pytest.mark.parametrize(
+    'declaration',
+    [
+        'field: {minLength: 2}',
+        'field: {properties: {nested: {minLength: 2}}}',
+        'field: {items: {properties: {nested: {minLength: 2}}}}',
+    ],
+)
+def test_yaml_alias_children_do_not_invent_declaration_hints_in_opaque_data(memory_workspace, declaration):
+    document = (
+        '#%RAML 1.0\ntitle: T\nannotationTypes:\n  raw: any\n'
+        f'(raw): &declaration\n  properties:\n    {declaration}\n'
+        'types:\n  Aliased: *declaration\n'
+    )
+    workspace, folder = _buffered(memory_workspace, {'api.raml': document})
+    uri = f'{folder}/api.raml'
+    snapshot = workspace.snapshot(uri)
+    assert snapshot.error is None
+    hints = inlays.inlay_hints(snapshot, uri, Position(1, 1, 100, 1))
+    line, _ = _where(document, 'field:')
+    assert not [hint for hint in hints if hint.position.line == line]
+    line, _ = _where(document, 'Aliased:')
+    assert [hint.label for hint in hints if hint.position.line == line] == ['[object]']
+
+
+def test_a_yaml_alias_preserves_hints_at_its_actual_declaration_anchor(memory_workspace):
+    document = (
+        '#%RAML 1.0\ntitle: T\ntypes:\n  Original: &declaration\n'
+        '    properties:\n      field: {minLength: 2}\n  Aliased: *declaration\n'
+    )
+    workspace, folder = _buffered(memory_workspace, {'api.raml': document})
+    uri = f'{folder}/api.raml'
+    snapshot = workspace.snapshot(uri)
+    assert snapshot.error is None
+    hints = inlays.inlay_hints(snapshot, uri, Position(1, 1, 100, 1))
+    assert [(hint.position.line, hint.label) for hint in hints] == [
+        (_where(document, 'Original:')[0], '[object]'),
+        (_where(document, 'field:')[0], '[string]'),
+        (_where(document, 'Aliased:')[0], '[object]'),
+    ]

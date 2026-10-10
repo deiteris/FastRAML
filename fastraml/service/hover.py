@@ -35,7 +35,7 @@ from fastraml.service.inlays import (
 from fastraml.service.source import original_tree
 from fastraml.service.text import Lines
 from fastraml.types.base import BaseShape, Parameter, facets_of
-from fastraml.types.complex_ import ObjectShape, UnknownShape
+from fastraml.types.complex_ import ArrayShape, ObjectShape, UnionShape, UnknownShape
 from fastraml.types.examples import examples_of
 from fastraml.types.expressions import Array, Optional_, Primitive, Union, parse_expression
 from fastraml.types.jsonschema_ import JsonShape
@@ -45,7 +45,7 @@ from fastraml.uris import relative_to
 from fastraml.views import authored
 from fastraml.views.occurrences import DECLARATION_KINDS, Kind, Link, Occurrence, Occurrences, Role
 from fastraml.views.render import type_name
-from fastraml.yamlnode import TAG_INCLUDE, TAG_STR, Node, NodeKind, backend_name, compose, pairs
+from fastraml.yamlnode import TAG_INCLUDE, TAG_STR, Node, backend_name, compose
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -78,6 +78,24 @@ class _Subject:
     required: bool | None = None
 
 
+def _declaration_children(base: BaseShape) -> Iterator[BaseShape]:
+    """Owned declaration children, without following named-reference edges."""
+    if base.alias is not None:
+        return
+    if isinstance(base.shape, ObjectShape):
+        yield from (prop.base for _, prop in authored.properties(base))
+        yield from (prop.base for _, prop in authored.pattern_properties(base))
+    yield from (prop.base for _, prop in authored.facets(base))
+    if isinstance(base.shape, ArrayShape):
+        item = authored.items(base)
+        if item is not None:
+            yield item
+    if isinstance(base.shape, UnionShape):
+        yield from (
+            member for member in base.shape.any_of or () if authored.wrote(base, member.location, member.key_pos)
+        )
+
+
 def _code(text: str) -> str:
     """An inline code span that cannot be closed by the author's text."""
     if len(text) > _INLINE_LIMIT:
@@ -91,6 +109,7 @@ class Hover:
 
     __slots__ = (
         '_ambiguous_sites',
+        '_by_uri',
         '_contexts',
         '_contexts_ready',
         '_data',
@@ -133,6 +152,7 @@ class Hover:
         self._source_generation = source_generation
         self._source_backend = source_backend
         self._subjects: dict[int, _Subject] = {}
+        self._by_uri: dict[str, list[_Subject]] = {}
         self._sites: dict[tuple[str, int, int], _Subject] = {}
         self._mappings: dict[tuple[str, int, int], _Subject] = {}
         self._keys: dict[str, list[Key]] = {}
@@ -168,21 +188,32 @@ class Hover:
         if key.is_known:
             site = (entity.location, key.line, key.column)
             previous = self._sites.setdefault(site, subject)
+            if previous is subject:
+                self._by_uri.setdefault(entity.location, []).append(subject)
             if previous.entity.id != entity.id:
                 self._ambiguous_sites.add(site)
+        else:
+            self._by_uri.setdefault(entity.location, []).append(subject)
         value = entity.value_pos
         if value.is_known:
             self._mappings.setdefault((entity.location, value.line, value.column), subject)
 
     def _index(self) -> None:
         raml = self._raml
+        borrowed: list[BaseShape] = []
         for key, name, entity in every_declaration(raml):
             kind = DECLARATION_KINDS[key]
             self._put(_Subject(name, _role(kind), entity))
         for fragment in raml.fragments.values():
             for name, link in fragment.uses.items():
                 self._put(_Subject(name, 'library namespace', link))
+            body = authored.fragment_body(raml, fragment.location)
+            if isinstance(body, BaseShape):
+                self._put(_Subject(body.name or '<anonymous>', 'type declaration', body))
         for base in raml.shapes:
+            key, value = base.key_pos, base.value_pos
+            if key.is_known and value.is_known and (value.line, value.column) < (key.line, key.column):
+                borrowed.extend(_declaration_children(base))
             self._subjects.setdefault(base.id, _Subject(base.name or '<anonymous>', 'type declaration', base))
             if isinstance(base.shape, ObjectShape):
                 for name, prop in authored.properties(base):
@@ -192,6 +223,24 @@ class Hover:
             for name, prop in authored.facets(base):
                 self._put(_Subject(name, 'custom facet declaration', prop.base, prop.required))
         self._index_endpoints()
+        self._exclude_alias_children(borrowed)
+
+    def _exclude_alias_children(self, borrowed: list[BaseShape]) -> None:
+        # YAML aliases borrow children placed at their anchor. Keep hover's
+        # subjects, but do not turn those borrowed data spans into declarations
+        # (the same placement boundary as parser.syntax.keys).
+        excluded: set[int] = set()
+        while borrowed:
+            base = borrowed.pop()
+            if base.id in excluded:
+                continue
+            excluded.add(base.id)
+            borrowed.extend(_declaration_children(base))
+        if excluded:
+            self._by_uri = {
+                uri: [subject for subject in subjects if subject.entity.id not in excluded]
+                for uri, subjects in self._by_uri.items()
+            }
 
     def _index_endpoints(self) -> None:
         api = self._raml.entry_point
@@ -269,10 +318,8 @@ class Hover:
 
     def inlay_hints(self, uri: str, span: Position) -> list[Hint]:
         """Present hidden type/facet facts using the existing authored/data indices."""
-        if uri not in self._keys:
-            self._source_keys(uri)
         if uri not in self._inlay_declarations:
-            declared = [hint for source in self._keys[uri] for hint in self._declaration_hints(uri, source)]
+            declared = [hint for subject in self._by_uri.get(uri, ()) for hint in self._declaration_hints(uri, subject)]
             declared.sort(key=lambda hint: (hint.position.line, hint.position.column))
             self._inlay_declarations[uri] = declared, [(hint.position.line, hint.position.column) for hint in declared]
         declared, starts = self._inlay_declarations[uri]
@@ -326,19 +373,21 @@ class Hover:
             )
         return sorted(hints, key=lambda hint: (hint.position.line, hint.position.column, hint.label))
 
-    def _declaration_hints(self, uri: str, source: Key) -> Iterator[Hint]:
-        subject = self._sites.get((uri, source.node.line, source.node.column))
-        if subject is None or not isinstance(subject.entity, BaseShape):
+    def _declaration_hints(self, uri: str, subject: _Subject) -> Iterator[Hint]:
+        if not isinstance(subject.entity, BaseShape):
             return
         base = subject.entity
         if base.id in self._raml.broken or isinstance(base.shape, UnknownShape):
             return
-        type_written = source.value.kind is NodeKind.SEQUENCE or (
-            source.value.kind is NodeKind.MAPPING
-            and any(key.value in ('type', 'schema') for key, _ in pairs(source.value))
-        )
-        if base.type_expr is None and base.type and not type_written:
-            key = source.node.position
+        key = base.key_pos
+        if (
+            base.type
+            and not base.type_written
+            and base.name is not None
+            and key.is_known
+            and key.line == key.end_line
+            and key.end_column > key.column
+        ):
             yield Hint(
                 key.shifted(key.end_column - key.column, 0),
                 (Part('[' + type_label(underlying_type(base)) + ']'),),

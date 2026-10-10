@@ -294,6 +294,7 @@ class BaseShape:
         # provenance / tooling
         'type_expr',
         'type_expr_refs',
+        'type_written',
         'is_annotation_type',
         'anchor',
         'location',
@@ -353,6 +354,8 @@ class BaseShape:
         #: text and span after, unless the source is retained (docs/05 § 1).
         self.type_expr: Node | WrittenScalar | None = None
         self.type_expr_refs: list[TypeExprRef] = EMPTY_LIST
+        #: Authored type syntax, independent of whether P7 creates expression refs.
+        self.type_written = False
         self.is_annotation_type = is_annotation_type
         #: The scope unqualified names in this declaration resolve in.
         self.anchor = anchor
@@ -429,6 +432,7 @@ class BaseShape:
         # shared list would let one clone's narrowing reach the original.
         clone.allowed_targets = None if self.allowed_targets is None else list(self.allowed_targets)
         clone.type_expr = self.type_expr
+        clone.type_written = self.type_written
         clone._unwrapped = self._unwrapped
 
         # The containers are what unwrap mutates, so each gets its own. An

@@ -125,10 +125,15 @@ def members[P: Placed](owner: Placed, found: Iterable[P]) -> Iterator[P]:
 
 def parameters(owner: Placed, written: Mapping[str, Parameter]) -> Iterator[tuple[str, Parameter]]:
     """The parameters `owner` wrote. A parameter is a record placed at its
-    key, in the file its shape was written in.
+    key, in the file its shape was written in; one synthesized for an
+    undeclared URI variable is placed at its resource's key and written by no one.
     """
     test = _writer(owner)
-    return ((name, param) for name, param in written.items() if test(param.base.location, param.key_pos))
+    return (
+        (name, param)
+        for name, param in written.items()
+        if not param.synthesized and test(param.base.location, param.key_pos)
+    )
 
 
 def secured_by(owner: EndPoint | Operation) -> Iterator[SecurityScheme]:

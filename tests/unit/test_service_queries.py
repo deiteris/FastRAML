@@ -277,6 +277,22 @@ class TestSymbols:
             ]),
         ]  # fmt: skip
 
+    def test_an_undeclared_uri_variable_is_not_outlined(self, memory_workspace):
+        # docs/08 § 6.2: P6 synthesizes a `string` for `{part}` and `{x}`, placed
+        # at the resource's key, which the author wrote; the parameter they did not.
+        document = '#%RAML 1.0\ntitle: T\n/items/{id}/{part}:\n  uriParameters:\n    id: string\n  get:\n/a/{x}:\n'
+        workspace, folder = _buffered(memory_workspace, {'api.raml': document})
+        snapshot = workspace.snapshot(f'{folder}/api.raml')
+        section, resource = SymbolKind.SECTION, SymbolKind.RESOURCE
+        assert _tree(outline.document_symbols(snapshot, f'{folder}/api.raml')) == [
+            ('title', SymbolKind.METADATA, 'T'),
+            ('/items/{id}/{part}', resource, '', [
+                ('uriParameters', section, '', [('id', SymbolKind.PARAMETER, 'string')]),
+                ('get', SymbolKind.METHOD, ''),
+            ]),
+            ('/a/{x}', resource, ''),
+        ]  # fmt: skip
+
     def test_a_redeclared_pattern_is_outlined_where_it_was_written(self, memory_workspace):
         """docs/07 § 4 puts a redeclared `/b/` at P's place after unwrap; the
         authored view and the outline follow the author, who wrote `/c/` first.

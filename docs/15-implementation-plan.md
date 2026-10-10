@@ -63,8 +63,9 @@ the media-type fixes and the type-walk work landed together:
   service's snapshots stopped retaining parse trees): time +27.1% (noise
   3.3%) and +21.9% (noise 4.8%), peak +16.6% and +12.9%, kept +4.0% and
   +3.3%. Accepted for the memory the retention costs: the edit loop
-  (`large/service`) is within noise on time, peak -20.5%, kept -24.4%, and
-  `effective-types` keeps -27.5%. The cost is one composition of the queried
+  (`large/service`) is within noise on time, peak -20.1%, kept -24.0%
+  (measured on the spelling-carrying corpora), and `effective-types` keeps
+  -27.5%. The cost is one composition of the queried
   file per snapshot, about a third of a parse of it, paid by the first hover
   or inlay that needs the tree (docs/21 § 2); repeated queries are cached.
   The alternative is retaining the trees at parse time, the per-snapshot

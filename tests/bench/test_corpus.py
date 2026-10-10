@@ -903,6 +903,23 @@ def test_large_reaches_common_by_two_spellings(tmp_path):
     assert len(common) == 1
 
 
+def test_general_corpora_exercise_the_deprecated_spellings(tmp_path):
+    """The parse-side compatibility recording only runs on `schemas:` and `schema:`.
+
+    The general corpora carry both spellings (docs/18 § 6), so the parse
+    workloads measure a document that records them. If a writer ever drops a
+    spelling, the recording goes unmeasured and this test says so.
+    """
+    corpora = (
+        ('large', corpus.write_large(tmp_path / 'large', type_count=24, library_count=4)),
+        ('endpoints', corpus.write_endpoints(tmp_path / 'endpoints', resource_count=3)),
+    )
+    for name, entry in corpora:
+        raml = parse_from_path(entry)
+        spelled = {use.name for uses in raml.syntax_aliases.values() for use in uses}
+        assert spelled == {'schemas', 'schema'}, f'{name} corpus records both deprecated spellings'
+
+
 class TestBaselinesMerge:
     """`baseline --bench small` must not delete the other four benches' rows.
 

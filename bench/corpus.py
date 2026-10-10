@@ -215,6 +215,19 @@ def _derived(name: str, _ordinal: int, previous: str) -> str:
     )
 
 
+def _derived_schema(name: str, _ordinal: int, previous: str) -> str:
+    """`_derived` under the deprecated `schema:` spelling (docs/18 § 6)."""
+    return (
+        f'  {name}:\n'
+        f'    schema: {previous}\n'
+        f'    properties:\n'
+        f'      label?: string\n'
+        f'      weight:\n'
+        f'        type: number\n'
+        f'        minimum: 0\n'
+    )
+
+
 def _array(name: str, _ordinal: int, previous: str) -> str:
     return f'  {name}: {previous}[]\n'
 
@@ -262,7 +275,12 @@ def _type_block(ordinal: int, previous: str | None) -> str:
     name = f'T{ordinal}'
     if previous is None:
         return _plain(name, ordinal, '')
-    return _FORMS[ordinal % len(_FORMS)](name, ordinal, previous)
+    form = _FORMS[ordinal % len(_FORMS)]
+    # Every other derived type takes the deprecated `schema:` spelling, so the
+    # parse exercises the compatibility recording (docs/18 § 6).
+    if form is _derived and ordinal % 12 == 1:
+        form = _derived_schema
+    return form(name, ordinal, previous)
 
 
 _COMMON = """#%RAML 1.0 Library
@@ -287,10 +305,13 @@ def _library(index: int, type_count: int, *, depth: int) -> str:
     *same* file through a different spelling of the path. That is the diamond
     the compose cache exists for (docs/12 § 1); if canonicalisation ever
     regresses, this corpus goes quadratic and the linearity check catches it.
+    Every other library declares its whole table under the deprecated
+    `schemas:` alias, as a pre-1.0 document would: a fragment takes
+    `schemas:` or `types:`, never both (docs/18 § 6).
     """
     lines = ['#%RAML 1.0 Library', f'usage: generated library {index}', 'uses:']
     lines.append(f'  common: {"../" * depth}common.raml')
-    lines.append('types:')
+    lines.append('schemas:' if index % 2 else 'types:')
     previous: str | None = None
     for ordinal in range(type_count):
         lines.append(_type_block(ordinal, previous).rstrip('\n'))
@@ -307,6 +328,8 @@ def _api_using(libraries: list[str]) -> str:
         'uses:',
     ]
     lines.extend(f'  lib{index}: {path}' for index, path in enumerate(libraries))
+    lines.append('schemas:')
+    lines.extend(_plain(f'Root{ordinal}', ordinal, '').rstrip('\n') for ordinal in range(3))
     return '\n'.join(lines) + '\n'
 
 
@@ -327,7 +350,11 @@ def write_large(root: Path, *, type_count: int = 7000, library_count: int = 150)
     """`type_count` types spread over `library_count` libraries.
 
     Sized after go-raml's published corpus (7124 types, 148 libraries). Halve
-    `type_count` and `library_count` together for the linearity check.
+    `type_count` and `library_count` together for the linearity check. Every
+    other library declares its types under the deprecated `schemas:` alias,
+    every other inherited type uses the deprecated `schema:` facet, and the
+    root carries a `schemas:` table of its own, so the parse exercises the
+    compatibility recording (docs/18 § 6).
     """
     per_library, remainder = divmod(type_count, library_count)
     files = {'common.raml': _COMMON}
@@ -375,12 +402,15 @@ def write_endpoints(root: Path, *, resource_count: int = 500) -> Path:
 
     Measures the two-stage build (docs/12 § 1): 6000 method-level trait
     applications, every one of them a tree merge rather than a model merge.
+    `Item` is declared in a deprecated `schemas:` table, and every fourth
+    resource types its body with the deprecated `schema:` facet, so the parse
+    exercises the compatibility recording (docs/18 § 6).
     """
     lines = [
         '#%RAML 1.0',
         'title: Generated endpoint benchmark',
         'baseUri: https://example.test',
-        'types:',
+        'schemas:',
         '  Item:',
         '    type: object',
         '    properties:',
@@ -398,7 +428,7 @@ def write_endpoints(root: Path, *, resource_count: int = 500) -> Path:
             lines.append('      200:')
             lines.append('        body:')
             lines.append('          application/json:')
-            lines.append('            type: Item')
+            lines.append('            schema: Item' if index % 4 == 0 else '            type: Item')
     _write(root, {'api.raml': '\n'.join(lines) + '\n'})
     return root / 'api.raml'
 

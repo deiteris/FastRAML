@@ -10,7 +10,7 @@ canonical-record machinery.
 
 ## 1. What landed
 
-Five commits, each independently useful, none building the record
+Six commits, each independently useful, none building the record
 architecture:
 
 | Commit | Change |
@@ -20,6 +20,7 @@ architecture:
 | `2e724b5` | The deprecated `schemas:`/`schema:` spellings are recorded in `Raml.syntax_aliases` as they are decoded; `deprecated-schemas` reads the records, so no rule in the default set requires retained trees and service snapshots parse text-only by default (docs/21 § 2). |
 | `885a16f` | `visible_names`: a fragment resolver's local and directly imported declaration candidates, for completion (docs/04 § 2). |
 | `efd9630` | `Workspace.source`: a file's current text composed once per text and held by the workspace, invalidated on change, close or disk change; folding and selection serve from it (docs/21 § 4). New `source-structure` feature workload with its reach test. |
+| `661e063` | The general corpora carry the deprecated spellings (docs/18 § 6), so the parse workloads exercise the compatibility recording, pinned by a reach test. |
 
 ## 2. First-use mechanics
 
@@ -45,28 +46,35 @@ interaction first needs the tree.
 
 ## 3. Numbers
 
-`bench ab 2b6502e`, 3 rounds, best of 3 per round, at `efd9630`:
+`bench ab 2b6502e`, 3 rounds, best of 3 per round, at `efd9630`; the
+`large/service` row is re-measured on the spelling-carrying corpora of the
+last commit:
 
 | Workload | A ms | B ms | time | noise | peak | kept |
 |---|---:|---:|---:|---:|---:|---:|
 | `hover/unwrap` | 274.8 | 349.4 | +27.1% | 3.3% | +16.6% | +4.0% |
 | `inlays/unwrap` | 291.1 | 354.9 | +21.9% | 4.8% | +12.9% | +3.3% |
 | `effective-types/unwrap` | 209.9 | 212.7 | noise | 2.6% | noise | -27.5% |
-| `large/service` | 474.7 | 481.0 | noise | 8.9% | -20.5% | -24.4% |
+| `large/service` | 476.0 | 474.0 | noise | 6.1% | -20.1% | -24.0% |
 
 New workload, no base number, so linearity (`--repeat 3`):
 `source-structure/unwrap` time 1.004 (113.4 / 56.5 ms), peak 0.998,
 retained 1.000.
 
-General parse workloads are untouched: `large` across all seven non-service
-configurations, and `endpoints` and `datatype-fragments` on parse, unwrap
-and unwrap+lint, are all within noise, with memory identical to the byte in
-most rows (same A/B conditions). The code agrees with the measurement: the
-include text-store fix touches only `load_include`, which join calls and no
-bench workload does; the deprecated-spelling recording fires only on
-`schemas:`/`schema:` spellings that no bench corpus uses; and the lint
-rule's record read, against the base's retained-tree walk, is within noise on
-the lint configurations.
+General parse workloads, on corpora that carry the deprecated spellings
+(pinned by `test_general_corpora_exercise_the_deprecated_spellings`): every
+other `large` library declares its types under the `schemas:` alias, every
+other inherited type uses the `schema:` facet, and `endpoints` declares its
+payload type in a `schemas:` table with every fourth body typed by
+`schema:`. With the spellings in the input, `large` across all eight
+configurations, and `endpoints` and `small` on parse, unwrap and
+unwrap+lint, are within noise on time. Allocation peak and kept move +0.4 to
++0.8 percent on the configurations that hold the model — the
+`syntax_aliases` records themselves, about 1.3 thousand of them, roughly
+120 KB on `large` — and are noise where the model is dropped. The include
+text-store fix still touches only `load_include`, which join calls and no
+bench workload does, and the lint rule's record read, against the base's
+retained-tree walk, is within noise on the lint configurations.
 
 Attribution: at `2e724b5` (before the last two commits) the same A/B
 already shows hover +25.6% and inlays +23.5%, and comparing `2e724b5` to
@@ -116,9 +124,10 @@ identical is the first revisit candidate (docs/15 § 2).
 Keep `2e724b5`. The trade is one first-use composition per file per
 snapshot (about 60 ms on the 304 KiB corpus entry, one time per edit) for
 a persistent memory reduction in the long-running server: large/service
-peak -20.5%, kept -24.4%, and effective-types kept -27.5%, with the edit
-loop's time within noise. Accepted with the revisit note in docs/15 § 2;
-the interpretation rule above is recorded in docs/12 § 5.
+peak -20.1%, kept -24.0% (measured on the spelling-carrying corpus), and
+effective-types kept -27.5%, with the edit loop's time within noise.
+Accepted with the revisit note in docs/15 § 2; the interpretation rule
+above is recorded in docs/12 § 5.
 
 ## 6. Verification
 
@@ -130,6 +139,7 @@ uv run python -m bench ab 2b6502e --bench hover --bench inlays --bench effective
 uv run python -m bench ab 2b6502e --bench large --config service --rounds 3 --repeat 3
 uv run python -m bench ab 2b6502e --bench large --config parse --config unwrap --config validate --config unwrap+validate --config unwrap+graph --config unwrap+lint --config unwrap+occurrences --rounds 3 --repeat 3
 uv run python -m bench ab 2b6502e --bench endpoints --config parse --config unwrap --config unwrap+lint --rounds 3 --repeat 3
+uv run python -m bench ab 2b6502e --bench small --config parse --config unwrap --config unwrap+lint --rounds 3 --repeat 3
 uv run python -m bench ab 2b6502e --bench datatype-fragments --config parse --config unwrap --config unwrap+lint --rounds 3 --repeat 3
 uv run python -m bench linearity --bench source-structure --repeat 3
 ```

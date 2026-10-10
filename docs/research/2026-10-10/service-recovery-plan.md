@@ -135,8 +135,16 @@ Current execution:
   The bounded port now has correctness, reach, A/B and scaling evidence in the
   [inlay report](../../reports/2026-10-10/service-model-inlays.md). Its snapshot-first
   mixed allocation peak adds 10.0%, an accepted construction-order trade-off.
-  The normal CI/platform gate applies before merge. Remaining recovery candidates
-  stay separate experiments against the integrated baseline.
+  All CI checks passed; PR #3 merged at `3912118`.
+- Stage C, second bundle: `perf/service-shared-indices` starts at `3912118`.
+  Its lazy semantic/hierarchy, typed-data ownership and outline-cache scope is
+  documented before implementation in the
+  [shared-index report](../../reports/2026-10-10/service-shared-indices.md).
+  The implemented bundle passes local correctness/reach/scaling checks and improves
+  sparse navigation 17.0%; its 7.5% mixed retained-allocation increase is attributed
+  mainly to the requested-file outline cache. The full bundle is accepted with
+  that retention trade-off, subject to the normal CI/platform gate.
+  Remaining candidates stay separate experiments against the integrated baseline.
 
 Update these entries as each stage completes. Keep measurements in the dated
 report, current pending work in docs/15, and execution history here.

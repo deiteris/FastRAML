@@ -55,6 +55,7 @@ WRITERS = {
     'source-structure': lambda root: corpus.write_hover(root, family_count=3),
     'service-session': lambda root: corpus.write_hover(root, family_count=3),
     'service-source-first': lambda root: corpus.write_hover(root, family_count=3),
+    'service-navigation': lambda root: corpus.write_hover(root, family_count=3),
 }
 
 

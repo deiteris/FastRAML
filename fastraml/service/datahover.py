@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from fastraml.types.base import Property
+from fastraml.types.examples import examples_of
 from fastraml.types.navigation import children
 
 if TYPE_CHECKING:
@@ -19,6 +20,7 @@ if TYPE_CHECKING:
 
     from fastraml.datanode import DataNode, ValueNode
     from fastraml.positions import Position
+    from fastraml.registry import Raml
     from fastraml.types.base import BaseShape
     from fastraml.types.navigation import TypedChild
 
@@ -40,6 +42,27 @@ class DataTarget:
     role: str
     required: bool | None = None
     is_key: bool = False
+
+
+def data_roots(raml: Raml) -> Iterator[DataRoot]:
+    """Bound value roots, independent of hover subject indexing or formatting."""
+    for extension in raml.domain_extensions:
+        if extension.defined_by is not None:
+            yield DataRoot(extension.value, extension.defined_by, extension.name, 'annotation value')
+    for value, declarations in raml.custom_facet_refs.items():
+        for prop in declarations:
+            yield DataRoot(value, prop.base, prop.name, 'custom facet value')
+    for base in raml.shapes:
+        name = base.name or '<anonymous>'
+        if base.alias is not None:
+            continue  # aliases share their referent's data; index it at the referent
+        if base.default is not None:
+            yield DataRoot(base.default, base, name, 'default value')
+        for value in base.enum or ():
+            yield DataRoot(value, base, name, 'enum value')
+        for example in examples_of(base):
+            if example.data is not None:
+                yield DataRoot(example.data, base, name, 'example value')
 
 
 class DataHover:

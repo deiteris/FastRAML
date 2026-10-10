@@ -31,6 +31,13 @@ __all__ = ['document_symbols']
 
 
 def document_symbols(snapshot: Snapshot, uri: str) -> list[Symbol]:
+    """Borrow the read-only outline cached for this URI and snapshot."""
+    if uri not in snapshot.outlines:
+        snapshot.outlines[uri] = _document_symbols(snapshot, uri)
+    return snapshot.outlines[uri]
+
+
+def _document_symbols(snapshot: Snapshot, uri: str) -> list[Symbol]:
     """The outline of `uri`: its metadata, its `uses:`, a section per
     declaration table, its documentation and its resources.
 
@@ -44,7 +51,8 @@ def document_symbols(snapshot: Snapshot, uri: str) -> list[Symbol]:
     added there.
     """
     raml = snapshot.raml
-    if raml is None or uri not in raml.fragments:
+    semantic = snapshot.semantic
+    if raml is None or semantic is None or uri not in raml.fragments:
         return []
     found: list[Symbol | None] = [
         symbol(name, SymbolKind.METADATA, facet, facet.value) for name, facet in authored.metadata(raml, uri)
@@ -55,7 +63,7 @@ def document_symbols(snapshot: Snapshot, uri: str) -> list[Symbol]:
     uses = (symbol(name, SymbolKind.LIBRARY, link, link.value) for name, link in authored.uses(raml, uri).items())
     found.append(_group('uses', uses))
     sections: dict[str, list[Symbol | None]] = {}
-    for key, name, entity in authored.declarations(raml, uri):
+    for key, name, entity in semantic.by_uri.get(uri, ()):
         sections.setdefault(key, []).append(_declaration(name, DECLARATION_KINDS[key], entity))
     found += (_group(key, entries) for key, entries in sections.items())
     found += (_resource(written) for written in authored.resources(raml, uri))

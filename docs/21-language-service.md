@@ -20,7 +20,7 @@ and several views, and only `cli/` imports it (`docs/02` § 2;
 
 | Module | Holds |
 |---|---|
-| `service/workspace.py` | buffers, the overlay loader, roots, snapshots, staleness |
+| `service/workspace.py` | buffers, the overlay loader, roots, snapshots, staleness, composed source trees |
 | `service/text.py` | converting a column between fastRAML and a protocol |
 | `service/queries.py` | the queries, in fastRAML positions |
 | `service/outline.py` | the outline, over the authorship view (`docs/16` § 10) |
@@ -123,7 +123,7 @@ composed YAML and the parser's structural grammar.
 | `document_symbols` | the fragment's metadata, declaration tables, documentation and resources, grouped by section, from `key_pos` and `value_pos`; `type_expr`, else `type_name`, for a type's detail |
 | `workspace_symbols` | the declarations of every snapshot, matched case-insensitively, once each |
 | `links` | each `Link` occurrence in the file, with the file it resolved to |
-| `folding_ranges`, `selection_ranges` | the buffer's composed `Node` tree alone |
+| `folding_ranges`, `selection_ranges` | the workspace's composed source tree for the file's current text, composed once per text |
 | `visible_names` | the fragment resolver's local and directly imported declaration candidates (docs/04 § 2) |
 | `type_at`, `supertypes`, `subtypes` | a type's `inherits` and `alias`, and the declarations naming it |
 | `diagnostics` | `RamlError.chains()` and the lint findings |
@@ -428,7 +428,7 @@ current only those it reads:
 | definition, highlight, hover, type hierarchy, supertypes | the first snapshot that answers |
 | references, subtypes | every snapshot, answers deduplicated |
 | workspace symbols | every root |
-| folding, selection | the buffer's text alone |
+| folding, selection | the workspace's composed source tree for the buffer's current text, composed once per text (§ 4) |
 
 A file that roots bind differently (a master an Overlay merges into, a
 template applied with different arguments) answers from the first. References

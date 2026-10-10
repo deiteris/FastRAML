@@ -497,19 +497,21 @@ class RamlServer(LanguageServer):
         def folding(params: types.FoldingRangeParams) -> list[types.FoldingRange] | None:
             if (uri := _file(params.text_document.uri)) is None:
                 return None
-            text = self.service.text(uri) or ''
-            return [types.FoldingRange(start - 1, end - 1) for start, end in queries.folding_ranges(text, uri)]
+            return [
+                types.FoldingRange(start - 1, end - 1)
+                for start, end in queries.folding_ranges_of(self.service.source(uri))
+            ]
 
         @feature(types.TEXT_DOCUMENT_SELECTION_RANGE)
         def selection(params: types.SelectionRangeParams) -> list[types.SelectionRange] | None:
             if (at := self._in(params.text_document.uri)) is None:
                 return None
             uri, positions = at
-            text = self.service.text(uri) or ''
+            root = self.service.source(uri)
             found: list[types.SelectionRange] = []
             for position in params.positions:
                 parent: types.SelectionRange | None = None
-                for span in reversed(queries.selection_ranges(text, uri, *positions.to_server(uri, position))):
+                for span in reversed(queries.selection_ranges_of(root, *positions.to_server(uri, position))):
                     parent = types.SelectionRange(positions.range(uri, span), parent)
                 found.append(parent or types.SelectionRange(types.Range(position, position)))
             return found

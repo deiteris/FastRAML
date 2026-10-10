@@ -47,11 +47,13 @@ __all__ = [
     'detail_line',
     'diagnostics',
     'folding_ranges',
+    'folding_ranges_of',
     'highlights',
     'hover',
     'links',
     'references',
     'selection_ranges',
+    'selection_ranges_of',
     'subtypes',
     'supertypes',
     'suppression',
@@ -409,8 +411,27 @@ def links(snapshot: Snapshot, uri: str) -> list[Site]:
 def folding_ranges(text: str, uri: str) -> list[tuple[int, int]]:
     """Each mapping and sequence value spanning lines, from its key's line to
     its last leaf's, 1-based, from the text alone.
+
+    The composition happens per call; repeated requests for one file should
+    use `Workspace.source`.
     """
-    root = _compose(text, uri)
+    return folding_ranges_of(_compose(text, uri))
+
+
+def selection_ranges(text: str, uri: str, line: int, column: int) -> list[Position]:
+    """The spans holding `line:column`, innermost first: a token, its pair,
+    the pair's mapping, and outward.
+
+    The composition happens per call; repeated requests for one file should
+    use `Workspace.source`.
+    """
+    return selection_ranges_of(_compose(text, uri), line, column)
+
+
+def folding_ranges_of(root: Node | None) -> list[tuple[int, int]]:
+    """Each mapping and sequence value of `root` spanning lines, from its key's
+    line to its last leaf's, 1-based, from the tree alone.
+    """
     if root is None:
         return []
     found: set[tuple[int, int]] = set()
@@ -421,11 +442,10 @@ def folding_ranges(text: str, uri: str) -> list[tuple[int, int]]:
     return sorted(found)
 
 
-def selection_ranges(text: str, uri: str, line: int, column: int) -> list[Position]:
-    """The spans holding `line:column`, innermost first: a token, its pair,
-    the pair's mapping, and outward.
+def selection_ranges_of(root: Node | None, line: int, column: int) -> list[Position]:
+    """The spans of `root` holding `line:column`, innermost first: a token, its
+    pair, the pair's mapping, and outward, from the tree alone.
     """
-    root = _compose(text, uri)
     if root is None:
         return []
     found: list[Position] = []

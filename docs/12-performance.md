@@ -120,9 +120,10 @@ must receive a parser diagnostic rather than `RecursionError`.
 | `hover` | a cold language-service snapshot, fourteen authoring hovers per type family and custom-facet definition queries: inherited summaries, facet explanations, built-ins, custom-facet declarations and supplied keys, nested custom-facet and annotation keys and values, property presence, methods and response statuses ([21](21-language-service.md) § 4.2) |
 | `effective-types` | a cold service snapshot, code-lens enumeration and full-depth RAML rendering for every named type and annotation type, including nested arrays, unions, scalar item constraints and recursive references ([21](21-language-service.md) § 4.3) |
 | `inlays` | a cold snapshot, inferred declaration types, expected types at supplied custom-facet/annotation roots and nested data keys, and compact inherited constraints anchored to type references ([21](21-language-service.md) § 4.4) |
+| `source-structure` | three folding requests and twelve selection requests at scattered keys, served from the workspace's composed source tree, composed once per current text ([21](21-language-service.md) § 4) |
 
 The six general workloads are `small`, `large`, `endpoints`, `extensions`,
-`validate` and `jsonschema`. The other twenty-four are feature workloads:
+`validate` and `jsonschema`. The other twenty-five are feature workloads:
 each exists because no general workload runs the code it covers. Their reach
 tests (`tests/bench/test_corpus.py`) count calls or check bound results, and fail
 if a corpus stops reaching that code at every size it covers.
@@ -155,6 +156,9 @@ The small corpus-validity tests run in the ordinary test suite.
 For `hover`, `unwrap` builds a service snapshot with unwrap and validation,
 then queries every generated hover site. It measures the cold indices and their
 reuse; probe selection and corpus generation are outside the measured region.
+For `source-structure`, `unwrap` opens the corpus as a buffer and serves the
+folding and selection requests from the workspace's composed source tree;
+probe selection and corpus generation are outside the measured region.
 
 ```bash
 python -m bench run
@@ -206,6 +210,17 @@ a change to a hot path, or to any code a claim is made about:
    `python -m bench linearity --bench NAME` for time and memory instead.
 
 Include the workload, both deltas, and the noise in the commit message.
+
+A service workload's measured region is a cold snapshot: the parse, plus the
+first query of each kind, then reuse of the built indices. Read its delta in
+two parts. The parse side is where the base revision built and retained every
+file's tree and the comparison does not. The first-use side is where a query
+composes on demand the tree the base kept for free, one composition per file
+per snapshot, about a third of a parse of the file; repeated queries of the
+same kind are cached and show no delta. When a change moves composition from
+parse time to first use, name which side the delta is on before attributing
+it to the change's hot path (docs/21 § 2, docs/21 § 4).
+
 `bench compare` against the committed baseline is only a coarse check for
 large regressions: the baseline and the comparison run at different times, and
 the machine drifts in between. Profile before optimizing: use `cProfile` for

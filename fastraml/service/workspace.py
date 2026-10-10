@@ -35,7 +35,7 @@ from fastraml.service.text import Lines
 from fastraml.uris import file_uri_to_path, path_to_file_uri, relative_to
 from fastraml.views.lint import configured_linter
 from fastraml.views.occurrences import build_occurrences
-from fastraml.yamlnode import read_head
+from fastraml.yamlnode import compose, read_head
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Mapping, Sequence
@@ -44,6 +44,7 @@ if TYPE_CHECKING:
     from fastraml.registry import Raml
     from fastraml.views.lint import Finding, Linter
     from fastraml.views.occurrences import Occurrences
+    from fastraml.yamlnode import Node
 
 __all__ = ['Buffer', 'Snapshot', 'Workspace', 'canonical']
 
@@ -180,6 +181,9 @@ class Workspace:
         self.buffers: dict[str, Buffer] = {}
         self._roots: list[str] | None = None
         self._snapshots: dict[str, Snapshot] = {}
+        #: `uri` -> (the text it was composed from, the composed tree), one per
+        #: current text (docs/21 § 4).
+        self._sources: dict[str, tuple[str, Node]] = {}
         #: What each dropped snapshot read: the order `serving` tries roots in.
         self._last_read: dict[str, frozenset[str]] = {}
         #: Whether a snapshot was dropped since the last collection.
@@ -232,6 +236,22 @@ class Workspace:
         buffer = self.buffers.get(canonical(uri))
         return buffer.lines if buffer is not None else Lines(self.text(uri) or '')
 
+    def source(self, uri: str) -> Node | None:
+        """The composed tree of `uri`'s current text, composed once per text (docs/21 § 4)."""
+        uri = canonical(uri)
+        text = self.text(uri)
+        if text is None:
+            return None
+        cached = self._sources.get(uri)
+        if cached is not None and cached[0] is text:
+            return cached[1]
+        try:
+            root = compose(text, uri=uri)
+        except RamlError:
+            return None
+        self._sources[uri] = (text, root)
+        return root
+
     def _put(self, uri: str, buffer: Buffer) -> None:
         """Hold `buffer`, and drop what read other text for `uri`.
 
@@ -264,6 +284,7 @@ class Workspace:
         A file that appeared may be one a failed include was looking for, so a
         snapshot that ended in an error is dropped then too.
         """
+        self._sources.pop(uri, None)
         for root, snapshot in list(self._snapshots.items()):
             if uri in snapshot.read or (appeared and snapshot.error is not None):
                 del self._snapshots[root]

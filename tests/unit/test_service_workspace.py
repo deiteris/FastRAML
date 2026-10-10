@@ -17,6 +17,7 @@ from fastraml.config import FastRamlConfig
 from fastraml.errors import ErrorKind, RamlError
 from fastraml.gctuning import tuned_gc
 from fastraml.registry import Raml
+from fastraml.service.queries import folding_ranges_of
 from fastraml.service.workspace import _HEAD_BYTES, BOM, Workspace, _head, canonical
 from fastraml.uris import path_to_file_uri
 from fastraml.yamlnode import decode_source, read_head
@@ -174,6 +175,38 @@ class TestHeaderLine:
         workspace = Workspace([path_to_file_uri(folder)])
         workspace._disks = dict.fromkeys(workspace._disks, Exact())  # type: ignore[arg-type]
         assert workspace._is_root(canonical(uri))
+
+
+class TestSourceTrees:
+    """The composed tree of a file's current text, once per text (docs/21 § 4)."""
+
+    STRUCTURE = API + 'types:\n  Thing:\n    properties:\n      name: string\n'
+
+    def test_a_unchanged_text_composes_once(self, tmp_path):
+        workspace, folder = _workspace(tmp_path, {'api.raml': self.STRUCTURE})
+        uri = f'{folder}/api.raml'
+        workspace.open(uri, self.STRUCTURE, 1)
+        first = workspace.source(uri)
+        assert first is not None
+        assert workspace.source(uri) is first
+
+    def test_a_changed_text_composes_again(self, tmp_path):
+        workspace, folder = _workspace(tmp_path, {'api.raml': self.STRUCTURE})
+        uri = f'{folder}/api.raml'
+        workspace.open(uri, self.STRUCTURE, 1)
+        first = workspace.source(uri)
+        workspace.change(uri, self.STRUCTURE + '  extra:\n    properties:\n      age: integer\n', 2)
+        second = workspace.source(uri)
+        assert second is not first
+        assert len(folding_ranges_of(second)) > len(folding_ranges_of(first))
+
+    def test_a_closed_buffer_composes_again(self, tmp_path):
+        workspace, folder = _workspace(tmp_path, {'api.raml': self.STRUCTURE})
+        uri = f'{folder}/api.raml'
+        workspace.open(uri, self.STRUCTURE, 1)
+        first = workspace.source(uri)
+        workspace.close(uri)
+        assert workspace.source(uri) is not first
 
 
 class TestSnapshots:

@@ -124,6 +124,7 @@ BENCHES: tuple[Bench, ...] = (
     Bench('hover', lambda root, scale: corpus.write_hover(root, family_count=_at(400, scale))),
     Bench('effective-types', lambda root, scale: corpus.write_hover(root, family_count=_at(300, scale))),
     Bench('inlays', lambda root, scale: corpus.write_hover(root, family_count=_at(400, scale))),
+    Bench('source-structure', lambda root, scale: corpus.write_hover(root, family_count=_at(400, scale))),
 )
 
 _BY_NAME = {bench.name: bench for bench in BENCHES}
@@ -159,6 +160,7 @@ def run_one(bench: str, config: str, entry: Path, repeat: int) -> Measurement:
         'hover',
         'effective-types',
         'inlays',
+        'source-structure',
     }:
         return _measure_view(bench, entry, repeat)
     if config == 'service':
@@ -202,6 +204,7 @@ def _measure_view(bench: str, entry: Path, repeat: int) -> Measurement:
         'hover': _measure_hover,
         'effective-types': _measure_effective_types,
         'inlays': _measure_inlays,
+        'source-structure': _measure_source_structure,
     }.get(bench)
     if service_workload is not None:
         return service_workload(entry, repeat)
@@ -361,6 +364,38 @@ def _measure_inlays(entry: Path, repeat: int) -> Measurement:
 
     with tuned_gc():
         return measure('inlays', 'unwrap', hints, repeat=repeat)
+
+
+def _measure_source_structure(entry: Path, repeat: int) -> Measurement:
+    """Folding and selection requests served from the workspace's source cache."""
+    from fastraml.gctuning import tuned_gc  # noqa: PLC0415 - feature workload only
+    from fastraml.service import queries  # noqa: PLC0415 - feature workload only
+    from fastraml.service.workspace import Workspace  # noqa: PLC0415 - feature workload only
+    from fastraml.uris import path_to_file_uri  # noqa: PLC0415 - feature workload only
+
+    text = entry.read_text(encoding='utf-8')
+    uri, folder = path_to_file_uri(entry), path_to_file_uri(entry.parent)
+    lines = text.splitlines()
+    probes = 12
+    step = max(1, len(lines) // probes)
+    positions = [
+        (number, len(raw) - len(raw.lstrip()) + 1)
+        for number, raw in enumerate(lines[2:], start=3)
+        if ':' in raw and not raw.lstrip().startswith('#')
+    ][::step][:probes]
+
+    def structure() -> object:
+        workspace = Workspace([folder])
+        workspace.open(uri, text, 1)
+        folded = [queries.folding_ranges_of(workspace.source(uri)) for _ in range(3)]
+        selected = [queries.selection_ranges_of(workspace.source(uri), line, column) for line, column in positions]
+        if len(positions) < probes or not folded[0] or any(not spans for spans in selected):
+            message = 'source-structure workload no longer reaches folding and selection'
+            raise RuntimeError(message)
+        return workspace.source(uri), folded, selected
+
+    with tuned_gc():
+        return measure('source-structure', 'unwrap', structure, repeat=repeat)
 
 
 def _measure_edit(bench: str, entry: Path, repeat: int) -> Measurement:
@@ -531,6 +566,7 @@ LINEARITY_CONFIGS: dict[str, str] = {
     'hover': 'unwrap',
     'effective-types': 'unwrap',
     'inlays': 'unwrap',
+    'source-structure': 'unwrap',
 }
 
 

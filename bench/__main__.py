@@ -124,6 +124,8 @@ BENCHES: tuple[Bench, ...] = (
     Bench('hover', lambda root, scale: corpus.write_hover(root, family_count=_at(400, scale))),
     Bench('effective-types', lambda root, scale: corpus.write_hover(root, family_count=_at(300, scale))),
     Bench('inlays', lambda root, scale: corpus.write_hover(root, family_count=_at(400, scale))),
+    Bench('service-session', lambda root, scale: corpus.write_hover(root, family_count=_at(400, scale))),
+    Bench('service-source-first', lambda root, scale: corpus.write_hover(root, family_count=_at(400, scale))),
 )
 
 _BY_NAME = {bench.name: bench for bench in BENCHES}
@@ -159,6 +161,8 @@ def run_one(bench: str, config: str, entry: Path, repeat: int) -> Measurement:
         'hover',
         'effective-types',
         'inlays',
+        'service-session',
+        'service-source-first',
     }:
         return _measure_view(bench, entry, repeat)
     if config == 'service':
@@ -202,6 +206,8 @@ def _measure_view(bench: str, entry: Path, repeat: int) -> Measurement:
         'hover': _measure_hover,
         'effective-types': _measure_effective_types,
         'inlays': _measure_inlays,
+        'service-session': _measure_service_session,
+        'service-source-first': lambda entry, repeat: _measure_service_session(entry, repeat, source_first=True),
     }.get(bench)
     if service_workload is not None:
         return service_workload(entry, repeat)
@@ -361,6 +367,16 @@ def _measure_inlays(entry: Path, repeat: int) -> Measurement:
 
     with tuned_gc():
         return measure('inlays', 'unwrap', hints, repeat=repeat)
+
+
+def _measure_service_session(entry: Path, repeat: int, *, source_first: bool = False) -> Measurement:
+    from bench.service_session import exercise, prepare  # noqa: PLC0415 - feature workload only
+    from fastraml.gctuning import tuned_gc  # noqa: PLC0415 - feature workload only
+
+    prepared = prepare(entry)
+    name = 'service-source-first' if source_first else 'service-session'
+    with tuned_gc():
+        return measure(name, 'unwrap', lambda: exercise(prepared, source_first=source_first), repeat=repeat)
 
 
 def _measure_edit(bench: str, entry: Path, repeat: int) -> Measurement:
@@ -531,6 +547,8 @@ LINEARITY_CONFIGS: dict[str, str] = {
     'hover': 'unwrap',
     'effective-types': 'unwrap',
     'inlays': 'unwrap',
+    'service-session': 'unwrap',
+    'service-source-first': 'unwrap',
 }
 
 

@@ -19,6 +19,15 @@ that each extend the same master remains deferred (docs/19 § 7).
 
 XML Schema external types are unsupported ([01](01-scope-and-coverage.md) § 3).
 
+**Service baseline acceptance and recovery.** The simpler source-cache branch
+is undergoing comparison with master using the portable mixed-request workloads.
+The record-backed representation replacement remains parked; its recurring
+rebuild and first-use costs are recorded in the
+[service cost review](reports/2026-10-10/service-authoring-cost-review.md).
+The accepted [baseline and recovery plan](research/2026-10-10/service-recovery-plan.md)
+lands portable measurements first, checks the simpler branch against master, and
+then evaluates isolated ports against the accepted baseline.
+
 `fastraml join` ([20](20-join.md)) accepts API documents only; Overlays,
 Extensions and Libraries as inputs, and renaming to resolve a conflict, are not
 covered (docs/20 § 11).

@@ -52,6 +52,8 @@ WRITERS = {
     'hover': lambda root: corpus.write_hover(root, family_count=3),
     'effective-types': lambda root: corpus.write_hover(root, family_count=3),
     'inlays': lambda root: corpus.write_hover(root, family_count=3),
+    'service-session': lambda root: corpus.write_hover(root, family_count=3),
+    'service-source-first': lambda root: corpus.write_hover(root, family_count=3),
 }
 
 

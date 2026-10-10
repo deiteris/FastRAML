@@ -773,10 +773,39 @@ class TestRuleExamples:
             'unknown-position'
         ]
 
-    def test_api_finding_can_be_suppressed_at_the_root_mapping(self, tmp_path):
-        source = '#%RAML 1.0\n# fastraml: ignore missing-description\ntitle: t\n'
+    @pytest.mark.parametrize('retention', ['retain_text', 'retain_source'])
+    @pytest.mark.parametrize('suppressed', [False, True])
+    def test_api_finding_is_placed_and_suppressed_at_its_title_without_trees(self, workspace, retention, suppressed):
+        directive = '# fastraml: ignore missing-description\n' if suppressed else ''
+        source = '#%RAML 1.0\nversion: v1\n' + directive + 'title: t\n'
+        linter = Linter(builtin_registry(), Config(extends=(), rules=(RuleSetting(id='missing-description'),)))
+        assert not linter.requires_source
+        raml = workspace.document(source, ParseOptions(unwrap=True, **{retention: True}))
+        expected = [] if suppressed else [({'entity': 'API'}, raml.location, Position(3, 1, 3, 6))]
+        assert [(finding.info, finding.location, finding.position) for finding in linter.run(raml)] == expected
+
+    @pytest.mark.parametrize('kind', ['Overlay', 'Extension'])
+    @pytest.mark.parametrize('replaced', [False, True])
+    def test_api_finding_follows_the_title_in_force(self, workspace, kind, replaced):
+        root = workspace(
+            {
+                'api.raml': '#%RAML 1.0\nversion: v1\ntitle: Original\n',
+                'changed.raml': f'#%RAML 1.0 {kind}\nextends: api.raml\nusage: Changed\n'
+                + ('title: Changed\n' if replaced else ''),
+            }
+        )
+        raml = workspace.parse(root / 'changed.raml', ParseOptions(unwrap=True, retain_text=True))
         config = Config(extends=(), rules=(RuleSetting(id='missing-description'),))
-        assert not Linter(builtin_registry(), config).run(parsed(source, tmp_path))
+        findings = Linter(builtin_registry(), config).run(raml)
+        place = ((root / 'changed.raml').as_uri(), 4) if replaced else ((root / 'api.raml').as_uri(), 3)
+        assert [(finding.location, finding.position.line) for finding in findings] == [place]
+
+    def test_api_finding_without_a_title_has_no_invented_position(self, workspace):
+        raml = workspace.document('#%RAML 1.0\ntitle: T\n', ParseOptions(unwrap=True, retain_source=True))
+        raml.entry_point.title = None
+        config = Config(extends=(), rules=(RuleSetting(id='missing-description'),))
+        findings = Linter(builtin_registry(), config).run(raml)
+        assert [(finding.location, finding.position.is_known) for finding in findings] == [(raml.location, False)]
 
     def test_suppression_uses_an_included_files_location(self, workspace):
         root = workspace(
@@ -1491,6 +1520,30 @@ class TestLintCli:
         output = capsys.readouterr().out
         assert 'deprecated-schemas' in output
         assert 'WARN 0 errors, 1 warning and 1 info finding.' in output
+
+    @pytest.mark.parametrize(
+        ('rules', 'trees'), [([], False), (['prefer-array-expression'], True), (['prefer-array-expression=off'], False)]
+    )
+    def test_trees_are_kept_only_for_a_source_sensitive_rule(self, disk_workspace, capsys, monkeypatch, rules, trees):
+        # docs/18 § 5: the text always, for the suppression the directive asks.
+        from fastraml.cli import lint
+
+        source = '#%RAML 1.0\ntitle: T\n# fastraml: ignore deprecated-schemas\nschemas:\n  T: string\n'
+        root = disk_workspace({'api.raml': source})
+        models = []
+        original = lint.parse_or_report
+
+        def capture(*args, **kwargs):
+            models.append(original(*args, **kwargs))
+            return models[-1]
+
+        monkeypatch.setattr(lint, 'parse_or_report', capture)
+        arguments = ['lint', str(root / 'api.raml')]
+        for rule in rules:
+            arguments.extend(['--rule', rule])
+        assert main(arguments) == EXIT_OK
+        assert [(raml.retain_text, raml.retain_source) for raml in models] == [(True, trees)]
+        assert 'deprecated-schemas' not in capsys.readouterr().out
 
     def test_human_color_is_tty_only_and_can_be_disabled(self, disk_workspace, capsys, monkeypatch):
         root = disk_workspace({'api.raml': '#%RAML 1.0\ntitle: t\nschemas:\n  U: string\n'})

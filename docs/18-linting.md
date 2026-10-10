@@ -226,10 +226,12 @@ fastraml lint [--config FILE] [--severity S] [--ruleset NAME]
 ```
 
 `--list-rules` and `--explain` require no input document. Other invocations
-parse each file with `unwrap=True`, `validate=False`, and `retain_source=True`.
-Validation remains the `validate` command's responsibility. A parse failure
-produces no findings for that file, reports the parser error, and causes a
-nonzero result; remaining files are still attempted.
+parse each file with `unwrap=True`, `validate=False` and `retain_text=True`,
+which source suppression reads (§ 4); `retain_source=True` only when
+`Linter.requires_source` (§ 6). Validation remains the `validate` command's
+responsibility. A parse failure produces no findings for that file, reports
+the parser error, and causes a nonzero result; remaining files are still
+attempted.
 
 Formats:
 

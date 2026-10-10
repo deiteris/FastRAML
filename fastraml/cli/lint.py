@@ -73,7 +73,9 @@ def _lint(args: argparse.Namespace) -> int:  # noqa: PLR0911, PLR0912 - command 
     findings = []
     failed = False
     for path in args.files:
-        raml = parse_or_report(args, path, retain_source=True)
+        # The text serves suppression directives (docs/18 § 4); the trees only
+        # a source-sensitive rule.
+        raml = parse_or_report(args, path, retain_text=True, retain_source=linter.requires_source)
         if raml is None:
             failed = True
             continue

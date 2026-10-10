@@ -313,7 +313,7 @@ invalid document to trigger, it is the wrong rule.
 - **`lint needs an unwrapped model`** — you are calling the Python API directly.
   Parse with `ParseOptions(unwrap=True)`.
 - **`enabled lint rules need retained source`** — the same, with a rule enabled
-  that reads the source text. Also pass `retain_source=True`.
+  that reads the YAML trees. Also pass `retain_source=True`.
 - **A plugin's rules never run** — discovery is not activation. Name the plugin
   under `plugins:` in the config.
 - **`duplicate rule id`** — two rules claim one name and registration refuses

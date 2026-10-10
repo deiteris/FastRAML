@@ -13,7 +13,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable, Iterator, Mapping
 
     from fastraml.parser.fragments import Library, LibraryLink
 
@@ -22,6 +22,7 @@ __all__ = [
     'cut_last',
     'resolve_library_reference',
     'resolve_reference',
+    'visible_references',
 ]
 
 
@@ -107,6 +108,32 @@ def resolve_library_reference[T](
     if not dotted:
         raise UnresolvedReferenceError('invalid reference', name)
     return _pick_from_library(uses, prefix, suffix, pick)
+
+
+def visible_references[T](
+    local: Mapping[str, T] | None,
+    uses: Mapping[str, LibraryLink],
+    table: Callable[[Library], Mapping[str, T]],
+) -> Iterator[tuple[str, T]]:
+    """Enumerate names that resolve in this namespace, with local precedence.
+
+    Only one library hop, including dotted import prefixes. Check the round
+    trip rather than inventing a second interpretation of dotted names.
+    """
+    yield from (local or {}).items()
+    for prefix, link in uses.items():
+        if link.link is None:
+            continue
+        for name, entity in table(link.link).items():
+            qualified = f'{prefix}.{name}'
+            if local is not None and qualified in local:
+                continue
+            try:
+                resolved = resolve_reference(local, uses, qualified, lambda library, key: table(library).get(key))
+            except UnresolvedReferenceError:
+                continue
+            if resolved is entity:
+                yield qualified, entity
 
 
 def _pick_from_library[T](

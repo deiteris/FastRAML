@@ -125,8 +125,11 @@ Current execution:
 - Stage A: measurement work preserved as `7c954ba` on the parked branch; the
   master-based `test/service-workload-baseline` port passes the Windows gate
   (5,810 passed, 67 skipped, 1 xfailed) and both mixed-workload linearity checks.
-  GitHub/Linux verification and measurement-only integration are next.
-- Stage B: pending master-controlled acceptance measurements.
+  All GitHub checks passed, including Ubuntu, TCK and benchmarks; PR #1 merged
+  into master as `e81d361`.
+- Stage B: duplicate hover/workspace ownership is fixed and locally verified.
+  The remaining first-use and +5.4% post-query allocation trade-off is recorded
+  in the integration report; GitHub verification and integration are next.
 - Stage C: pending an accepted baseline.
 
 Update these entries as each stage completes. Keep measurements in the dated

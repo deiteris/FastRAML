@@ -66,7 +66,7 @@ from fastraml.parser.includes import (
     resolve_ref_uri,
     strip_uri_suffix,
 )
-from fastraml.parser.references import resolve_library_reference, resolve_reference
+from fastraml.parser.references import resolve_library_reference, resolve_reference, visible_references
 from fastraml.parser.resourcetypes import ResourceTypeDefinition, make_resource_type_definition
 from fastraml.parser.security import SecuritySchemeDefinition, make_security_scheme_definition
 from fastraml.parser.traits import TraitDefinition, make_trait_definition
@@ -219,6 +219,8 @@ class ReferenceResolver(Fragment, SecuritySchemeResolver, Protocol):
     Implemented by *all* typed fragments, because all of them may carry `uses:`
     and therefore all of them may resolve a qualified name.
     """
+
+    def visible_names(self, kind: str) -> Iterator[tuple[str, Declaration]]: ...
 
     def reference_type(self, name: str) -> BaseShape: ...
 
@@ -394,6 +396,9 @@ class _UsesOnlyFragment(_BaseFragment):
 
     __slots__ = ()
 
+    def visible_names(self, kind: str) -> Iterator[tuple[str, Declaration]]:
+        return _visible_declarations(None, None, self.uses, kind)
+
     def reference_type(self, name: str) -> BaseShape:
         return resolve_library_reference(self.uses, name, _pick_type)
 
@@ -445,6 +450,32 @@ _DECLARATION_TABLES: Final = {
 }
 
 
+def _visible_table(library: Library, kind: str) -> Mapping[str, Declaration]:
+    table: Mapping[str, Declaration] = getattr(library, _DECLARATION_TABLES[kind])
+    return table
+
+
+def _visible_declarations(
+    local: Mapping[str, Declaration] | None,
+    types: Mapping[str, Declaration] | None,
+    uses: Mapping[str, LibraryLink],
+    kind: str,
+) -> Iterator[tuple[str, Declaration]]:
+    primary = visible_references(local, uses, lambda library: _visible_table(library, kind))
+    if kind != FACET_ANNOTATION_TYPES:
+        yield from primary
+        return
+    seen: set[str] = set()
+    for name, entity in primary:
+        seen.add(name)
+        yield name, entity
+    # Annotation lookup tries the whole annotation namespace before falling
+    # back to the type namespace, including before a local dotted data type.
+    for name, entity in visible_references(types, uses, lambda library: _visible_table(library, FACET_TYPES)):
+        if name not in seen:
+            yield name, entity
+
+
 class _NameResolver:
     """The five name resolvers, written once over two hooks.
 
@@ -468,6 +499,11 @@ class _NameResolver:
 
     def library_link(self, prefix: str) -> LibraryLink | None:
         return self._libraries().get(prefix)
+
+    def visible_names(self, kind: str) -> Iterator[tuple[str, Declaration]]:
+        local: Mapping[str, Declaration] | None = self._declared(kind)
+        types = self._declared(FACET_TYPES) if kind == FACET_ANNOTATION_TYPES else None
+        return _visible_declarations(local, types, self._libraries(), kind)
 
     def reference_type(self, name: str) -> BaseShape:
         return self._resolve(FACET_TYPES, name, _pick_type)
@@ -542,6 +578,8 @@ class _DeclaringFragment(_NameResolver, _BaseFragment):
         raml = self._raml
         name = key.value
         if name in (FACET_TYPES, FACET_SCHEMAS):
+            if name == FACET_SCHEMAS:
+                raml.record_syntax_alias(self, key, self.location)
             unmarshal_types(raml, declarations.types(key, value), self.location, self.types)
         elif name == FACET_ANNOTATION_TYPES:
             unmarshal_types(raml, value, self.location, self.annotation_types, is_annotation=True)

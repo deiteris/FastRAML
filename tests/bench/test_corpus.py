@@ -52,6 +52,7 @@ WRITERS = {
     'hover': lambda root: corpus.write_hover(root, family_count=3),
     'effective-types': lambda root: corpus.write_hover(root, family_count=3),
     'inlays': lambda root: corpus.write_hover(root, family_count=3),
+    'source-structure': lambda root: corpus.write_hover(root, family_count=3),
     'service-session': lambda root: corpus.write_hover(root, family_count=3),
     'service-source-first': lambda root: corpus.write_hover(root, family_count=3),
 }
@@ -127,6 +128,45 @@ class TestFeatureCorporaReachTheirCode:
         run_one('lenient-recovery', 'unwrap+validate', entry, repeat=1)
         run_one('lenient-recovery', 'unwrap+lint', entry, repeat=1)
         assert len(results) == 4, 'timing and allocation both reach recovery and lint'
+
+    @pytest.mark.parametrize('count', [2, 4])
+    def test_source_structure_reaches_folding_and_selection_on_the_cached_tree(self, tmp_path, monkeypatch, count):
+        from bench.__main__ import run_one
+        from fastraml.service import queries
+        from fastraml.service import source as source_module
+
+        folded = []
+        selected = []
+        compositions = 0
+        original_folding = queries.folding_ranges_of
+        original_selection = queries.selection_ranges_of
+        original_compose = source_module.compose
+
+        def folding(root):
+            result = original_folding(root)
+            assert result
+            folded.append(len(result))
+            return result
+
+        def selection(root, line, column):
+            result = original_selection(root, line, column)
+            assert len(result) > 1, 'a position inside a nested structure spans at least root, pair and token'
+            selected.append(len(result))
+            return result
+
+        def compose(text, **kwargs):
+            nonlocal compositions
+            compositions += 1
+            return original_compose(text, **kwargs)
+
+        monkeypatch.setattr(queries, 'folding_ranges_of', folding)
+        monkeypatch.setattr(queries, 'selection_ranges_of', selection)
+        monkeypatch.setattr(source_module, 'compose', compose)
+        entry = corpus.write_hover(tmp_path, family_count=count)
+        run_one('source-structure', 'unwrap', entry, repeat=1)
+        assert len(folded) == 2 * 3, 'timing and allocation both reach folding'
+        assert len(selected) == 2 * 12, 'timing and allocation both reach selection'
+        assert compositions == 2, 'each measured pass composes the text once, shared by fifteen requests'
 
     @pytest.mark.parametrize('count', [2, 4])
     def test_inlays_reaches_inferred_types_data_types_and_inherited_facets(self, tmp_path, monkeypatch, count):
@@ -863,6 +903,23 @@ def test_large_reaches_common_by_two_spellings(tmp_path):
     raml = parse_from_path(entry)
     common = [uri for uri in raml.fragments if uri.endswith('/common.raml')]
     assert len(common) == 1
+
+
+def test_general_corpora_exercise_the_deprecated_spellings(tmp_path):
+    """The parse-side compatibility recording only runs on `schemas:` and `schema:`.
+
+    The general corpora carry both spellings (docs/18 § 6), so the parse
+    workloads measure a document that records them. If a writer ever drops a
+    spelling, the recording goes unmeasured and this test says so.
+    """
+    corpora = (
+        ('large', corpus.write_large(tmp_path / 'large', type_count=24, library_count=4)),
+        ('endpoints', corpus.write_endpoints(tmp_path / 'endpoints', resource_count=3)),
+    )
+    for name, entry in corpora:
+        raml = parse_from_path(entry)
+        spelled = {use.name for uses in raml.syntax_aliases.values() for use in uses}
+        assert spelled == {'schemas', 'schema'}, f'{name} corpus records both deprecated spellings'
 
 
 class TestBaselinesMerge:

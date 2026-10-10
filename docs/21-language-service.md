@@ -20,7 +20,8 @@ and several views, and only `cli/` imports it (`docs/02` § 2;
 
 | Module | Holds |
 |---|---|
-| `service/workspace.py` | buffers, the overlay loader, roots, snapshots, staleness |
+| `service/workspace.py` | buffers, the overlay loader, roots, snapshots and staleness |
+| `service/source.py` | on-demand composed source shared by workspace and snapshot consumers |
 | `service/text.py` | converting a column between fastRAML and a protocol |
 | `service/queries.py` | the queries, in fastRAML positions |
 | `service/outline.py` | the outline, over the authorship view (`docs/16` § 10) |
@@ -53,7 +54,14 @@ the TCK's 1011 files.
 **Snapshots.** A snapshot is one `parse_lenient` of one root, with
 `unwrap=True, validate=True, retain_text=True` and the configuration's
 `parser:` limits. It keeps the YAML trees too, `retain_source=True`, only when
-an enabled lint rule reads them (`deprecated-schemas`, in the default set).
+an enabled lint rule reads them; no rule in the default set does. Decoders
+record the small syntax facts that `deprecated-schemas` reads (docs/18 § 6).
+The first query that needs a file's tree composes it on demand. Hover, inlays,
+folding and selection share the workspace's source owner when their input and
+composition policy agree (§ 4). Parsing does not populate that query cache or
+retain all producer trees. Snapshot-local hover indices keep requested trees;
+snapshots borrow the workspace's cache weakly rather than keep its other files
+alive. Without a live owner, a held snapshot can compose its own retained text.
 It records the set of files it read: every retained text, every
 fragment, and every include it tried, found or not. It is built when a query
 first asks for it and kept until one of those files changes. A file that
@@ -122,10 +130,31 @@ composed YAML and the parser's structural grammar.
 | `document_symbols` | the fragment's metadata, declaration tables, documentation and resources, grouped by section, from `key_pos` and `value_pos`; `type_expr`, else `type_name`, for a type's detail |
 | `workspace_symbols` | the declarations of every snapshot, matched case-insensitively, once each |
 | `links` | each `Link` occurrence in the file, with the file it resolved to |
-| `folding_ranges`, `selection_ranges` | the buffer's composed `Node` tree alone |
+| `folding_ranges`, `selection_ranges` | the workspace's composed source tree for the file's current text, composed once per text |
+| `visible_names` | the fragment resolver's local and directly imported declaration candidates (docs/04 § 2) |
 | `type_at`, `supertypes`, `subtypes` | a type's `inherits` and `alias`, and the declarations naming it |
 | `diagnostics` | `RamlError.chains()` and the lint findings |
 | `tree` | `build_tree` (`docs/16` § 6) as JSON text, only on an unwrapped model |
+
+**Shared source.** `Workspace.source(uri)` composes once for its current input,
+including a failed composition. Cache compatibility requires the canonical URI,
+equal text after the parser's single leading-BOM removal, depth limit and YAML
+backend. Equal text from another disk decode can reuse the same tree. Buffer
+changes, close and watched disk changes discard that URI's entry; changing the
+composition policy discards the cache. Unchanged dependency entries survive a
+root edit. These trees carry no semantic binding or include receiving context;
+those belong to the snapshot's hover index.
+
+A source-before-snapshot request and a later hover share their composed tree;
+the parse itself still composes independently. An eligible original RAML/YAML
+container already retained for a syntax-reading lint rule can replace an earlier
+standalone owner on demand, without changing the older tree. JSON include
+normalization and synthetic non-YAML/schema scalars are not that standalone
+composition policy, so they are not substituted for generic source trees.
+An old snapshot may borrow an identical ready entry, but a miss after that input
+or its policy was invalidated remains private to that snapshot and cannot replace the
+current workspace's entry. Query answers therefore keep their own input positions
+without making an old view a source for current text.
 
 **Stopped parses.** A query on a snapshot that stopped early answers from the
 stages it completed. A declaration is an occurrence after decoding; a type
@@ -426,7 +455,7 @@ current only those it reads:
 | definition, highlight, hover, type hierarchy, supertypes | the first snapshot that answers |
 | references, subtypes | every snapshot, answers deduplicated |
 | workspace symbols | every root |
-| folding, selection | the buffer's text alone |
+| folding, selection | the workspace's composed source tree for the buffer's current text, composed once per text (§ 4) |
 
 A file that roots bind differently (a master an Overlay merges into, a
 template applied with different arguments) answers from the first. References
@@ -450,6 +479,10 @@ could save.
 - `test_service_text.py`: conversion in each encoding, both ways.
 - `test_service_workspace.py`: roots, buffers over the disk, the sandbox, and
   when a snapshot is stale.
+- `test_service_source_cache.py`: both source/semantic request orders, failed
+  composition, equal closed-file inputs, depth/backend compatibility, unchanged
+  dependencies and unrelated edits, private old-snapshot misses, weak owner
+  lifetime, retained original trees and distinct JSON-include normalization.
 - `test_service_queries.py`: each query on one document with a library, a
   DataType include, a trait and a resource type; every query on a parse
   stopped at each stage; an Extension's outline; and, over the TCK, that every

@@ -795,12 +795,13 @@ class TestRuleExamples:
 
 
 def run_rule(rule_id: str, source: str, tmp_path, **options):
+    retain_source = options.pop('retain_source', True)
     config = Config(extends=(), rules=(RuleSetting(id=rule_id),))
     raml = parse_from_string(
         source,
         file_name='api.raml',
         base_dir=tmp_path,
-        options=ParseOptions(unwrap=True, validate=False, retain_source=True, **options),
+        options=ParseOptions(unwrap=True, validate=False, retain_source=retain_source, **options),
     )
     return Linter(builtin_registry(), config).run(raml)
 
@@ -1235,6 +1236,24 @@ class TestSpecRules:
     def test_deprecated_schemas_ignores_a_property_named_schema(self, tmp_path):
         source = '#%RAML 1.0\ntitle: t\ntypes:\n  A:\n    properties:\n      schema: string\n'
         assert not run_rule('deprecated-schemas', source, tmp_path)
+
+    def test_deprecated_schemas_reports_without_retained_source(self, tmp_path):
+        # The decoder records each accepted spelling (docs/04 § 5, docs/05 § 3),
+        # so the rule runs with any retention choice (docs/18 § 6).
+        table = run_rule(
+            'deprecated-schemas',
+            '#%RAML 1.0\ntitle: t\nschemas:\n  U: string\n',
+            tmp_path,
+            retain_source=False,
+        )
+        assert [(finding.position.line, finding.info) for finding in table] == [(3, {'field': 'schemas'})]
+        facet = run_rule(
+            'deprecated-schemas',
+            '#%RAML 1.0\ntitle: t\ntypes:\n  A:\n    schema: string\n',
+            tmp_path,
+            retain_source=False,
+        )
+        assert [(finding.position.line, finding.info) for finding in facet] == [(5, {'field': 'schema'})]
 
     @pytest.mark.parametrize(
         ('resources', 'expected'),

@@ -20,7 +20,9 @@ that each extend the same master remains deferred (docs/19 § 7).
 XML Schema external types are unsupported ([01](01-scope-and-coverage.md) § 3).
 
 **Service baseline acceptance and recovery.** The simpler source-cache branch
-is undergoing comparison with master using the portable mixed-request workloads.
+passes the master-controlled rebuild and mixed-request checks after sharing its
+query source owner. Its documented first-use trade-off is accepted;
+CI verification and integration are pending.
 The record-backed representation replacement remains parked; its recurring
 rebuild and first-use costs are recorded in the
 [service cost review](reports/2026-10-10/service-authoring-cost-review.md).
@@ -68,6 +70,13 @@ the media-type fixes and the type-walk work landed together:
   endpoint build still holds; skip the swap where the node is retained anyway.
 - `validate`: time up to +4.9% on some configurations in a 3-round run; a
   5-round rerun of `unwrap+validate` was within noise.
+- Text-only service snapshots pay an on-demand composition for a queried input
+  unless a compatible source entry is already ready (docs/21 § 4). The shared
+  owner removes the old duplicate hover/structural tree. The accepted baseline's
+  remaining first-use cost and post-query allocation trade-off are recorded in the
+  [integration report](reports/2026-10-10/service-baseline-integration.md).
+  Model-backed declaration inlays and cursor-local source lookup are the next
+  separately measured recovery candidates.
 
 ## 3. Potential future work
 
@@ -78,20 +87,13 @@ parser rules without an owning design document and tests.
 The language service and its LSP are built ([21](21-language-service.md)).
 The ordered plan for the rest, completion, editing features and MCP, is
 [research/language-service-plan.md](research/language-service-plan.md): M1 to
-M4 are done, and completion (M5) comes next. Its design records are
+M4 are done, and completion (M5) comes next, with its prerequisites in: the
+resolver's visible-names enumeration (docs/04 § 2) and the workspace's
+composed source cache (docs/21 § 4). Its design records are
 [archive/language-server.md](archive/language-server.md) and
 [archive/language-service-architecture.md](archive/language-service-architecture.md);
 its parser prerequisite, a trustworthy `parse_lenient` model, is analysed in
 [research/partial-models.md](research/partial-models.md).
-
-**Deprecated aliases as a model fact (proposed).** `deprecated-schemas` is on
-by default and reads `source_info`, so every lint-enabled parse, the language
-service's included, retains each declaration's YAML subtree: +7.66 MB on
-`large`, against +0.56 MB for the text alone. It needs only where a `schema:`
-or `schemas:` key was accepted, which the decoder knows. Recording those
-(file, position, key) on the model would let the default rule set run on
-`retain_text`; the three off-by-default rules that inspect how a declaration
-was written keep `retain_source`.
 
 **Sampled examples in the tree (undecided).** The viewer's request and response
 panel (parked on `feat/viewer-request-samples`) needs a working body for each

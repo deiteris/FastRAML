@@ -19,7 +19,6 @@ from fastraml.types.scalars import AnyShape, FileShape, NilShape
 from fastraml.views.graph import is_declaration
 from fastraml.views.lint.engine import Category, Finding, RuleMeta, Severity
 from fastraml.views.lint.mediatypes import media_essence
-from fastraml.yamlnode import NodeKind, pairs
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -45,8 +44,6 @@ __all__ = [
 class DeprecatedSchemas:
     """The deprecated `schemas:` alias for `types:`, and `schema:` for `type:`."""
 
-    requires_source: ClassVar = True
-
     meta: ClassVar = RuleMeta(
         id='deprecated-schemas',
         category=Category.SPEC,
@@ -67,46 +64,32 @@ class DeprecatedSchemas:
     )
 
     def type_(self, ctx: Context, iri: str, base: BaseShape, shape_kind: str) -> Iterable[Finding]:  # noqa: ARG002
-        authored = None if ctx.raml.source_info is None else ctx.raml.source_info.get(base.id)
-        if authored is None or authored[1].kind is not NodeKind.MAPPING:
-            return ()
-        # Keys only, sliced rather than paired: this runs once per type node,
-        # and most declarations have nothing to report.
         return [
             ctx.at(
                 self.meta,
                 'schema is deprecated; use type',
-                location=base.location,
-                position=key.position,
+                location=use.location,
+                position=use.position,
                 iri=iri,
                 field='schema',
             )
-            for key in authored[1].content[::2]
-            if key.value == 'schema'
+            for use in ctx.raml.syntax_aliases.get(base.id, ())
+            if use.name == 'schema'
         ]
 
     def unit(self, ctx: Context, iri: str, fragment: Fragment) -> Iterable[Finding]:
-        root = ctx.raml.source_node(fragment.location)
-        if root is None:
-            # A `type: !include schema.json` is represented by a data-type
-            # fragment and a graph unit, but JSON input never had a RAML root
-            # node to retain. Only composed RAML sources can spell `schemas:`.
-            return ()
-        if root.kind is not NodeKind.MAPPING:
-            return ()
-        for key, _ in pairs(root):
-            if key.value == 'schemas':
-                return (
-                    ctx.at(
-                        self.meta,
-                        'schemas is deprecated; use types',
-                        location=fragment.location,
-                        position=key.position,
-                        iri=iri,
-                        field='schemas',
-                    ),
-                )
-        return ()
+        return [
+            ctx.at(
+                self.meta,
+                'schemas is deprecated; use types',
+                location=use.location,
+                position=use.position,
+                iri=iri,
+                field='schemas',
+            )
+            for use in ctx.raml.syntax_aliases.get(fragment.id, ())
+            if use.name == 'schemas'
+        ]
 
 
 class JsonRefSiblings:

@@ -374,6 +374,8 @@ def _decode(  # noqa: PLR0912 - one pass over the common-facet vocabulary (docs/
                 if type_node is not None:
                     raise node_error('type and schema are mutually exclusive', location, key)
                 type_node = value
+                if key.value == fn.FACET_SCHEMA:
+                    raml.record_syntax_alias(base, key, location)
             case fn.FACET_DISPLAY_NAME:
                 base.display_name = make_string_facet(raml, key, value, location)
             case fn.FACET_DESCRIPTION:

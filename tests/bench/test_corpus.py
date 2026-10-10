@@ -133,14 +133,14 @@ class TestFeatureCorporaReachTheirCode:
     def test_source_structure_reaches_folding_and_selection_on_the_cached_tree(self, tmp_path, monkeypatch, count):
         from bench.__main__ import run_one
         from fastraml.service import queries
-        from fastraml.service import workspace as workspace_module
+        from fastraml.service import source as source_module
 
         folded = []
         selected = []
         compositions = 0
         original_folding = queries.folding_ranges_of
         original_selection = queries.selection_ranges_of
-        original_compose = workspace_module.compose
+        original_compose = source_module.compose
 
         def folding(root):
             result = original_folding(root)
@@ -161,7 +161,7 @@ class TestFeatureCorporaReachTheirCode:
 
         monkeypatch.setattr(queries, 'folding_ranges_of', folding)
         monkeypatch.setattr(queries, 'selection_ranges_of', selection)
-        monkeypatch.setattr(workspace_module, 'compose', compose)
+        monkeypatch.setattr(source_module, 'compose', compose)
         entry = corpus.write_hover(tmp_path, family_count=count)
         run_one('source-structure', 'unwrap', entry, repeat=1)
         assert len(folded) == 2 * 3, 'timing and allocation both reach folding'

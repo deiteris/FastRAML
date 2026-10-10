@@ -27,6 +27,39 @@ first. Measure with `python -m bench ab BASE --bench NAME`, and put the time del
 (only if it exceeds the reported noise) and the allocation delta in the commit
 message. For a new feature with no base number, use `bench linearity --bench NAME`.
 
+## Performance investigations
+
+Before profiling or choosing an optimization, read `docs/12` § 4.1–4.2 and
+§ 5.1–5.2. Start from the user operation and its cost, not a profiler's ranking.
+
+- Describe the scenario: input dimensions, ordered requests/edits, measured
+  boundaries, retained results, and which work occurs automatically or on demand.
+  Separate verified client behavior from a proposed representative scenario.
+  A corpus name and `unwrap`/`service` label are not a workload description.
+- Map each relevant cache's owner, key, first population, sharing, invalidation
+  and release. Distinguish cold process, cold snapshot, first file query, warm
+  query, and the next edit; include failed composition and unchanged dependencies
+  where relevant. Check these boundaries with counters or reach tests.
+- Establish unprofiled end-to-end and phase costs first. Select a profiler to
+  answer a named question. Use sampling for elapsed-time attribution where
+  supported, targeted counters for work multiplicity, and allocation tools for
+  ownership. Use scoped `cProfile` only when Python call paths/counts are the
+  question; its instrumented timings are not benchmark results.
+- Before making a frequently called function cheaper, explain its callers and
+  expected calls per file, distinct node/edge, materialization, request or cache
+  miss. Check growth against those dimensions. Fix unintended repeated work or
+  an incorrect cache boundary first; optimize the call itself only when the
+  remaining multiplicity is justified and its cost matters end to end.
+- Measure parse, first-use and warm-query costs separately, then the real request
+  mix over edits. Account for eager work moved into parsing, automatic outline/
+  inlay/folding requests, includes and multiple roots. Neither an idle snapshot
+  nor thousands of hovers alone establishes the editor's latency or memory cost.
+- Keep correctness, scaling and absolute-cost acceptance separate. Compare the
+  same observable work on identical corpora; distinguish unavailable historical
+  APIs from absent historical behavior. Report time/noise, peak and retained
+  allocation, cache state and trade-offs. Stop optimizing when the stated goal
+  is met; a green linearity run alone does not accept a slower implementation.
+
 ## Layers and import boundaries
 
 - `fastraml/parser/`, `fastraml/types/`: the passes P0–P10. A rule the RAML language

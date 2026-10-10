@@ -20,7 +20,9 @@ that each extend the same master remains deferred (docs/19 § 7).
 XML Schema external types are unsupported ([01](01-scope-and-coverage.md) § 3).
 
 **Service baseline acceptance and recovery.** The simpler source-cache branch
-is undergoing comparison with master using the portable mixed-request workloads.
+passes the master-controlled rebuild and mixed-request checks after sharing its
+query source owner. Its documented first-use trade-off is accepted;
+CI verification and integration are pending.
 The record-backed representation replacement remains parked; its recurring
 rebuild and first-use costs are recorded in the
 [service cost review](reports/2026-10-10/service-authoring-cost-review.md).
@@ -68,19 +70,13 @@ the media-type fixes and the type-walk work landed together:
   endpoint build still holds; skip the swap where the node is retained anyway.
 - `validate`: time up to +4.9% on some configurations in a 3-round run; a
   5-round rerun of `unwrap+validate` was within noise.
-- `hover`/`unwrap` and `inlays`/`unwrap` (measured against `2b6502e` when the
-  service's snapshots stopped retaining parse trees): time +27.1% (noise
-  3.3%) and +21.9% (noise 4.8%), peak +16.6% and +12.9%, kept +4.0% and
-  +3.3%. Accepted for the memory the retention costs: the edit loop
-  (`large/service`) is within noise on time, peak -20.1%, kept -24.0%
-  (measured on the spelling-carrying corpora), and `effective-types` keeps
-  -27.5%. The cost is one composition of the queried
-  file per snapshot, about a third of a parse of it, paid by the first hover
-  or inlay that needs the tree (docs/21 § 2); repeated queries are cached.
-  The alternative is retaining the trees at parse time, the per-snapshot
-  memory cost. Revisit: a clean file is composed twice per snapshot, once
-  for the hover index and once for the workspace's source cache (docs/21 § 4);
-  sharing one tree between them removes the second.
+- Text-only service snapshots pay an on-demand composition for a queried input
+  unless a compatible source entry is already ready (docs/21 § 4). The shared
+  owner removes the old duplicate hover/structural tree. The accepted baseline's
+  remaining first-use cost and post-query allocation trade-off are recorded in the
+  [integration report](reports/2026-10-10/service-baseline-integration.md).
+  Model-backed declaration inlays and cursor-local source lookup are the next
+  separately measured recovery candidates.
 
 ## 3. Potential future work
 

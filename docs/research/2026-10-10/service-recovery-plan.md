@@ -127,9 +127,9 @@ Current execution:
   (5,810 passed, 67 skipped, 1 xfailed) and both mixed-workload linearity checks.
   All GitHub checks passed, including Ubuntu, TCK and benchmarks; PR #1 merged
   into master as `e81d361`.
-- Stage B: initial master-controlled mixed comparisons confirm faster queries but
-  expose duplicate retained hover/workspace trees. A bounded shared-source fix is
-  the next acceptance task; the production candidate is not yet accepted.
+- Stage B: duplicate hover/workspace ownership is fixed and locally verified.
+  The remaining first-use and +5.4% post-query allocation trade-off is recorded
+  in the integration report; GitHub verification and integration are next.
 - Stage C: pending an accepted baseline.
 
 Update these entries as each stage completes. Keep measurements in the dated

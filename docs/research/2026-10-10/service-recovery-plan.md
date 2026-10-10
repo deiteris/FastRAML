@@ -143,8 +143,13 @@ Current execution:
   The implemented bundle passes local correctness/reach/scaling checks and improves
   sparse navigation 17.0%; its 7.5% mixed retained-allocation increase is attributed
   mainly to the requested-file outline cache. The full bundle is accepted with
-  that retention trade-off, subject to the normal CI/platform gate.
-  Remaining candidates stay separate experiments against the integrated baseline.
+  that retention trade-off. All CI checks passed; PR #4 merged at `069b41f`.
+- Stage C, third bundle: cursor-local source lookup on `fix/parked-transfers`
+  from `069b41f`. Hover reads the keys along the cursor's path instead of a
+  whole-file index; mixed sessions are 9.3% faster and retain 9.6% less, with
+  results in the [cursor hover report](../../reports/2026-10-11/service-cursor-hover.md).
+  Accurate authored section ranges remain, recorded by the parser so the model
+  stays self-contained.
 
 Update these entries as each stage completes. Keep measurements in the dated
 report, current pending work in docs/15, and execution history here.

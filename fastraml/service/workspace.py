@@ -130,8 +130,9 @@ class Snapshot:
 
     @property
     def effective_views(self) -> EffectiveViews | None:
-        if self._effective_views is None and self.raml is not None:
-            self._effective_views = EffectiveViews(self.raml)
+        semantic = self.semantic
+        if self._effective_views is None and self.raml is not None and semantic is not None:
+            self._effective_views = EffectiveViews(self.raml, semantic)
         return self._effective_views
 
     @property

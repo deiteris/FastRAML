@@ -5,13 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from fastraml.parser.fragments import every_declaration
 from fastraml.types.base import BaseShape
 from fastraml.views.render import render
 
 if TYPE_CHECKING:
     from fastraml.positions import Position
     from fastraml.registry import Raml
+    from fastraml.service.index import SemanticIndex
     from fastraml.service.workspace import Snapshot
 
 
@@ -26,12 +26,13 @@ class EffectiveViews:
 
     __slots__ = ('by_site', 'by_uri')
 
-    def __init__(self, raml: Raml) -> None:
+    def __init__(self, raml: Raml, semantic: SemanticIndex) -> None:
         self.by_uri: dict[str, list[Lens]] = {}
         self.by_site: dict[tuple[str, int, int, str], BaseShape] = {}
         if not raml.unwrapped:
             return
-        for _, name, base in every_declaration(raml):
+        # The snapshot's one enumeration, shared with outline, hover and symbols.
+        for _, name, base in semantic.declarations:
             if not isinstance(base, BaseShape) or base.id in raml.broken:
                 continue
             span = base.key_pos if base.key_pos.is_known else base.value_pos

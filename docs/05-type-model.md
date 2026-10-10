@@ -47,6 +47,13 @@ returned to a caller holds no type-expression node, unless it was parsed with
 each would only add memory, 2.4 MB on the `validate` workload's `service`
 configuration. Read only `value` and `position`, which both forms have.
 
+`BaseShape.type_written` records authored type syntax during declaration decoding,
+before resolution or unwrap, and survives `clone`/`clone_detached`. Scalar type
+names and multiple-inheritance sequences are explicit, as are accepted `type:`
+and `schema:` fields even when their value is null. A bare empty/null declaration
+or a mapping with only inferred facets has no authored type. This fact is distinct
+from the resolved kind or the presence of bound expression references.
+
 ## 2. Kinds and facets
 
 | Kind | Kind-specific facets |

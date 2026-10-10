@@ -145,5 +145,43 @@ against that accepted baseline, without accepting record capture.
 
 ## 3. Selective recovery
 
-Pending acceptance of the production baseline. The first planned experiment is
-model-backed declaration inlays and `type_written`, without record capture.
+All production-baseline CI checks passed, including Linux, Windows, pure-Python
+YAML, TCK and benchmarks. [PR #2](https://github.com/deiteris/FastRAML/pull/2)
+merged at `bb6941fce593082a4b38a33f4b346dc35268a8d9`. This exact revision is the
+comparison control for the first recovery experiment.
+
+### 3.1 Model-backed declaration inlays
+
+Branch: `perf/service-model-inlays`, based on the accepted baseline. Objective:
+remove the whole-file grammar/source construction that inlays currently request
+just to identify authored types and declaration sites. This does not port shared
+semantic indices, accurate outline sites or the record-backed representation.
+
+The decoder records whether a declaration supplied its type; clones preserve the
+fact. A bare empty/null declaration is inferred, while an authored `type:` key
+(including its null value) is explicit syntax. The existing hover subject/sites
+index supplies declarations, with per-URI subject references to avoid scanning
+the whole model for each queried file. Inferred labels require an authored
+single-line key; fragment-root body spans must not become invented declaration
+keys. Named-reference hints continue to use the model's type-expression span.
+
+Expected work: one boolean slot/assignment per shape and clone, one per-URI
+subject reference per distinct authored site when hover is first populated, one
+hint construction per declaration in the queried file/snapshot, then range
+lookup. Inlays should make zero source compositions or grammar/built-in-token
+index populations. Typed-value navigation remains lazy and shared as before.
+
+Acceptance compares `inlays`, both mixed request orders, ordinary parse/validate
+and routine `large/service` against `bb6941f`. A reach test must forbid source
+construction during both timed and allocation inlay passes. Behavior cases cover
+explicit versus inferred syntax, multiple inheritance, cloning, included types
+and template materializations. Preserve the remaining gates and record the
+allocation cost of the new model flag, even when time stays within noise.
+
+The isolated port and measurements are now recorded in the
+[inlay recovery report](service-model-inlays.md). Cold inlay time falls 27.4%,
+peak 34.8% and retained allocation 30.2%; recurring rebuild time stays within
+noise. A 10.0% snapshot-first mixed peak increase is attributed to query-order
+allocation overlap, with final retention effectively unchanged. After the
+shared-snapshot/order explanation, the user explicitly accepted that new trade-off
+and instructed integration on 2026-10-10; normal CI verification gates the merge.

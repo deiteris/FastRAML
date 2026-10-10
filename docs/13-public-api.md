@@ -162,6 +162,10 @@ Consumers must honor these contracts:
    partial: the expression's `value` and `position`, not a YAML `Node`. With
    `retain_source` it stays the `Node`. Read only `value` and `position`
    (docs/05 § 1).
+6. `BaseShape.type_written` records whether a declaration supplied type syntax,
+   independently of its resolved kind or expression references. Cloning preserves
+   it; bare empty/null declarations are inferred, while an explicit `type:` or
+   `schema:` field is authored even with a null value (docs/05 § 1).
 
 Parsing, `build_graph`, `build_occurrences`, `Linter` runs, `to_openapi`, and
 the `lsp` verb raise the garbage collector's full-collection threshold while

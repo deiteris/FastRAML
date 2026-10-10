@@ -265,6 +265,10 @@ def _make_shape(  # noqa: PLR0913, PLR0917 - make_shape's arguments, resolved
 def _decode_shape(raml: Raml, base: BaseShape, value_node: Node, location: str, default_type: str) -> BaseShape:
     """Everything `make_shape` reads from the declaration's value."""
     type_node, facets = _decode(raml, base, value_node)
+    base.type_written = type_node is not None and (
+        value_node.kind is not NodeKind.SCALAR
+        or not (is_null(type_node) or (type_node.tag == TAG_STR and not type_node.value))
+    )
     if type_node is None:
         kind = identify_shape_type(facets, default_type, location)
     else:

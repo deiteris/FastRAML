@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal, Protocol, cast
 from fastraml.domains import DomainLocation
 from fastraml.errors import Accumulator, RamlError
 from fastraml.loaders import SchemeLoader
+from fastraml.sourceinfo import KeywordUse
 from fastraml.yamlnode import AUTHORED_NODES, DEFAULT_MAX_DEPTH, mark_subtree
 
 if TYPE_CHECKING:
@@ -211,6 +212,7 @@ class Raml:
         'include_refs',
         'shapes',
         'substitutions',
+        'syntax_aliases',
         # --- work queues -----------------------------------------------------
         '_discriminator_shapes',
         'unresolved_shapes',
@@ -297,6 +299,9 @@ class Raml:
         #: Each scalar a template substitution produced, and the caller's
         #: values in it: where a name in it was written (docs/08 § 5.1).
         self.substitutions: Substitutions = {}
+        #: Accepted compatibility spellings by entity ID; only used spellings
+        #: allocate a record. The parser records syntax, a view judges it.
+        self.syntax_aliases: dict[int, list[KeywordUse]] = {}
 
         # A worklist, drained from the left in P7 while resolution appends to
         # the right; a deque keeps both ends O(1).
@@ -633,6 +638,11 @@ class Raml:
         """Keep source text when `retain_text` or `retain_source` is on."""
         if self.retain_text:
             self.source_texts[uri] = text
+
+    def record_syntax_alias(self, entity: Identified, key: Node, location: str) -> None:
+        """Where a decoder accepted a compatibility keyword spelling."""
+        use = KeywordUse(self.location_of(key, location), key.position, key.value)
+        self.syntax_aliases.setdefault(entity.id, []).append(use)
 
     def put_source_info(self, entity_id: int, key: Node | None, value: Node) -> None:
         """Index an entity's authored nodes when source retention is on."""

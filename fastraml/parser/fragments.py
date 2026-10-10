@@ -542,6 +542,8 @@ class _DeclaringFragment(_NameResolver, _BaseFragment):
         raml = self._raml
         name = key.value
         if name in (FACET_TYPES, FACET_SCHEMAS):
+            if name == FACET_SCHEMAS:
+                raml.record_syntax_alias(self, key, self.location)
             unmarshal_types(raml, declarations.types(key, value), self.location, self.types)
         elif name == FACET_ANNOTATION_TYPES:
             unmarshal_types(raml, value, self.location, self.annotation_types, is_annotation=True)

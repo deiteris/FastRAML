@@ -301,11 +301,12 @@ class TestSnapshots:
     def test_the_yaml_trees_are_kept_only_for_a_lint_rule_that_reads_them(self, tmp_path):
         files = {'api.raml': API}
         reading, folder = _workspace(tmp_path, files)
-        assert reading.snapshot(f'{folder}/api.raml').raml.retain_source
-        config = FastRamlConfig(lint={'rules': [{'id': 'deprecated-schemas', 'disabled': True}]})
-        plain = Workspace([folder], config=config)
-        raml = plain.snapshot(f'{folder}/api.raml').raml
+        raml = reading.snapshot(f'{folder}/api.raml').raml
         assert (raml.retain_source, raml.retain_text) == (False, True)
+        config = FastRamlConfig(lint={'rules': [{'id': 'prefer-array-expression'}]})
+        syntax = Workspace([folder], config=config)
+        raml = syntax.snapshot(f'{folder}/api.raml').raml
+        assert (raml.retain_source, raml.retain_text) == (True, True)
 
     def test_the_first_snapshot_serving_a_file_parses_one_root(self, tmp_path, monkeypatch):
         # After an edit to a library, the outline read one snapshot but brought

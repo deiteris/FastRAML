@@ -59,6 +59,15 @@ the media-type fixes and the type-walk work landed together:
   endpoint build still holds; skip the swap where the node is retained anyway.
 - `validate`: time up to +4.9% on some configurations in a 3-round run; a
   5-round rerun of `unwrap+validate` was within noise.
+- `hover`/`unwrap` and `inlays`/`unwrap` (measured against `2b6502e` when the
+  service's snapshots stopped retaining parse trees): time +27.1% (noise
+  3.3%) and +21.9% (noise 4.8%), peak +16.6% and +12.9%, kept +4.0% and
+  +3.3%. The cost is one composition of the queried file per snapshot, paid
+  by the first hover or inlay that needs its tree (docs/21 § 2); repeated
+  queries are cached, and the edit loop is within noise on time, peak
+  -20.5%, kept -24.4% (docs/21 § 4). Revisit: a clean file is composed
+  twice per snapshot, once for the hover index and once for the workspace's
+  source cache; sharing one tree between them removes the second.
 
 ## 3. Potential future work
 
@@ -74,15 +83,6 @@ M4 are done, and completion (M5) comes next. Its design records are
 [archive/language-service-architecture.md](archive/language-service-architecture.md);
 its parser prerequisite, a trustworthy `parse_lenient` model, is analysed in
 [research/partial-models.md](research/partial-models.md).
-
-**Deprecated aliases as a model fact (proposed).** `deprecated-schemas` is on
-by default and reads `source_info`, so every lint-enabled parse, the language
-service's included, retains each declaration's YAML subtree: +7.66 MB on
-`large`, against +0.56 MB for the text alone. It needs only where a `schema:`
-or `schemas:` key was accepted, which the decoder knows. Recording those
-(file, position, key) on the model would let the default rule set run on
-`retain_text`; the three off-by-default rules that inspect how a declaration
-was written keep `retain_source`.
 
 **Sampled examples in the tree (undecided).** The viewer's request and response
 panel (parked on `feat/viewer-request-samples`) needs a working body for each

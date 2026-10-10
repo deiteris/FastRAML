@@ -134,6 +134,12 @@ resolves every name through the includer and is located in the included file.
 
 ## 5. Fragment decoding
 
+When a declaration table uses the accepted compatibility spelling `schemas:`,
+the decoder records its name, authored URI and key position in
+`Raml.syntax_aliases`, keyed by the fragment's entity ID. This is an authored
+language fact, independent of source retention. The lint view decides whether
+to report it and with what severity.
+
 API decoding first collects global `mediaType`, `protocols`, and `securedBy`,
 then decodes remaining declarations in source order. A lone `mediaType` may be
 written as an annotated scalar, `{value: ..., (a): ...}`; its annotations

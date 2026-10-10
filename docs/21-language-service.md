@@ -53,7 +53,8 @@ the TCK's 1011 files.
 **Snapshots.** A snapshot is one `parse_lenient` of one root, with
 `unwrap=True, validate=True, retain_text=True` and the configuration's
 `parser:` limits. It keeps the YAML trees too, `retain_source=True`, only when
-an enabled lint rule reads them (`deprecated-schemas`, in the default set).
+an enabled lint rule reads them; no rule in the default set does. Decoders
+record the small syntax facts that `deprecated-schemas` reads (docs/18 § 6).
 It records the set of files it read: every retained text, every
 fragment, and every include it tried, found or not. It is built when a query
 first asks for it and kept until one of those files changes. A file that

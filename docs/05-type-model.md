@@ -74,6 +74,12 @@ reference or inline declaration, not a bare sequence; use
 
 ## 3. Decoding and inference
 
+An accepted `schema:` compatibility facet records its authored URI, position
+and spelling in `Raml.syntax_aliases`, keyed by the shape's ID. It needs no
+retained node and has no severity or diagnostic attached. A lint rule consumes
+this fact rather than rediscovering it from every declaration's YAML tree.
+Keys in examples, annotations or other opaque data do not declare such a facet.
+
 `make_shape()` is the general declaration constructor. It records common facets
 on the base, keeps remaining YAML key/value pairs flat, determines or defers the
 kind, attaches it, builds the declaration facets (`properties`, `items`,

@@ -17,6 +17,7 @@ from fastraml.config import FastRamlConfig
 from fastraml.errors import ErrorKind, RamlError
 from fastraml.gctuning import tuned_gc
 from fastraml.registry import Raml
+from fastraml.service.queries import folding_ranges_of
 from fastraml.service.workspace import _HEAD_BYTES, BOM, Workspace, _head, canonical
 from fastraml.uris import path_to_file_uri
 from fastraml.yamlnode import decode_source, read_head
@@ -176,6 +177,38 @@ class TestHeaderLine:
         assert workspace._is_root(canonical(uri))
 
 
+class TestSourceTrees:
+    """The composed tree of a file's current text, once per text (docs/21 § 4)."""
+
+    STRUCTURE = API + 'types:\n  Thing:\n    properties:\n      name: string\n'
+
+    def test_a_unchanged_text_composes_once(self, tmp_path):
+        workspace, folder = _workspace(tmp_path, {'api.raml': self.STRUCTURE})
+        uri = f'{folder}/api.raml'
+        workspace.open(uri, self.STRUCTURE, 1)
+        first = workspace.source(uri)
+        assert first is not None
+        assert workspace.source(uri) is first
+
+    def test_a_changed_text_composes_again(self, tmp_path):
+        workspace, folder = _workspace(tmp_path, {'api.raml': self.STRUCTURE})
+        uri = f'{folder}/api.raml'
+        workspace.open(uri, self.STRUCTURE, 1)
+        first = workspace.source(uri)
+        workspace.change(uri, self.STRUCTURE + '  extra:\n    properties:\n      age: integer\n', 2)
+        second = workspace.source(uri)
+        assert second is not first
+        assert len(folding_ranges_of(second)) > len(folding_ranges_of(first))
+
+    def test_a_closed_buffer_composes_again(self, tmp_path):
+        workspace, folder = _workspace(tmp_path, {'api.raml': self.STRUCTURE})
+        uri = f'{folder}/api.raml'
+        workspace.open(uri, self.STRUCTURE, 1)
+        first = workspace.source(uri)
+        workspace.close(uri)
+        assert workspace.source(uri) is not first
+
+
 class TestSnapshots:
     FILES = {  # noqa: RUF012 - read once per test
         'api.raml': API + 'uses:\n  lib: lib.raml\ntypes:\n  Admin: lib.User\n',
@@ -301,11 +334,12 @@ class TestSnapshots:
     def test_the_yaml_trees_are_kept_only_for_a_lint_rule_that_reads_them(self, tmp_path):
         files = {'api.raml': API}
         reading, folder = _workspace(tmp_path, files)
-        assert reading.snapshot(f'{folder}/api.raml').raml.retain_source
-        config = FastRamlConfig(lint={'rules': [{'id': 'deprecated-schemas', 'disabled': True}]})
-        plain = Workspace([folder], config=config)
-        raml = plain.snapshot(f'{folder}/api.raml').raml
+        raml = reading.snapshot(f'{folder}/api.raml').raml
         assert (raml.retain_source, raml.retain_text) == (False, True)
+        config = FastRamlConfig(lint={'rules': [{'id': 'prefer-array-expression'}]})
+        syntax = Workspace([folder], config=config)
+        raml = syntax.snapshot(f'{folder}/api.raml').raml
+        assert (raml.retain_source, raml.retain_text) == (True, True)
 
     def test_the_first_snapshot_serving_a_file_parses_one_root(self, tmp_path, monkeypatch):
         # After an edit to a library, the outline read one snapshot but brought

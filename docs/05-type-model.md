@@ -74,6 +74,12 @@ reference or inline declaration, not a bare sequence; use
 
 ## 3. Decoding and inference
 
+An accepted `schema:` compatibility facet records its authored URI, position
+and spelling in `Raml.syntax_aliases`, keyed by the shape's ID. It needs no
+retained node and has no severity or diagnostic attached. A lint rule consumes
+this fact rather than rediscovering it from every declaration's YAML tree.
+Keys in examples, annotations or other opaque data do not declare such a facet.
+
 `make_shape()` is the general declaration constructor. It records common facets
 on the base, keeps remaining YAML key/value pairs flat, determines or defers the
 kind, attaches it, builds the declaration facets (`properties`, `items`,
@@ -197,6 +203,14 @@ ordinary validation must scan alternatives. Typed-value navigation uses the
 same selection, but preserves all possible structural alternatives when no
 discriminator selects one; it does not validate the whole value to guess a
 branch.
+
+`types/navigation.py` exposes `branches(base, value)` and `children(base,
+value)` over positioned `ValueNode` data. Branches follow aliases and recursion
+markers and preserve every structural union candidate unless a discriminator
+selects one. Children report the governing declaration, expected type, source
+key span and field name or array index. Invalid values retain known field
+types; ordinary additional fields have no invented declaration. The service
+uses this API for typed-data tokens, independently of hover presentation.
 
 RAML field names shared by fragment, endpoint, and type decoders are defined in
 `facet_names.py`; diagnostic fields and JSON Schema keywords are separate.

@@ -130,6 +130,12 @@ returns RAML text ([20](20-join.md) § 8). It is not part of `fastraml.__all__`.
 Pass `unwrap=True, validate=True` together unless you specifically need declared,
 unflattened types. Validation alone must clone and unwrap declarations privately.
 
+Default lint no longer needs whole trees merely to detect `schema:` and
+`schemas:`: the decoders record their accepted spelling and position in
+`Raml.syntax_aliases` (docs/04 § 5, docs/05 § 3), independent of source
+retention. A consumer needing only that compact fact should read it rather
+than retaining the whole source tree.
+
 A configuration file's `parser:` section is `ParserConfig`. `limits(options)`
 applies its `max_include_size`, `max_depth` and `regex_engine`; its
 `workspace_root` and `remote` are left to the host, which weighs them against

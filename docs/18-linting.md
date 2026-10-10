@@ -281,7 +281,12 @@ CLI builds the graph as part of each lint invocation.
 
 Lint requires an unwrapped model. Source-sensitive rules additionally require
 `ParseOptions(retain_source=True)`; `Linter.requires_source` says whether an
-enabled rule is one.
+enabled rule is one. Those are the opt-in style rules
+`prefer-array-expression`, `avoid-explicit-inferred-type` and
+`prefer-inline-alias`; no rule in the default set reads the trees.
+
+`deprecated-schemas` reads the decoder's `Raml.syntax_aliases` records and
+works with any retention choice. It is not a source-sensitive rule.
 
 ## 7. What lint is not
 

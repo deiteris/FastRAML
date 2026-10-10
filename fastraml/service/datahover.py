@@ -11,9 +11,8 @@ from bisect import bisect_left, bisect_right
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from fastraml.errors import RamlError
 from fastraml.types.base import Property
-from fastraml.types.complex_ import ArrayShape, ObjectShape, RecursiveShape, UnionShape
+from fastraml.types.navigation import children
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -21,6 +20,7 @@ if TYPE_CHECKING:
     from fastraml.datanode import DataNode, ValueNode
     from fastraml.positions import Position
     from fastraml.types.base import BaseShape
+    from fastraml.types.navigation import TypedChild
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -97,36 +97,41 @@ class DataHover:
 def _targets(root: DataRoot) -> Iterator[DataTarget]:
     if root.data.key_location is not None and root.data.key_pos.is_known:
         yield DataTarget(root.data.key_location, root.data.key_pos, root.base, root.name, root.role, is_key=True)
-    pending: list[tuple[ValueNode, BaseShape, str, str, bool | None]] = [
-        (root.data.value, root.base, root.name, root.role, None)
-    ]
+    value, base, name, role = root.data.value, root.base, root.name, root.role
+    required: bool | None = None
+    pending: list[tuple[Iterator[TypedChild], str]] = []
     seen: set[tuple[ValueNode, BaseShape]] = set()
-    while pending:
-        value, base, name, role, required = pending.pop()
-        if (value, base) in seen:
-            continue
-        seen.add((value, base))
-        uri = value.location or root.data.location
-        # Collections have child key/value spans. Indexing their whole extent
-        # would make whitespace and unknown fields inherit the parent hover.
-        # An encoded JSON scalar has no nested spans: its root alone is known.
-        if value.is_scalar or (value.position.is_known and not _has_child_spans(value)):
-            yield DataTarget(uri, value.position, base, name, role, required)
-        for branch in _branches(base, value):
-            shape = branch.shape
-            if isinstance(shape, ObjectShape) and value.mapping is not None:
-                for entry in value.mapping.entries:
-                    prop = shape.property_for(entry.key)
-                    if prop is None:
-                        continue
-                    presence = prop.required if isinstance(prop, Property) else None
-                    child_role = 'object property' if isinstance(prop, Property) else 'pattern-matched property'
-                    yield DataTarget(uri, entry.key_pos, prop.base, entry.key, child_role, presence, is_key=True)
-                    pending.append((entry.value, prop.base, entry.key, child_role, presence))
-            elif isinstance(shape, ArrayShape) and shape.items is not None and value.sequence is not None:
-                pending.extend(
-                    (item.value, shape.items, '<item>', 'array item', None) for item in reversed(value.sequence.items)
-                )
+    while True:
+        if (value, base) not in seen:
+            seen.add((value, base))
+            uri = value.location or root.data.location
+            # Collections have child key/value spans. Indexing their whole extent
+            # would make whitespace and unknown fields inherit the parent hover.
+            # An encoded JSON scalar has no nested spans: its root alone is known.
+            if value.is_scalar or (value.position.is_known and not _has_child_spans(value)):
+                yield DataTarget(uri, value.position, base, name, role, required)
+            if not value.is_scalar:
+                pending.append((children(base, value), uri))
+        # Resume one sibling at a time; frames borrow the model's child iterator
+        # instead of buffering every typed child and copying it into a worklist.
+        while pending:
+            siblings, uri = pending[-1]
+            child = next(siblings, None)
+            if child is None:
+                pending.pop()
+                continue
+            prop = child.declaration
+            required = prop.required if isinstance(prop, Property) else None
+            if prop is None:
+                name, role = '<item>', 'array item'
+            else:
+                name = str(child.name)
+                role = 'object property' if isinstance(prop, Property) else 'pattern-matched property'
+                yield DataTarget(uri, child.key_pos, child.base, name, role, required, is_key=True)
+            value, base = child.value, child.base
+            break
+        else:
+            return
 
 
 def _has_child_spans(value: ValueNode) -> bool:
@@ -135,26 +140,3 @@ def _has_child_spans(value: ValueNode) -> bool:
     if value.sequence is not None:
         return any(item.value_pos.is_known for item in value.sequence.items)
     return False
-
-
-def _branches(base: BaseShape, value: ValueNode) -> Iterator[BaseShape]:
-    pending = [base]
-    seen: set[BaseShape] = set()
-    while pending:
-        current = pending.pop()
-        if current in seen:
-            continue
-        seen.add(current)
-        shape = current.shape
-        if isinstance(shape, RecursiveShape):
-            pending.append(shape.head)
-        elif current.alias is not None:
-            pending.append(current.alias)
-        elif isinstance(shape, UnionShape):
-            try:
-                selected = shape.select(value.raw)
-            except RamlError:
-                continue  # a discriminator that names no alternative selects none
-            pending.extend(reversed(shape.any_of or ()) if selected is None else (selected,))
-        else:
-            yield current

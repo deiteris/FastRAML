@@ -137,6 +137,32 @@ class TestNames:
         snapshot, folder = parsed
         assert queries.definition(snapshot, f'{folder}/api.raml', *_where(API, 'title')) == []
 
+    def test_visible_names_obey_local_precedence_and_one_library_hop(self, memory_workspace):
+        api = '#%RAML 1.0\ntitle: T\nuses:\n  lib: lib.raml\ntypes:\n  lib.Person: string\n'
+        library = '#%RAML 1.0 Library\nuses:\n  nested: other.raml\ntypes:\n  Person: string\n  Other: integer\n'
+        workspace, folder = _buffered(
+            memory_workspace,
+            {
+                'api.raml': api,
+                'lib.raml': library,
+                'other.raml': '#%RAML 1.0 Library\ntypes:\n  Hidden: boolean\n',
+            },
+        )
+        uri = f'{folder}/api.raml'
+        found = queries.visible_names(workspace.snapshot(uri), uri, 'types')
+        assert [(each.name, each.uri.rsplit('/', 1)[-1]) for each in found] == [
+            ('lib.Person', 'api.raml'),
+            ('lib.Other', 'lib.raml'),
+        ]
+
+    def test_extension_visible_names_exclude_declarations_from_later_chain_positions(self, memory_workspace):
+        api = '#%RAML 1.0\ntitle: T\ntypes:\n  A: string\n'
+        extension = '#%RAML 1.0 Extension\nextends: api.raml\ntypes:\n  B: string\n'
+        workspace, folder = _buffered(memory_workspace, {'api.raml': api, 'ext.raml': extension})
+        snapshot = workspace.snapshot(f'{folder}/ext.raml')
+        assert [each.name for each in queries.visible_names(snapshot, f'{folder}/api.raml', 'types')] == ['A']
+        assert [each.name for each in queries.visible_names(snapshot, f'{folder}/ext.raml', 'types')] == ['A', 'B']
+
 
 class TestHover:
     def test_a_type_describes_its_identity_without_an_effective_dump(self, parsed):

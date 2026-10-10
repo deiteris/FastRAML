@@ -58,6 +58,8 @@ def test_session_rebuilds_three_versions_and_checks_available_source_reuse(tmp_p
     snapshot = workspace.snapshot(prepared.root)
     if getattr(snapshot.raml, 'projection', None) is not None:
         assert len(compositions) == (6 if source_first else 3)
+    elif getattr(snapshot, 'sources', None) is not None:
+        assert len(compositions) == 6, 'each version shares one query composition in both request orders'
     else:
         assert len(compositions) >= 3, 'historical source readers may compose for each request'
     if hasattr(snapshot, 'outlines'):
@@ -71,7 +73,6 @@ def test_session_rebuilds_three_versions_and_checks_available_source_reuse(tmp_p
     assert all(hints[index] == hints[index + 1] for index in (0, 2, 4))
     assert counts['hovers'] == 9
     assert counts['selections'] == 24
-    assert len(workspace._snapshots) == 1
 
 
 def test_session_can_query_an_unchanged_library_after_root_edits(tmp_path):

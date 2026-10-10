@@ -32,6 +32,7 @@ from fastraml.service.inlays import (
     type_label,
     underlying_type,
 )
+from fastraml.service.source import original_tree
 from fastraml.service.text import Lines
 from fastraml.types.base import BaseShape, Parameter, facets_of
 from fastraml.types.complex_ import ObjectShape, UnknownShape
@@ -44,14 +45,16 @@ from fastraml.uris import relative_to
 from fastraml.views import authored
 from fastraml.views.occurrences import DECLARATION_KINDS, Kind, Link, Occurrence, Occurrences, Role
 from fastraml.views.render import type_name
-from fastraml.yamlnode import TAG_INCLUDE, TAG_STR, Node, NodeKind, compose, pairs
+from fastraml.yamlnode import TAG_INCLUDE, TAG_STR, Node, NodeKind, backend_name, compose, pairs
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
+    from weakref import ReferenceType
 
     from fastraml.parser.endpoints import Body, EndPoint, Operation, Response
     from fastraml.positions import Position
     from fastraml.registry import Raml
+    from fastraml.service.source import Sources
     from fastraml.types.base import ScalarFacet
     from fastraml.types.expressions import ExprCache, RdtNode
 
@@ -106,14 +109,29 @@ class Hover:
         '_responses',
         '_root',
         '_sites',
+        '_source_backend',
         '_source_builtins',
+        '_source_generation',
+        '_sources',
         '_subjects',
     )
 
-    def __init__(self, raml: Raml, root: str, occurrences: Occurrences) -> None:
+    def __init__(  # noqa: PLR0913 - the snapshot's borrowed source owner and composition policy
+        self,
+        raml: Raml,
+        root: str,
+        occurrences: Occurrences,
+        *,
+        sources: ReferenceType[Sources] | None = None,
+        source_generation: int = 0,
+        source_backend: str = '',
+    ) -> None:
         self._raml = raml
         self._root = root.rpartition('/')[0] + '/'
         self._occurrences = occurrences
+        self._sources = sources
+        self._source_generation = source_generation
+        self._source_backend = source_backend
         self._subjects: dict[int, _Subject] = {}
         self._sites: dict[tuple[str, int, int], _Subject] = {}
         self._mappings: dict[tuple[str, int, int], _Subject] = {}
@@ -359,11 +377,22 @@ class Hover:
         if uri in self._nodes:
             return self._nodes[uri]
         node = self._raml.source_nodes.get(uri) or self._raml.include_nodes.get(uri)
-        if node is None:
-            text = self._raml.source_texts.get(uri)
-            if text is not None:
-                with suppress(RamlError):
-                    node = compose(text, uri=uri, max_depth=self._raml.max_depth)
+        text = self._raml.source_texts.get(uri)
+        shared = None if self._sources is None else self._sources()
+        if node is not None and original_tree(uri, node) is None:
+            self._nodes[uri] = node
+            return node
+        if text is not None and shared is not None:
+            node = shared.node(
+                uri,
+                text,
+                max_depth=self._raml.max_depth,
+                generation=self._source_generation,
+                original=node if self._source_backend == backend_name() else None,
+            )
+        elif node is None and text is not None:
+            with suppress(RamlError):
+                node = compose(text, uri=uri, max_depth=self._raml.max_depth)
         self._nodes[uri] = node
         return node
 

@@ -24,6 +24,7 @@ from codecs import getincrementaldecoder
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from typing import TYPE_CHECKING, Final
+from weakref import ref
 
 from fastraml.errors import ErrorKind, RamlError
 from fastraml.loaders import SafeFileLoader
@@ -31,19 +32,22 @@ from fastraml.parser.entry import ParseOptions, parse_lenient
 from fastraml.parser.fragments import FragmentKind, identify_fragment
 from fastraml.service.hover import Hover
 from fastraml.service.lenses import EffectiveViews
+from fastraml.service.source import Sources, original_tree
 from fastraml.service.text import Lines
 from fastraml.uris import file_uri_to_path, path_to_file_uri, relative_to
 from fastraml.views.lint import configured_linter
 from fastraml.views.occurrences import build_occurrences
-from fastraml.yamlnode import read_head
+from fastraml.yamlnode import backend_name, read_head
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Mapping, Sequence
+    from weakref import ReferenceType
 
     from fastraml.config import FastRamlConfig
     from fastraml.registry import Raml
     from fastraml.views.lint import Finding, Linter
     from fastraml.views.occurrences import Occurrences
+    from fastraml.yamlnode import Node
 
 __all__ = ['Buffer', 'Snapshot', 'Workspace', 'canonical']
 
@@ -102,6 +106,9 @@ class Snapshot:
     _findings: list[Finding] | None = field(default=None, repr=False)
     _hover: Hover | None = field(default=None, repr=False)
     _effective_views: EffectiveViews | None = field(default=None, repr=False)
+    sources: ReferenceType[Sources] | None = field(default=None, repr=False)
+    source_generation: int = field(default=0, repr=False)
+    source_backend: str = field(default='', repr=False)
 
     @property
     def effective_views(self) -> EffectiveViews | None:
@@ -114,7 +121,14 @@ class Snapshot:
         """The source and model indices used by author-facing hover."""
         occurrences = self.occurrences
         if self._hover is None and self.raml is not None and occurrences is not None:
-            self._hover = Hover(self.raml, self.root, occurrences)
+            self._hover = Hover(
+                self.raml,
+                self.root,
+                occurrences,
+                sources=self.sources,
+                source_generation=self.source_generation,
+                source_backend=self.source_backend,
+            )
         return self._hover
 
     @property
@@ -180,6 +194,7 @@ class Workspace:
         self.buffers: dict[str, Buffer] = {}
         self._roots: list[str] | None = None
         self._snapshots: dict[str, Snapshot] = {}
+        self._sources = Sources(self.config.parser.max_depth)
         #: What each dropped snapshot read: the order `serving` tries roots in.
         self._last_read: dict[str, frozenset[str]] = {}
         #: Whether a snapshot was dropped since the last collection.
@@ -232,6 +247,30 @@ class Workspace:
         buffer = self.buffers.get(canonical(uri))
         return buffer.lines if buffer is not None else Lines(self.text(uri) or '')
 
+    def source(self, uri: str) -> Node | None:
+        """The composed tree of `uri`'s current text, composed once per text (docs/21 § 4)."""
+        uri = canonical(uri)
+        text = self.text(uri)
+        if text is None:
+            return None
+        depth = self.config.parser.max_depth
+        self._sources.configure(depth)
+        original = None
+        normalized = text.removeprefix(BOM)
+        for snapshot in self._snapshots.values():
+            raml = snapshot.raml
+            if (
+                raml is not None
+                and raml.retain_source
+                and raml.max_depth == depth
+                and snapshot.source_backend == self._sources.backend
+                and raml.source_texts.get(uri) == normalized
+            ):
+                original = original_tree(uri, raml.source_nodes.get(uri))
+                if original is not None:
+                    break
+        return self._sources.node(uri, text, max_depth=depth, original=original)
+
     def _put(self, uri: str, buffer: Buffer) -> None:
         """Hold `buffer`, and drop what read other text for `uri`.
 
@@ -264,11 +303,14 @@ class Workspace:
         A file that appeared may be one a failed include was looking for, so a
         snapshot that ended in an error is dropped then too.
         """
+        read = False
         for root, snapshot in list(self._snapshots.items()):
+            read |= uri in snapshot.read
             if uri in snapshot.read or (appeared and snapshot.error is not None):
                 del self._snapshots[root]
                 self._last_read[root] = snapshot.read
                 self._garbage = True
+        self._sources.discard(uri, read=read)
 
     # -- roots and snapshots --------------------------------------------------
 
@@ -347,6 +389,8 @@ class Workspace:
         return found
 
     def _parse(self, root: str) -> Snapshot:
+        self._sources.configure(self.config.parser.max_depth)
+        source_backend = backend_name()
         disk = self._disk(root)
         if disk is None:
             refused = RamlError.new('path is outside the workspace root', root, info={'path': root})
@@ -374,7 +418,16 @@ class Workspace:
                 else RamlError.wrap('load resource', err, root, kind=ErrorKind.READING)
             )
             return Snapshot(root, None, failure, frozenset({root}))
-        return Snapshot(root, raml, error, _read(raml, root), linter=self.linter)
+        return Snapshot(
+            root,
+            raml,
+            error,
+            _read(raml, root),
+            linter=self.linter,
+            sources=ref(self._sources),
+            source_generation=self._sources.generation,
+            source_backend=source_backend,
+        )
 
     @property
     def linter(self) -> Linter:

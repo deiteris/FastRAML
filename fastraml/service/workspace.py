@@ -438,6 +438,12 @@ class Workspace:
                 else RamlError.wrap('load resource', err, root, kind=ErrorKind.READING)
             )
             return Snapshot(root, None, failure, frozenset({root}))
+        texts = raml.source_texts
+        for uri, kept in texts.items():
+            # The parse decoded its own copy of an open buffer's text; keep the
+            # buffer's instead of a second one for the snapshot's lifetime.
+            if (buffer := self.buffers.get(uri)) is not None and buffer.text == kept:
+                texts[uri] = buffer.text
         return Snapshot(
             root,
             raml,

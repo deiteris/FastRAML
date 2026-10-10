@@ -233,6 +233,19 @@ class TestSnapshots:
         assert snapshot.root == f'{folder}/lib.raml'
         assert snapshot.error is None
 
+    def test_a_snapshot_keeps_an_open_buffers_text_not_a_second_copy(self, memory_workspace):
+        folder = path_to_file_uri(memory_workspace.root)
+        workspace = Workspace([folder])
+        texts = {'api.raml': self.FILES['api.raml'], 'lib.raml': BOM + LIBRARY}
+        for name, text in texts.items():
+            workspace.open(f'{folder}/{name}', text, 1)
+        snapshot = workspace.snapshot(f'{folder}/api.raml')
+        assert snapshot.raml is not None
+        kept = snapshot.raml.source_texts
+        assert kept[f'{folder}/api.raml'] is workspace.buffers[f'{folder}/api.raml'].text
+        # The parser drops the leading BOM, so that text is the parse's own.
+        assert kept[f'{folder}/lib.raml'] == LIBRARY
+
     def test_an_os_error_is_keyed_by_its_errno(self, tmp_path, monkeypatch):
         """docs/11 § 6: an `OSError` past the parse reports a key, not the OS text."""
         workspace, folder = _workspace(tmp_path, {'api.raml': API})
